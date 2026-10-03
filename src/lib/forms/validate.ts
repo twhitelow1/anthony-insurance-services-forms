@@ -3,7 +3,6 @@ import {
   type FormDefinition,
   type FormValues,
   type InputField,
-  type Option,
   type Section,
   isInputField,
   tableCellId,
@@ -107,15 +106,3 @@ export const clampRows = (raw: FormValues[string], max: number) => {
   const n = Number(raw ?? 1);
   return Number.isFinite(n) ? Math.min(Math.max(Math.trunc(n), 1), max) : 1;
 };
-
-/** Swap in dropdown options pulled from GHL (see `syncOptionsFromGhl`). */
-export function applyOptionOverrides(form: FormDefinition, overrides: Record<string, Option[]>): FormDefinition {
-  if (!Object.keys(overrides).length) return form;
-  return {
-    ...form,
-    sections: form.sections.map((s) => ({
-      ...s,
-      fields: s.fields.map((f) => (isInputField(f) && "options" in f && overrides[f.id] ? { ...f, options: overrides[f.id] } : f)),
-    })),
-  };
-}

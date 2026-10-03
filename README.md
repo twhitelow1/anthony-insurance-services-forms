@@ -1,93 +1,93 @@
-# Anthony Insurance Services — Online Applications
+# Anthony Insurance Services — Applications Portal
 
-Custom, multi-step insurance applications that submit straight into **GoHighLevel**: the contact record, its **custom fields**, and **tags** that start workflows. Built with Next.js and hosted on **Vercel**. Every push to `main` deploys automatically.
+Online insurance applications plus a portal around them. Clients apply and track their status without a password. Staff sign in with Microsoft 365 to search and manage every application. **GoHighLevel holds only the contact**, with a link back to the full application. Next.js on Vercel, Postgres (Neon).
 
-| Form | URL |
-| --- | --- |
-| Sports & Recreation Facility Application (GL + A&H) | `/forms/sports-facility-application` |
+| Who | URL | Sign-in |
+| --- | --- | --- |
+| Applicant | `/forms/sports-facility-application` | none |
+| Applicant | `/portal` | one-time email link (no password) |
+| Staff | `/admin` | Microsoft 365, `@anthonyinsuranceservices.com` only |
 
-## How a submission flows
+## How it fits together
 
 ```
-Browser (wizard, validation, tooltips, signature)
-   │  POST /api/forms/<slug>/submit
-   ▼
-Vercel serverless function
-   1. Re-validates every answer against the form definition (never trusts the browser)
-   2. Drops answers to hidden questions (e.g. pool questions when "Do you have a pool?" = No)
-   3. GET  /locations/{id}/customFields      → resolves field names → GHL custom field IDs
-   4. POST /contacts/upsert                  → standard fields + custom fields + tags + source
-   5. POST /forms/upload-custom-files        → signature PNG → "Applicants Signature" field
-   6. POST /contacts/{id}/notes              → full plain-text copy of the application (audit trail)
+Applicant ──► form ──► POST /api/forms/<slug>/submit
+                         1. validate on the server
+                         2. save to Postgres  ◄── system of record (nothing lost if GHL is down)
+                         3. after response:
+                            ├─ GHL: upsert contact + tags + 3 custom fields + short note with link
+                            └─ Graph: confirmation email from the agency mailbox
+
+Staff  ──► /admin (Microsoft sign-in) ──► search · view · change status · notes
+                         status change ──► GHL custom field + tag swap (workflows react)
+                                       └─► optional email to the client
+
+Client ──► /portal ──► email → one-time link → their applications, status, agent notes
 ```
 
-The GHL token only exists on the server. The browser never sees it.
+### What GoHighLevel receives
+- **Contact fields:** first and last name, email, phone, website, mailing address, company.
+- **Tags:** `form:sports-facility-application` and `app-status:<status>`. The status tag is swapped on every change, so a "Contact Tag Added" workflow can text or email the client.
+- **Custom fields:** create these in GHL as single-line text. They're matched by name.
+  - `Application Reference`: e.g. `AIS-7K3Q-9XF2`
+  - `Application Status`: e.g. "Information needed"
+  - `Application Link`: opens that application in `/admin`. Staff click it from the contact.
+- **One note** with the reference and the link.
 
-### Why the API instead of inbound webhooks
+None of the application answers go to GHL.
 
-An inbound-webhook workflow makes you map every field to its custom field by hand in the GHL workflow builder. This application has ~190 fields. Instead, this app maps fields **in code**, by name, and checks the mapping against the live GHL account (see *Mapping audit*). GHL workflows still fire: trigger them on the **tag** `form:sports-facility-application` ("Contact Tag Added").
+### Statuses
+Received → In review → Information needed → Submitted to carrier → Quote ready → Coverage bound / Declined / Withdrawn. The wording clients see is in `src/lib/applications/status.ts`.
+
+## Security
+- **Staff sign-in:** Microsoft 365 sign-in (OpenID Connect with PKCE). It checks the tenant ID and the email domain, so other Microsoft accounts are rejected.
+- **Client sign-in:** one-time links.
+  - Only a SHA-256 hash of each link token is stored.
+  - Links expire after 20 minutes, work once, and are limited to 3 per 15 minutes.
+  - The link opens a "Continue" page, so Safe Links scanners can't use it up.
+  - The response is the same whether or not an email is on file.
+- **Access checks:**
+  - Every page and server action checks the session itself.
+  - Clients can only open applications whose email matches theirs. Any other ID returns 404.
+- **Sessions:** HTTP-only, SameSite cookies, signed with `SESSION_SECRET`. Staff sessions last 10 hours, clients 24 hours.
+- **Encrypted email:** mail goes out through Exchange Online, so the agency's subject-tag encryption rule applies. Pass `encrypt: true` to `sendMail`, which adds `MAIL_ENCRYPT_TAG`.
+- **Audit trail:** every submission, status change, note, sync, and email is recorded on the application's activity log.
 
 ## Setup
 
-### 1. GHL credentials
-In the Anthony Insurance sub-account:
-1. **Settings → Private Integrations → Create new integration.** Grant contact view/edit, custom field view, and forms write (forms write is used to upload the signature). Copy the token.
-2. **Settings → Business Profile** → copy the **Location ID**.
-
-### 2. Vercel environment variables
-Project → Settings → Environment Variables (see `.env.example`):
-
-| Name | Value |
-| --- | --- |
-| `GHL_API_TOKEN` | Private Integration token |
-| `GHL_LOCATION_ID` | Sub-account location ID |
-| `ADMIN_SECRET` | Long random string; protects the mapping audit |
-
-### 3. Mapping audit (do this before going live)
-After deploying, open:
-
-```
-https://<your-domain>/api/admin/ghl-mapping?secret=<ADMIN_SECRET>
-```
-
-For every question it shows the GHL custom field it resolved to (`ok`), or `MISSING` / `AMBIGUOUS`. It also lists GHL fields no question uses. Fix a problem in one of two ways:
-- Set `ghl: { name: "Exact GHL Field Name" }` (or `ghl: { key: "contact.field_key" }`) on the field in `src/forms/sports-facility-application.ts`, **or**
-- rename the field in GHL.
-
-Matching ignores case, spaces, and punctuation, so `Business Website:` matches `business website`.
-
-Answers with no matching GHL field are **not lost**. They are always included in the contact note.
-
-## Features
-- **Interactive tooltips**: the (i) icon next to a question opens on hover or keyboard focus, and on tap on phones. Escape or tapping outside closes it.
-- **Conditional questions** that appear only when relevant (locations 1–5, non-renewal details, HNOA questions, pools, climbing walls, aerial equipment, trampolines, and more).
-- **Dropdowns synced from GHL**: fields marked `syncOptionsFromGhl` use the picklist options from GHL (refreshed every 10 minutes), so the form can't drift from the CRM.
-- **Autosave**: progress is saved on the device, so applicants can leave and come back.
-- **Drawn e-signature**, captured as a PNG, uploaded to GHL, and timestamped with IP and user agent in the note.
-- **Spam protection**: a honeypot field plus per-IP throttling. For hard limits, add a Vercel Firewall rate-limit rule on `/api/forms/*`.
-- Mobile-first and accessible (labels, fieldsets, `aria-invalid`, focus management, reduced motion).
-
-## Embedding on another website / GHL funnel
-
-```html
-<div data-ais-form="sports-facility-application"
-     data-ais-redirect="https://anthonyinsuranceservices.com/thank-you"></div>
-<script src="https://<your-domain>/embed.js" async></script>
-```
-
-The iframe resizes itself to fit its content. `data-ais-redirect` is optional.
-
-## Adding a new form
-1. Copy `src/forms/sports-facility-application.ts` and edit the sections and fields (the helpers `yesNo`, `text`, `num`, `money`, `isYes`, … keep it short).
-2. Register it in `src/forms/index.ts`.
-3. Deploy, then run the mapping audit.
+1. **Database:** Vercel → Storage → add **Neon Postgres** to the project. `DATABASE_URL` is set automatically. Migrations run on every deploy (`npm run build` runs `scripts/migrate.mjs` first).
+2. **Microsoft Entra app registration.** An Entra admin at Anthony Insurance creates it:
+   - **Supported accounts:** single tenant (this organization only).
+   - **Redirect URI (Web):** `https://<APP_URL>/api/auth/microsoft/callback`
+   - **API permissions:** Microsoft Graph delegated `openid`, `profile`, `email`, and application `Mail.Send`. Grant admin consent.
+   - **Restrict `Mail.Send` to one mailbox** with Exchange Online **RBAC for Applications**. Otherwise the app could send as anyone in the organization.
+   - **Copy** the tenant ID, client ID, and a client secret into Vercel.
+3. **GHL:** create a sub-account Private Integration token and the three custom fields above.
+4. **Environment variables:** see `.env.example`.
 
 ## Development
 
 ```bash
 npm install
-cp .env.example .env.local   # without GHL creds, submissions are a logged dry run in dev
-npm run dev                  # http://localhost:3000
-npm test                     # mapping + validation unit tests
+cp .env.example .env.local      # set DATABASE_URL=pglite:./.data/db and DEV_STAFF_LOGIN=1
+npm run dev                     # emails print to the console when Microsoft isn't configured
+npm test                        # unit + repository tests (embedded Postgres)
 npm run lint && npm run typecheck
+npm run db:generate             # after changing src/lib/db/schema.ts
 ```
+
+## Adding a form
+1. Copy `src/forms/sports-facility-application.ts` and edit the sections and fields.
+2. Register the new form in `src/forms/index.ts`.
+3. Fields with `ghl: { standard: "…" }` are copied onto the GHL contact.
+
+## Embedding the form elsewhere
+
+```html
+<div data-ais-form="sports-facility-application"></div>
+<script src="https://<APP_URL>/embed.js" async></script>
+```
+
+## Roadmap
+- **Phase 2:** fill the carrier's PDF application from the answers and email it to the carrier through Graph, with the encryption tag.
+- **Phase 3:** Claude for a summary and underwriting flags on each submission, plus conversational search for staff.

@@ -1,22 +1,15 @@
-import type { NextRequest } from "next/server";
+import { after, type NextRequest } from "next/server";
 import { getForm } from "@/forms";
-import { applyOptionOverrides, pruneValues, validateForm } from "@/lib/forms/validate";
+import { pruneValues, validateForm } from "@/lib/forms/validate";
 import type { FormValues } from "@/lib/forms/types";
-import {
-  GhlError,
-  addContactNote,
-  ghlConfig,
-  listCustomFields,
-  uploadCustomFieldFile,
-  upsertContact,
-} from "@/lib/ghl/client";
-import { buildContactPayload, ghlOptionOverrides, submissionNote } from "@/lib/ghl/mapping";
+import { createApplication } from "@/lib/applications/repo";
+import { onApplicationSubmitted } from "@/lib/applications/pipeline";
 
-export const maxDuration = 30;
+export const maxDuration = 60;
 
 const MAX_BODY_BYTES = 1_000_000;
 
-// Best-effort per-instance throttle. For hard limits, add Vercel Firewall rate limiting on this path.
+// Best-effort per-instance throttle. For hard limits, add a Vercel Firewall rate-limit rule on this path.
 const recent = new Map<string, number[]>();
 function throttled(ip: string) {
   const now = Date.now();
@@ -38,8 +31,8 @@ function sanitize(input: unknown): FormValues {
 
 export async function POST(req: NextRequest, ctx: RouteContext<"/api/forms/[slug]/submit">) {
   const { slug } = await ctx.params;
-  const baseForm = getForm(slug);
-  if (!baseForm) return Response.json({ error: "Form not found" }, { status: 404 });
+  const form = getForm(slug);
+  if (!form) return Response.json({ error: "Form not found" }, { status: 404 });
 
   const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
   if (throttled(ip)) return Response.json({ error: "Too many submissions. Please wait a minute." }, { status: 429 });
@@ -55,64 +48,27 @@ export async function POST(req: NextRequest, ctx: RouteContext<"/api/forms/[slug
   }
 
   // Honeypot: real users never see this field. Pretend success so bots move on.
-  if (body.website_hp) return Response.json({ ok: true });
+  if (body.website_hp) return Response.json({ ok: true, reference: "AIS-0000-0000" });
 
-  if (!ghlConfig()) {
-    const values = pruneValues(baseForm, sanitize(body.values));
-    const errors = validateForm(baseForm, values);
-    if (Object.keys(errors).length) return Response.json({ error: "Validation failed", errors }, { status: 422 });
-    if (process.env.NODE_ENV !== "production") {
-      console.warn("[submit] GHL not configured — dry run. Values:", { ...values, signature: values.signature ? "<png>" : undefined });
-      return Response.json({ ok: true, dryRun: true });
-    }
-    return Response.json({ error: "Form is not configured. Please call our office." }, { status: 503 });
-  }
+  const values = pruneValues(form, sanitize(body.values));
+  const errors = validateForm(form, values);
+  if (Object.keys(errors).length) return Response.json({ error: "Validation failed", errors }, { status: 422 });
 
+  let app;
   try {
-    // Validate against the same GHL-synced dropdown options the browser was shown.
-    const customFields = await listCustomFields();
-    const form = applyOptionOverrides(baseForm, ghlOptionOverrides(baseForm, customFields));
-    const values = pruneValues(form, sanitize(body.values));
-    const errors = validateForm(form, values);
-    if (Object.keys(errors).length) return Response.json({ error: "Validation failed", errors }, { status: 422 });
-
-    const { contact, signature, unmapped } = buildContactPayload(form, values, customFields);
-    const { contact: saved } = await upsertContact(contact);
-
-    // Secondary writes: failures here shouldn't fail the submission — the contact
-    // and all mapped fields are already saved.
-    const followUps: Promise<unknown>[] = [];
-
-    if (signature) {
-      const png = Buffer.from(signature.dataUrl.split(",")[1], "base64");
-      followUps.push(
-        uploadCustomFieldFile(saved.id, signature.fieldId, new Blob([png], { type: "image/png" }), "signature.png"),
-      );
-    }
-
-    let note = submissionNote(form, values, {
-      Submitted: new Date().toISOString(),
-      "IP address": ip,
-      "User agent": req.headers.get("user-agent") ?? "unknown",
-      Signed: values.signature ? "Yes (electronic signature captured)" : "No",
-    });
-    if (unmapped.length) {
-      note += `\n⚠️ ${unmapped.length} answer(s) had no matching GHL custom field (see list above).`;
-    }
-    followUps.push(addContactNote(saved.id, note));
-
-    const results = await Promise.allSettled(followUps);
-    for (const r of results) if (r.status === "rejected") console.error("[submit] follow-up failed", describe(r.reason));
-
-    return Response.json({ ok: true });
+    // The database is the system of record — once this succeeds, nothing is lost.
+    app = await createApplication(form, values, { ip, userAgent: req.headers.get("user-agent") ?? undefined });
   } catch (err) {
-    console.error("[submit] GHL error", describe(err));
+    console.error("[submit] could not save application", err);
     return Response.json(
       { error: "We couldn't submit your application right now. Please try again, or call our office." },
-      { status: 502 },
+      { status: 500 },
     );
   }
-}
 
-const describe = (err: unknown) =>
-  err instanceof GhlError ? { message: err.message, status: err.status, body: err.body } : err;
+  // GHL sync + confirmation email run after the response; failures are logged
+  // on the application's timeline and can be retried from the admin page.
+  after(() => onApplicationSubmitted(form, app));
+
+  return Response.json({ ok: true, reference: app.reference });
+}

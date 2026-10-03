@@ -18,10 +18,8 @@ import type { Field, FormDefinition, FormValues } from "@/lib/forms/types";
  * Sports & Recreation Facility — General Liability / Accident & Health application.
  * Transcribed from the original GHL form 2rfgPVPlD4jV4cvjczTY.
  *
- * GHL mapping: unless a field says otherwise, it maps to the GHL custom field
- * whose name matches its label. `ghl.name` overrides that where the GHL field
- * name differs from what we display. Dropdowns marked `syncOptionsFromGhl` pull
- * their options from GHL at runtime; the options listed here are fallbacks.
+ * Answers are stored in the app's database. Only fields with `ghl.standard`
+ * are copied to the GoHighLevel contact.
  */
 
 const locationCount = (v: FormValues) => Number(v.location_count ?? 0);
@@ -31,8 +29,8 @@ function locationFields(n: number): Field[] {
   const showIf = (v: FormValues) => locationCount(v) >= n;
   return [
     { type: "content", id: `location_${n}_heading`, title: tag, variant: "subheading", showIf },
-    text(`location_${n}_street`, "Street Address", { required: true, showIf, ghl: { name: `Street Address - ${tag}` } }),
-    text(`location_${n}_city`, "City", { required: true, showIf, width: "third", ghl: { name: `City - ${tag}` } }),
+    text(`location_${n}_street`, "Street Address", { required: true, showIf }),
+    text(`location_${n}_city`, "City", { required: true, showIf, width: "third" }),
     {
       type: "select",
       id: `location_${n}_state`,
@@ -41,9 +39,8 @@ function locationFields(n: number): Field[] {
       required: true,
       showIf,
       width: "third",
-      ghl: { name: `State - ${tag}` },
     },
-    text(`location_${n}_zip`, "ZIP Code", { required: true, showIf, width: "third", ghl: { name: `ZIP Code - ${tag}` } }),
+    text(`location_${n}_zip`, "ZIP Code", { required: true, showIf, width: "third" }),
   ];
 }
 
@@ -115,7 +112,6 @@ export const sportsFacilityApplication: FormDefinition = {
           id: "primary_location",
           label: "Which one is your primary location?",
           options: opts("Location #01", "Location #02", "Location #03", "Location #04", "Location #05"),
-          syncOptionsFromGhl: true,
           filterOptions: (options, v) => options.slice(0, Math.max(locationCount(v), 1)),
           required: true,
           width: "half",
@@ -129,7 +125,7 @@ export const sportsFacilityApplication: FormDefinition = {
       fields: [
         text("legal_business_name", "Legal Business Name", {
           required: true,
-          ghl: { standard: "companyName", name: "Legal Business Name" },
+          ghl: { standard: "companyName" },
         }),
         text("dba", "DBA/Trade Name (If Applicable)"),
         {
@@ -137,7 +133,6 @@ export const sportsFacilityApplication: FormDefinition = {
           id: "business_type",
           label: "Type Of Business",
           options: opts("Gymnastics", "Cheer", "Dance", "Martial Arts", "Boxing", "Fitness", "Multi-Sport Facility", "Other"),
-          syncOptionsFromGhl: true,
           required: true,
           width: "half",
         },
@@ -166,7 +161,6 @@ export const sportsFacilityApplication: FormDefinition = {
           label: "Please describe the non-renewal",
           required: true,
           showIf: isYes("non_renewed"),
-          ghl: { name: "please describe (Has Applicant ever been non-renewed?)" },
         },
         yesNo("claim_over_25k", "Has applicant ever had a claim in the last 5 years over $25,000?"),
       ],
@@ -184,14 +178,13 @@ export const sportsFacilityApplication: FormDefinition = {
           description: "Estimated annual participants by sport/activity, age group, and number of coaches. Maximum of three entries.",
           maxRows: 3,
           columns: [
-            { id: "name", label: "Sport / Activity", type: "text", ghlName: (r) => `Sport / Activity ${r}` },
+            { id: "name", label: "Sport / Activity", type: "text" },
             ...AGE_COLUMNS.map((c) => ({
               id: c.id,
               label: c.label,
               type: "number" as const,
-              ghlName: (r: number) => `Sport / Activity ${r} | ${c.label}`,
             })),
-            { id: "coaches", label: "Coaches", type: "number", ghlName: (r) => `Sport / Activity ${r} | Coaches` },
+            { id: "coaches", label: "Coaches", type: "number" },
           ],
         },
         {
@@ -201,18 +194,16 @@ export const sportsFacilityApplication: FormDefinition = {
           description: "Maximum of three entries.",
           maxRows: 3,
           columns: [
-            { id: "name", label: "Sport / Activity", type: "text", ghlName: (r) => `Sport / Activity ${r} (Camps)` },
+            { id: "name", label: "Sport / Activity", type: "text" },
             {
               id: "days",
               label: "# Camp/Clinic Days",
               type: "number",
-              ghlName: (r) => `Sport / Activity ${r} (Camps) | # Camp/Clinic Days`,
             },
             ...AGE_COLUMNS.map((c) => ({
               id: c.id,
               label: c.label,
               type: "number" as const,
-              ghlName: (r: number) => `Sport / Activity ${r} (Camps) | ${c.label}`,
             })),
           ],
         },
@@ -227,7 +218,6 @@ export const sportsFacilityApplication: FormDefinition = {
           id: "occurrence_limit",
           label: "Each Occurrence Limit",
           options: opts("$1,000,000", "$2,000,000", "$3,000,000", "$4,000,000", "$5,000,000"),
-          syncOptionsFromGhl: true,
           required: true,
           width: "half",
         },
@@ -236,19 +226,16 @@ export const sportsFacilityApplication: FormDefinition = {
         }),
         text("products_completed_ops_limit", "Products & Completed Operations Limit", {
           width: "half",
-          ghl: { name: "Products & Completed Operations Limit - V2" },
         }),
-        text("general_aggregate_limit", "General Aggregate Limit", { width: "half", ghl: { name: "General Aggregate Limit - V2" } }),
+        text("general_aggregate_limit", "General Aggregate Limit", { width: "half" }),
         text("damage_to_premises_limit", "Damage to Premises Rented Limit", {
           width: "half",
-          ghl: { name: "Damage to Premises Rented Limit - V2" },
         }),
         {
           type: "select",
           id: "medical_payment_max",
           label: "Medical Payment Max",
           options: opts("$1,000", "$5,000", "$10,000"),
-          syncOptionsFromGhl: true,
           required: true,
           width: "half",
         },
@@ -257,7 +244,6 @@ export const sportsFacilityApplication: FormDefinition = {
           id: "sexual_abuse_limit",
           label: "Sexual Abuse Liability Max Limit",
           options: opts("$100,000 / $300,000", "$250,000 / $500,000", "$500,000 / $1,000,000", "$1,000,000 / $1,000,000"),
-          syncOptionsFromGhl: true,
           required: true,
           width: "half",
         },
@@ -288,11 +274,9 @@ export const sportsFacilityApplication: FormDefinition = {
           id: "professional_occurrence_limit",
           label: "Professional Liability Occurrence Limit",
           options: opts("$1,000,000", "$2,000,000"),
-          syncOptionsFromGhl: true,
           required: true,
           width: "half",
           showIf: isYes("professional_liability"),
-          ghl: { name: "Occurrence Limit" },
         },
         yesNo("employee_benefits", "Add $1M Employee Benefits?", {
           tooltip:
@@ -347,7 +331,6 @@ export const sportsFacilityApplication: FormDefinition = {
           id: "deductible",
           label: "Your Desired Deductible",
           options: opts("$0", "$100", "$250", "$500", "$1,000"),
-          syncOptionsFromGhl: true,
           required: true,
           width: "half",
         },
@@ -440,7 +423,6 @@ export const sportsFacilityApplication: FormDefinition = {
           required: true,
           width: "half",
           showIf: isYes("has_climbing_walls"),
-          ghl: { name: "Traverse/Climbing Walls" },
         }),
         num("climbing_wall_height", "Height (ft)", { required: true, width: "half", showIf: isYes("has_climbing_walls") }),
         yesNo("climbing_certified_rigger", "Were the climbing walls installed by a certified rigger/engineer?", { showIf: isYes("has_climbing_walls") }),
@@ -463,16 +445,15 @@ export const sportsFacilityApplication: FormDefinition = {
           label: "Check all that your company offers",
           hint: "Leave blank if none apply.",
           options: opts("Zip Lines", "Ropes", "Aerial Silks", "Trapezes"),
-          ghl: { name: "Check All That Your Company Offers." },
         },
-        num("ziplines_count", "Number of Zip Lines", { required: true, width: "half", showIf: includes("aerial_offerings", "Zip Lines"), ghl: { name: "Zip Lines" } }),
-        num("ziplines_height", "Zip Lines Height (ft)", { required: true, width: "half", showIf: includes("aerial_offerings", "Zip Lines"), ghl: { name: "Height (ft): Ziplines" } }),
-        num("ropes_count", "Number of Ropes", { required: true, width: "half", showIf: includes("aerial_offerings", "Ropes"), ghl: { name: "Ropes" } }),
-        num("ropes_height", "Ropes Height (ft)", { required: true, width: "half", showIf: includes("aerial_offerings", "Ropes"), ghl: { name: "Height (ft): Ropes" } }),
-        num("silks_count", "Number of Aerial Silks", { required: true, width: "half", showIf: includes("aerial_offerings", "Aerial Silks"), ghl: { name: "Aerial Silks" } }),
-        num("silks_height", "Aerial Silks Height (ft)", { required: true, width: "half", showIf: includes("aerial_offerings", "Aerial Silks"), ghl: { name: "Height (ft): Aerial Silks" } }),
-        num("trapezes_count", "Number of Trapezes", { required: true, width: "half", showIf: includes("aerial_offerings", "Trapezes"), ghl: { name: "Trapezes" } }),
-        num("trapezes_height", "Trapezes Height (ft)", { required: true, width: "half", showIf: includes("aerial_offerings", "Trapezes"), ghl: { name: "Height (ft): Trapezes" } }),
+        num("ziplines_count", "Number of Zip Lines", { required: true, width: "half", showIf: includes("aerial_offerings", "Zip Lines") }),
+        num("ziplines_height", "Zip Lines Height (ft)", { required: true, width: "half", showIf: includes("aerial_offerings", "Zip Lines") }),
+        num("ropes_count", "Number of Ropes", { required: true, width: "half", showIf: includes("aerial_offerings", "Ropes") }),
+        num("ropes_height", "Ropes Height (ft)", { required: true, width: "half", showIf: includes("aerial_offerings", "Ropes") }),
+        num("silks_count", "Number of Aerial Silks", { required: true, width: "half", showIf: includes("aerial_offerings", "Aerial Silks") }),
+        num("silks_height", "Aerial Silks Height (ft)", { required: true, width: "half", showIf: includes("aerial_offerings", "Aerial Silks") }),
+        num("trapezes_count", "Number of Trapezes", { required: true, width: "half", showIf: includes("aerial_offerings", "Trapezes") }),
+        num("trapezes_height", "Trapezes Height (ft)", { required: true, width: "half", showIf: includes("aerial_offerings", "Trapezes") }),
         yesNo("aerial_certified_rigger", "Were the zipline/ropes/silks/trapezes installed by a certified rigger/engineer?", { showIf: hasAerial }),
         yesNo("aerial_inspected", "Are zipline/ropes/silks/trapezes professionally inspected at least annually?", { showIf: hasAerial }),
         {
@@ -513,11 +494,11 @@ export const sportsFacilityApplication: FormDefinition = {
           title: "Additional Insured (Landlord)",
           body: "Requires Primary Non-Contributory Endorsement",
         },
-        text("ai_landlord_name", "Name", { ghl: { name: "Name" } }),
-        text("ai_landlord_address", "Address", { ghl: { name: "Address" } }),
-        text("ai_landlord_city", "City", { width: "third", ghl: { name: "City" } }),
-        { type: "select", id: "ai_landlord_state", label: "State", options: US_STATES, width: "third", ghl: { name: "State" } },
-        text("ai_landlord_zip", "Zip Code", { width: "third", ghl: { name: "Zip Code" } }),
+        text("ai_landlord_name", "Name", { }),
+        text("ai_landlord_address", "Address", { }),
+        text("ai_landlord_city", "City", { width: "third" }),
+        { type: "select", id: "ai_landlord_state", label: "State", options: US_STATES, width: "third" },
+        text("ai_landlord_zip", "Zip Code", { width: "third" }),
         {
           type: "content",
           id: "ai_other_heading",
@@ -550,7 +531,7 @@ export const sportsFacilityApplication: FormDefinition = {
             "NOTICE: Any person who knowingly files a materially false statement may be guilty of insurance fraud and subject to criminal and civil penalties.",
           ],
         },
-        { type: "signature", id: "signature", label: "Applicant's Signature", required: true, ghl: { name: "Applicants Signature" } },
+        { type: "signature", id: "signature", label: "Applicant's Signature", required: true },
       ],
     },
   ],

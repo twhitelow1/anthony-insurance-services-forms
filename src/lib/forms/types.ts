@@ -4,7 +4,8 @@
  * Every form is plain data (sections -> fields). The same definition drives:
  *  - the client-side wizard UI (rendering, conditional visibility, tooltips)
  *  - server-side validation (the API never trusts the browser)
- *  - the mapping of answers onto GoHighLevel contact + custom fields
+ *  - the staff/client views of a stored application
+ *  - which answers are copied onto the GoHighLevel contact
  */
 
 export type FormValue = string | string[] | undefined;
@@ -23,20 +24,8 @@ export type GhlStandardField =
   | "postalCode"
   | "companyName";
 
-/**
- * How a field maps to GoHighLevel.
- *  - `standard`: write to a built-in contact field
- *  - `key`: exact custom field key, e.g. "contact.legal_business_name"
- *  - `name`: custom field display name to match (defaults to the field label)
- *  - `false`: don't send this field to GHL
- */
-export type GhlMapping =
-  | false
-  | {
-      standard?: GhlStandardField;
-      key?: string;
-      name?: string;
-    };
+/** Copy this answer onto a built-in GHL contact field. */
+export type GhlMapping = { standard: GhlStandardField };
 
 export interface Option {
   label: string;
@@ -76,11 +65,6 @@ export interface ChoiceField extends BaseField {
   options: Option[];
   /** Narrow the options based on other answers (e.g. only show existing locations). */
   filterOptions?: (options: Option[], values: FormValues) => Option[];
-  /**
-   * When true, the option list may be replaced with the picklist options defined
-   * on the matching GHL custom field, so the form always matches GHL exactly.
-   */
-  syncOptionsFromGhl?: boolean;
 }
 
 export interface SignatureField extends BaseField {
@@ -97,11 +81,7 @@ export interface ContentBlock {
   showIf?: Predicate;
 }
 
-/**
- * A repeatable table (e.g. "Sport / Activity" rows). Each cell is stored as a
- * flat value `${id}__${row}__${column.id}` so it maps onto the flat GHL custom
- * fields ("Sport / Activity 1 | 12 & Under", ...).
- */
+/** A repeatable table (e.g. "Sport / Activity" rows). Each cell is stored as `${id}__${row}__${column.id}`. */
 export interface TableField {
   type: "table";
   id: string;
@@ -112,8 +92,6 @@ export interface TableField {
     id: string;
     label: string;
     type: "text" | "number";
-    /** GHL custom field name for row `n` (1-based). */
-    ghlName: (row: number) => string;
   }[];
   showIf?: Predicate;
 }

@@ -1,0 +1,83 @@
+import "server-only";
+import type { Application } from "@/lib/db/schema";
+import type { FormDefinition } from "@/lib/forms/types";
+import { ghlConfig } from "@/lib/ghl/client";
+import { syncNewApplication, syncStatus } from "@/lib/ghl/sync";
+import { emailLayout, sendMail } from "@/lib/mail/graph";
+import { addEvent, setGhlContactId } from "./repo";
+import { STATUSES, type ApplicationStatus } from "./status";
+
+const appUrl = () => (process.env.APP_URL ?? "http://localhost:3000").replace(/\/$/, "");
+const describe = (err: unknown) => (err instanceof Error ? err.message : String(err));
+
+/** Everything that happens after a submission is safely stored. Never throws. */
+export async function onApplicationSubmitted(form: FormDefinition, app: Application) {
+  await Promise.allSettled([pushToGhl(form, app), sendConfirmation(form, app)]);
+}
+
+export async function pushToGhl(form: FormDefinition, app: Application) {
+  if (!ghlConfig()) return;
+  try {
+    const { contactId, missingFields } = await syncNewApplication(form, app);
+    await setGhlContactId(app.id, contactId);
+    await addEvent(app.id, "ghl_synced", "system", {
+      message: missingFields.length
+        ? `Contact synced. Create these GHL custom fields to show status & link: ${missingFields.join(", ")}`
+        : "Contact synced to GoHighLevel",
+      data: { contactId, missingFields },
+    });
+  } catch (err) {
+    console.error("[pipeline] GHL sync failed", app.reference, err);
+    await addEvent(app.id, "ghl_sync_failed", "system", { message: describe(err) }).catch(() => {});
+  }
+}
+
+async function sendConfirmation(form: FormDefinition, app: Application) {
+  try {
+    await sendMail({
+      to: app.applicantEmail,
+      subject: `We received your application (${app.reference})`,
+      html: emailLayout({
+        heading: "Thanks — your application is in",
+        paragraphs: [
+          `We've received your ${form.title} for ${app.businessName ?? app.applicantName}. Your reference number is ${app.reference}.`,
+          "You can check its status any time — sign in with this email address and we'll send you a one-time link. No password needed.",
+        ],
+        button: { label: "Check application status", url: `${appUrl()}/portal/login` },
+      }),
+    });
+    await addEvent(app.id, "email_sent", "system", { message: "Confirmation email sent to applicant" });
+  } catch (err) {
+    console.error("[pipeline] confirmation email failed", app.reference, err);
+    await addEvent(app.id, "email_failed", "system", { message: describe(err) }).catch(() => {});
+  }
+}
+
+/** After a staff status change: mirror to GHL and (optionally) email the client. */
+export async function onStatusChanged(app: Application, previous: ApplicationStatus, opts: { note?: string; notifyClient: boolean }) {
+  const { note, notifyClient } = opts;
+  const tasks: Promise<unknown>[] = [];
+  if (ghlConfig() && app.ghlContactId) {
+    tasks.push(
+      syncStatus(app, previous).catch(async (err) => {
+        console.error("[pipeline] GHL status sync failed", app.reference, err);
+        await addEvent(app.id, "ghl_sync_failed", "system", { message: `Status sync: ${describe(err)}` });
+      }),
+    );
+  }
+  if (notifyClient) tasks.push(
+    sendMail({
+      to: app.applicantEmail,
+      subject: `Application ${app.reference}: ${STATUSES[app.status].label}`,
+      html: emailLayout({
+        heading: `Status update: ${STATUSES[app.status].label}`,
+        paragraphs: [STATUSES[app.status].description, ...(note?.trim() ? [`Note from your agent: ${note.trim()}`] : [])],
+        button: { label: "View your application", url: `${appUrl()}/portal/login` },
+      }),
+    }).catch(async (err) => {
+      console.error("[pipeline] status email failed", app.reference, err);
+      await addEvent(app.id, "email_failed", "system", { message: `Status email: ${describe(err)}` });
+    }),
+  );
+  await Promise.allSettled(tasks);
+}

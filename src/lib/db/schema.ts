@@ -1,0 +1,82 @@
+import { sql } from "drizzle-orm";
+import { boolean, index, jsonb, pgTable, serial, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import type { FormValues } from "@/lib/forms/types";
+import type { ApplicationStatus } from "@/lib/applications/status";
+
+/**
+ * The application itself lives here — GHL only gets the contact plus a link back.
+ */
+export const applications = pgTable(
+  "applications",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    /** Human-friendly, non-guessable reference shown to clients and staff, e.g. "AIS-7K3Q-9XF2". */
+    reference: text("reference").notNull().unique(),
+    formSlug: text("form_slug").notNull(),
+    status: text("status").$type<ApplicationStatus>().notNull().default("received"),
+
+    applicantEmail: text("applicant_email").notNull(), // lower-cased; the client's login identity
+    applicantName: text("applicant_name").notNull(),
+    businessName: text("business_name"),
+    state: text("state"),
+
+    values: jsonb("values").$type<FormValues>().notNull(),
+    /** PNG data URL of the drawn signature. Kept apart from `values` so lists never load it. */
+    signature: text("signature"),
+    /** Flattened text of the whole application, used for full-text search. */
+    searchText: text("search_text").notNull(),
+
+    ghlContactId: text("ghl_contact_id"),
+    submittedIp: text("submitted_ip"),
+    submittedUserAgent: text("submitted_user_agent"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("applications_email_idx").on(t.applicantEmail),
+    index("applications_status_idx").on(t.status),
+    index("applications_created_idx").on(t.createdAt),
+    index("applications_search_idx").using("gin", sql`to_tsvector('english', ${t.searchText})`),
+  ],
+);
+
+export type EventType =
+  | "submitted"
+  | "status_changed"
+  | "staff_note"
+  | "ghl_synced"
+  | "ghl_sync_failed"
+  | "email_sent"
+  | "email_failed";
+
+/** Append-only history: status timeline for the client, audit log for staff. */
+export const applicationEvents = pgTable(
+  "application_events",
+  {
+    id: serial("id").primaryKey(),
+    applicationId: uuid("application_id")
+      .notNull()
+      .references(() => applications.id, { onDelete: "cascade" }),
+    type: text("type").$type<EventType>().notNull(),
+    /** "system", "client:<email>", or "staff:<email>" */
+    actor: text("actor").notNull(),
+    /** Shown to the client on their timeline when true. */
+    clientVisible: boolean("client_visible").notNull().default(false),
+    message: text("message"),
+    data: jsonb("data").$type<Record<string, unknown>>(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("application_events_app_idx").on(t.applicationId, t.createdAt)],
+);
+
+/** One-time sign-in links for clients. Only a SHA-256 hash of the token is stored. */
+export const loginTokens = pgTable("login_tokens", {
+  tokenHash: text("token_hash").primaryKey(),
+  email: text("email").notNull(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  usedAt: timestamp("used_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export type Application = typeof applications.$inferSelect;
+export type ApplicationEvent = typeof applicationEvents.$inferSelect;

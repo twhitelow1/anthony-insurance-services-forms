@@ -1,12 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { getForm } from "@/forms";
-import { type FieldErrors, applyOptionOverrides, isVisible, pruneValues, validateSection } from "@/lib/forms/validate";
+import { type FieldErrors, isVisible, pruneValues, validateSection } from "@/lib/forms/validate";
 import { type FormValues, type Option, isInputField } from "@/lib/forms/types";
 import { Content, FieldInput, TableInput } from "./Fields";
 
-type Status = { kind: "idle" } | { kind: "submitting" } | { kind: "done" } | { kind: "error"; message: string };
+type Status = { kind: "idle" } | { kind: "submitting" } | { kind: "done"; reference: string } | { kind: "error"; message: string };
 
 const draftKey = (slug: string) => `ais-form-draft:${slug}`;
 
@@ -17,8 +17,8 @@ function postToParent(msg: Record<string, unknown>) {
   }
 }
 
-export function FormWizard({ slug, optionOverrides }: { slug: string; optionOverrides: Record<string, Option[]> }) {
-  const form = useMemo(() => applyOptionOverrides(getForm(slug)!, optionOverrides), [slug, optionOverrides]);
+export function FormWizard({ slug }: { slug: string }) {
+  const form = getForm(slug)!;
   const [values, setValuesState] = useState<FormValues>({});
   const [step, setStep] = useState(0);
   const [errors, setErrors] = useState<FieldErrors>({});
@@ -128,7 +128,7 @@ export function FormWizard({ slug, optionOverrides }: { slug: string; optionOver
       });
       const data = await res.json().catch(() => ({}));
       if (res.ok) {
-        setStatus({ kind: "done" });
+        setStatus({ kind: "done", reference: String(data.reference ?? "") });
         try {
           localStorage.removeItem(draftKey(slug));
         } catch {}
@@ -152,7 +152,7 @@ export function FormWizard({ slug, optionOverrides }: { slug: string; optionOver
     }
   };
 
-  const progress = useMemo(() => Math.round(((step + 1) / form.sections.length) * 100), [step, form.sections.length]);
+  const progress = Math.round(((step + 1) / form.sections.length) * 100);
 
   if (status.kind === "done") {
     return (
@@ -165,6 +165,18 @@ export function FormWizard({ slug, optionOverrides }: { slug: string; optionOver
         </div>
         <h2 className="mb-2 text-2xl font-semibold">Application submitted</h2>
         <p className="mx-auto max-w-md text-[var(--muted)]">{form.successMessage}</p>
+        {status.reference && (
+          <p className="mx-auto mt-5 inline-block rounded-lg bg-[var(--accent-soft)] px-4 py-2">
+            Reference number: <span className="font-mono font-semibold">{status.reference}</span>
+          </p>
+        )}
+        <p className="mt-5 text-sm text-[var(--muted)]">
+          We&apos;ve emailed you a confirmation. You can{" "}
+          <a className="btn-link" href="/portal/login" target="_top">
+            check your application status
+          </a>{" "}
+          any time.
+        </p>
       </div>
     );
   }

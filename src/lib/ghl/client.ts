@@ -2,7 +2,8 @@ import "server-only";
 
 /**
  * Minimal GoHighLevel (LeadConnector) API v2 client.
- * Auth: a Private Integration token scoped to the sub-account (location).
+ * Auth: a sub-account (location) Private Integration token — contact endpoints are
+ * location-scoped.
  * Docs: https://highlevel.stoplight.io/docs/integrations
  */
 
@@ -105,17 +106,14 @@ export async function addContactNote(contactId: string, body: string) {
   });
 }
 
-/**
- * Upload a file (e.g. the signature PNG) into a FILE_UPLOAD / SIGNATURE custom field.
- * GHL expects the multipart field name to be `<customFieldId>_<uuid>`.
- */
-export async function uploadCustomFieldFile(contactId: string, fieldId: string, file: Blob, filename: string) {
-  const { locationId } = ghlConfig()!;
-  const form = new FormData();
-  form.append(`${fieldId}_${crypto.randomUUID()}`, file, filename);
-  return ghlFetch(`/forms/upload-custom-files?contactId=${contactId}&locationId=${locationId}`, {
-    method: "POST",
-    body: form,
-    cache: "no-store",
-  });
+export async function updateContact(contactId: string, input: Omit<UpsertContactInput, "tags" | "source">) {
+  return ghlFetch(`/contacts/${contactId}`, { method: "PUT", body: JSON.stringify(input), cache: "no-store" });
+}
+
+export async function addTags(contactId: string, tags: string[]) {
+  return ghlFetch(`/contacts/${contactId}/tags`, { method: "POST", body: JSON.stringify({ tags }), cache: "no-store" });
+}
+
+export async function removeTags(contactId: string, tags: string[]) {
+  return ghlFetch(`/contacts/${contactId}/tags`, { method: "DELETE", body: JSON.stringify({ tags }), cache: "no-store" });
 }
