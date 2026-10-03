@@ -7,8 +7,9 @@ import "server-only";
  * agency's existing transport rules apply — including the "[tag] in subject →
  * encrypt" rule. Pass `encrypt: true` to add that tag.
  *
- * Requires the Entra app to have the Mail.Send *application* permission, which
- * should be limited to the sending mailbox with Exchange "RBAC for Applications".
+ * Authorization comes from Exchange Online "RBAC for Applications": the app is
+ * assigned the "Application Mail.Send" role scoped to MAIL_SENDER only. Don't
+ * grant Mail.Send in Entra — that would let it send as anyone in the tenant.
  */
 const LOGIN_BASE = () => (process.env.ENTRA_LOGIN_BASE ?? "https://login.microsoftonline.com").replace(/\/$/, "");
 const GRAPH_BASE = () => (process.env.GRAPH_BASE_URL ?? "https://graph.microsoft.com").replace(/\/$/, "");

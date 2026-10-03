@@ -59,9 +59,11 @@ Received → In review → Information needed → Submitted to carrier → Quote
 2. **Microsoft Entra app registration.** An Entra admin at Anthony Insurance creates it:
    - **Supported accounts:** single tenant (this organization only).
    - **Redirect URI (Web):** `https://<APP_URL>/api/auth/microsoft/callback`
-   - **API permissions:** Microsoft Graph delegated `openid`, `profile`, `email`, and application `Mail.Send`. Grant admin consent.
-   - **Restrict `Mail.Send` to one mailbox** with Exchange Online **RBAC for Applications**. Otherwise the app could send as anyone in the organization.
+   - **API permissions:** Microsoft Graph delegated `openid`, `profile`, `email`, with admin consent. Do **not** add the `Mail.Send` application permission.
+   - **Email sending:** Exchange Online **RBAC for Applications** grants the `Application Mail.Send` role, scoped to the sending mailbox only.
    - **Copy** the tenant ID, client ID, and a client secret into Vercel.
+
+   The step-by-step guide, including the PowerShell commands, is in the shared setup doc.
 3. **GHL:** create a sub-account Private Integration token and the three custom fields above.
 4. **Environment variables:** see `.env.example`.
 
