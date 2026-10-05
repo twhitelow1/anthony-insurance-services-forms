@@ -203,9 +203,12 @@ export async function addStaffNote(id: string, actor: string, message: string, c
   await addEvent(id, "staff_note", actor, { clientVisible, message: message.trim() });
 }
 
-export async function setGhlContactId(id: string, contactId: string) {
+export async function setGhlIds(id: string, ids: { contactId: string; opportunityId?: string }) {
   const db = await getDb();
-  await db.update(applications).set({ ghlContactId: contactId }).where(eq(applications.id, id));
+  await db
+    .update(applications)
+    .set({ ghlContactId: ids.contactId, ...(ids.opportunityId ? { ghlOpportunityId: ids.opportunityId } : {}) })
+    .where(eq(applications.id, id));
 }
 
 export async function saveAiReview(id: string, review: AiReview) {

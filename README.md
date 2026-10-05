@@ -6,7 +6,7 @@ Online insurance applications plus a portal around them. Clients apply and track
 | --- | --- | --- |
 | Applicant | `/forms/sports-facility-application` | none |
 | Applicant | `/portal` | one-time email link (no password) |
-| Staff | `/admin` | Microsoft 365, `@anthonyinsuranceservices.com` only |
+| Staff | `/admin` | one-time email link, `@anthonyinsuranceservices.com` only |
 
 ## How it fits together
 
@@ -15,14 +15,16 @@ Applicant ──► form ──► POST /api/forms/<slug>/submit
                          1. validate on the server
                          2. save to Postgres  ◄── system of record (nothing lost if GHL is down)
                          3. after response:
-                            ├─ GHL: upsert contact + tags + 3 custom fields + short note with link
-                            └─ Graph: confirmation email from the agency mailbox
+                            ├─ create the application PDF, store it privately
+                            ├─ GHL: upsert contact + tags + 4 custom fields (incl. PDF link) + opportunity
+                            ├─ Resend: confirmation email to the applicant
+                            └─ Claude: AI pre-review for staff (optional)
 
-Staff  ──► /admin (Microsoft sign-in) ──► search · view · change status · notes
-                         status change ──► GHL custom field + tag swap (workflows react)
-                                       └─► optional email to the client
+Staff  ──► /admin (email sign-in link) ──► search · view · status · notes · PDF · Ask AI
+                         status change ──► GHL field + tag + opportunity stage; optional client email
+                         "Prepare carrier email" ──► Outlook draft (.eml) with PDF + [encrypt] subject
 
-Client ──► /portal ──► email → one-time link → their applications, status, agent notes
+Client ──► /portal ──► email → one-time link → their applications, status, notes, PDF download
 ```
 
 ### What GoHighLevel receives
@@ -32,6 +34,8 @@ Client ──► /portal ──► email → one-time link → their application
   - `Application Reference`: e.g. `AIS-7K3Q-9XF2`
   - `Application Status`: e.g. "Information needed"
   - `Application Link`: opens that application in `/admin`. Staff click it from the contact.
+  - `Application PDF`: opens the stored PDF. Staff must be signed in; the PDF is never public.
+- **An opportunity** in `GHL_PIPELINE_ID`, at stage `GHL_PIPELINE_STAGE_ID`. If `GHL_STAGE_IDS` maps statuses to stages, status changes move it. Bound marks it won, declined marks it lost, withdrawn marks it abandoned.
 - **One note** with the reference and the link.
 
 None of the application answers go to GHL.
@@ -47,32 +51,30 @@ Both features are optional. They turn on when `ANTHROPIC_API_KEY` is set.
 - **What gets sent to Anthropic:** the answers are sent to the Anthropic API; signatures and GHL data are not. Applicant text is treated as data, never as instructions.
 
 ## Security
-- **Staff sign-in:** Microsoft 365 sign-in (OpenID Connect with PKCE). It checks the tenant ID and the email domain, so other Microsoft accounts are rejected.
-- **Client sign-in:** one-time links.
-  - Only a SHA-256 hash of each link token is stored.
+- **Sign-in:** one-time links for staff and clients.
+  - Only a SHA-256 hash of each token is stored.
   - Links expire after 20 minutes, work once, and are limited to 3 per 15 minutes.
-  - The link opens a "Continue" page, so Safe Links scanners can't use it up.
-  - The response is the same whether or not an email is on file.
+  - The link opens a "Continue" page, so email link scanners can't use it up.
+  - The page shows the same message whether or not the address is known.
+- **Staff vs client links:** staff links are only sent to `STAFF_EMAIL_DOMAINS` addresses (or `STAFF_EMAILS`), and staff status is re-checked when the link is used. A client link can never open `/admin`.
 - **Access checks:**
   - Every page and server action checks the session itself.
-  - Clients can only open applications whose email matches theirs. Any other ID returns 404.
+  - Clients only see applications and PDFs whose email matches theirs. Any other ID returns 404.
+- **PDFs:** stored in Postgres and served only to staff or the applicant, `no-store`, sandboxed.
 - **Sessions:** HTTP-only, SameSite cookies, signed with `SESSION_SECRET`. Staff sessions last 10 hours, clients 24 hours.
-- **Encrypted email:** mail goes out through Exchange Online, so the agency's subject-tag encryption rule applies. Pass `encrypt: true` to `sendMail`, which adds `MAIL_ENCRYPT_TAG`.
-- **Audit trail:** every submission, status change, note, sync, and email is recorded on the application's activity log.
+- **Encrypted carrier email:** staff send the prepared draft from Outlook, so the agency's subject-tag encryption rule applies.
+- **Audit trail:** every submission, status change, note, sync, email, PDF and carrier draft is recorded on the application's activity log.
 
 ## Setup
+The full step-by-step guide is the shared setup doc. In short:
+1. **Database:** Vercel → Storage → Neon Postgres. Migrations run on every deploy.
+2. **Resend:** create an account, add and verify the sending domain (DNS records), create an API key.
+3. **GHL:**
+   - Create the 4 custom fields and a sub-account Private Integration token with contacts, custom fields and opportunities scopes.
+   - Optional: copy the pipeline ID and stage IDs.
+4. **Environment variables:** see `.env.example`, then redeploy.
 
-1. **Database:** Vercel → Storage → add **Neon Postgres** to the project. `DATABASE_URL` is set automatically. Migrations run on every deploy (`npm run build` runs `scripts/migrate.mjs` first).
-2. **Microsoft Entra app registration.** An Entra admin at Anthony Insurance creates it:
-   - **Supported accounts:** single tenant (this organization only).
-   - **Redirect URI (Web):** `https://<APP_URL>/api/auth/microsoft/callback`
-   - **API permissions:** Microsoft Graph delegated `openid`, `profile`, `email`, with admin consent. Do **not** add the `Mail.Send` application permission.
-   - **Email sending:** Exchange Online **RBAC for Applications** grants the `Application Mail.Send` role, scoped to the sending mailbox only.
-   - **Copy** the tenant ID, client ID, and a client secret into Vercel.
-
-   The step-by-step guide, including the PowerShell commands, is in the shared setup doc.
-3. **GHL:** create a sub-account Private Integration token and the three custom fields above.
-4. **Environment variables:** see `.env.example`.
+Microsoft 365 sign-in and Graph mail are still in the code but switched off. Setting the `AZURE_*` variables turns them back on.
 
 ## Development
 
@@ -98,5 +100,5 @@ npm run db:generate             # after changing src/lib/db/schema.ts
 ```
 
 ## Roadmap
-- **Phase 2:** fill the carrier's PDF application from the answers and email it to the carrier through Graph, with the encryption tag.
+- **Next:** fill the carrier's own fillable PDF (5 pages, 295 fields) from the answers once the updated version arrives; it replaces the summary PDF as the carrier attachment.
 - ~~**Phase 3:**~~ Done. Claude pre-review and Ask AI are built (see above).

@@ -23,6 +23,11 @@ const EVENT_LABEL: Record<string, string> = {
   ghl_sync_failed: "GoHighLevel sync failed",
   email_sent: "Email",
   email_failed: "Email failed",
+  ai_reviewed: "AI review",
+  ai_review_failed: "AI review failed",
+  carrier_email_prepared: "Carrier email",
+  pdf_created: "PDF",
+  pdf_failed: "PDF failed",
 };
 
 export function Timeline({ events, audience }: { events: ApplicationEvent[]; audience: "staff" | "client" }) {

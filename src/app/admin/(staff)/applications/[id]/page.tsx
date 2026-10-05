@@ -7,7 +7,8 @@ import { getApplication, getEvents } from "@/lib/applications/repo";
 import { STATUSES, STATUS_KEYS } from "@/lib/applications/status";
 import { answerSections } from "@/lib/forms/flatten";
 import { AiReviewCard } from "@/components/AiReviewCard";
-import { addNoteAction, resyncGhlAction, runAiReviewAction, updateStatusAction } from "../../../actions";
+import { listDocuments } from "@/lib/applications/documents";
+import { addNoteAction, regeneratePdfAction, resyncGhlAction, runAiReviewAction, updateStatusAction } from "../../../actions";
 
 export default async function AdminApplication({ params }: PageProps<"/admin/applications/[id]">) {
   const { id } = await params;
@@ -17,6 +18,7 @@ export default async function AdminApplication({ params }: PageProps<"/admin/app
   const form = getForm(app.formSlug);
   const events = await getEvents(app.id);
   const aiEnabled = !!process.env.ANTHROPIC_API_KEY;
+  const docs = await listDocuments(app.id);
   const ghlFailed = !app.ghlContactId && events.some((e) => e.type === "ghl_sync_failed");
 
   return (
@@ -98,10 +100,49 @@ export default async function AdminApplication({ params }: PageProps<"/admin/app
             <button className="btn-secondary w-full">Add note</button>
           </form>
 
+          <div className="card space-y-3 !p-5">
+            <h2 className="font-semibold">Application PDF</h2>
+            {docs.length ? (
+              <ul className="space-y-1 text-sm">
+                {docs.map((d, i) => (
+                  <li key={d.id}>
+                    <a className="btn-link" href={`/documents/${d.id}`} target="_blank" rel="noopener">
+                      {i === 0 ? "Open latest PDF" : `Earlier version`}
+                    </a>{" "}
+                    <span className="text-xs text-[var(--muted)]">
+                      {fmtDate(d.createdAt)} · {Math.round(d.size / 1024)} KB
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-sm text-[var(--muted)]">No PDF yet.</p>
+            )}
+            <form action={regeneratePdfAction}>
+              <input type="hidden" name="id" value={app.id} />
+              <button className="btn-secondary w-full">{docs.length ? "Create PDF again" : "Create PDF"}</button>
+            </form>
+          </div>
+
+          <div className="card space-y-3 !p-5">
+            <h2 className="font-semibold">Send to carrier</h2>
+            <p className="text-sm text-[var(--muted)]">
+              Downloads an Outlook draft with the application PDF attached and the encryption tag in the subject. Open it, check it, and press Send.
+            </p>
+            <a className="btn-primary w-full" href={`/api/admin/applications/${app.id}/carrier`}>Prepare carrier email</a>
+          </div>
+
           <div className="card !p-5">
             <h2 className="mb-2 font-semibold">GoHighLevel</h2>
             {app.ghlContactId ? (
-              <p className="text-sm">Linked to contact <span className="font-mono">{app.ghlContactId}</span></p>
+              <p className="text-sm">
+                Linked to contact <span className="font-mono">{app.ghlContactId}</span>
+                {app.ghlOpportunityId && (
+                  <>
+                    {" "}and opportunity <span className="font-mono">{app.ghlOpportunityId}</span>
+                  </>
+                )}
+              </p>
             ) : (
               <p className="text-sm text-[var(--muted)]">{ghlFailed ? "Sync failed — see activity below." : "Not linked yet."}</p>
             )}

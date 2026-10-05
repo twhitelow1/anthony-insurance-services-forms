@@ -5,7 +5,7 @@ import { after } from "next/server";
 import { getForm } from "@/forms";
 import { requireStaff } from "@/lib/auth/session";
 import { addStaffNote, getApplication, setStatus } from "@/lib/applications/repo";
-import { onStatusChanged, pushToGhl, runAiReview } from "@/lib/applications/pipeline";
+import { makePdf, onStatusChanged, pushToGhl, runAiReview } from "@/lib/applications/pipeline";
 import { aiClient } from "@/lib/ai/client";
 import { type AssistantReply, type ChatTurn, askAssistant } from "@/lib/ai/assistant";
 import { isStatus } from "@/lib/applications/status";
@@ -68,4 +68,13 @@ export async function askAssistantAction(history: ChatTurn[]): Promise<Assistant
     console.error("[assistant]", err);
     return { error: "The AI assistant couldn't answer right now. Please try again." };
   }
+}
+
+export async function regeneratePdfAction(formData: FormData) {
+  await requireStaff();
+  const app = await getApplication(String(formData.get("id") ?? ""));
+  const form = app && getForm(app.formSlug);
+  if (!app || !form) throw new Error("Application not found");
+  await makePdf(form, app);
+  revalidatePath(`/admin/applications/${app.id}`);
 }
