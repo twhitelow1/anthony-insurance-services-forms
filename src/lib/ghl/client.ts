@@ -143,3 +143,17 @@ export async function updateOpportunity(
 ) {
   return ghlFetch(`/opportunities/${id}`, { method: "PUT", body: JSON.stringify(input), cache: "no-store" });
 }
+
+export interface GhlPipeline {
+  id: string;
+  name: string;
+  stages: { id: string; name: string }[];
+}
+
+export async function listPipelines(): Promise<GhlPipeline[]> {
+  const { locationId } = ghlConfig()!;
+  const data = await ghlFetch<{ pipelines: GhlPipeline[] }>(`/opportunities/pipelines?locationId=${locationId}`, {
+    cache: "no-store",
+  });
+  return data.pipelines ?? [];
+}
