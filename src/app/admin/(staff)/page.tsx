@@ -61,7 +61,16 @@ export default async function AdminHome({ searchParams }: PageProps<"/admin">) {
                   </div>
                 </td>
                 <td className="text-sm">{forms[a.formSlug]?.title ?? a.formSlug}</td>
-                <td><StatusBadge status={a.status} /></td>
+                <td>
+                  <div className="flex flex-wrap gap-1">
+                    <StatusBadge status={a.status} />
+                    {a.aiHighFlags ? (
+                      <span className="badge badge-danger" title="High-severity flags from the AI pre-review">
+                        {a.aiHighFlags} high flag{a.aiHighFlags > 1 ? "s" : ""}
+                      </span>
+                    ) : null}
+                  </div>
+                </td>
                 <td className="whitespace-nowrap text-sm">{fmtDate(a.createdAt)}</td>
               </tr>
             ))}

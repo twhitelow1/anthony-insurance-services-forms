@@ -6,7 +6,8 @@ import { requireStaff } from "@/lib/auth/session";
 import { getApplication, getEvents } from "@/lib/applications/repo";
 import { STATUSES, STATUS_KEYS } from "@/lib/applications/status";
 import { answerSections } from "@/lib/forms/flatten";
-import { addNoteAction, resyncGhlAction, updateStatusAction } from "../../../actions";
+import { AiReviewCard } from "@/components/AiReviewCard";
+import { addNoteAction, resyncGhlAction, runAiReviewAction, updateStatusAction } from "../../../actions";
 
 export default async function AdminApplication({ params }: PageProps<"/admin/applications/[id]">) {
   const { id } = await params;
@@ -15,6 +16,7 @@ export default async function AdminApplication({ params }: PageProps<"/admin/app
   if (!app) notFound();
   const form = getForm(app.formSlug);
   const events = await getEvents(app.id);
+  const aiEnabled = !!process.env.ANTHROPIC_API_KEY;
   const ghlFailed = !app.ghlContactId && events.some((e) => e.type === "ghl_sync_failed");
 
   return (
@@ -33,7 +35,26 @@ export default async function AdminApplication({ params }: PageProps<"/admin/app
       </div>
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
-        <div className="card order-2 lg:order-1">
+        <div className="order-2 space-y-6 lg:order-1">
+        <section className="card" aria-labelledby="ai-review-heading">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <h2 id="ai-review-heading" className="font-semibold">AI pre-review</h2>
+            {aiEnabled && (
+              <form action={runAiReviewAction}>
+                <input type="hidden" name="id" value={app.id} />
+                <button className="btn-link">{app.aiReview ? "Re-run review" : "Run review"}</button>
+              </form>
+            )}
+          </div>
+          {app.aiReview ? (
+            <AiReviewCard review={app.aiReview} />
+          ) : (
+            <p className="text-sm text-[var(--muted)]">
+              {aiEnabled ? "No review yet — it runs automatically on new submissions, or run it now." : "AI isn't set up yet (ANTHROPIC_API_KEY)."}
+            </p>
+          )}
+        </section>
+        <div className="card">
           {form ? <Answers sections={answerSections(form, app.values)} /> : <pre className="text-xs">{JSON.stringify(app.values, null, 2)}</pre>}
           {app.signature && (
             <section className="mt-6">
@@ -45,6 +66,7 @@ export default async function AdminApplication({ params }: PageProps<"/admin/app
               </p>
             </section>
           )}
+        </div>
         </div>
 
         <aside className="order-1 space-y-6 lg:order-2">

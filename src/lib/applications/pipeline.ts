@@ -4,7 +4,9 @@ import type { FormDefinition } from "@/lib/forms/types";
 import { ghlConfig } from "@/lib/ghl/client";
 import { syncNewApplication, syncStatus } from "@/lib/ghl/sync";
 import { emailLayout, sendMail } from "@/lib/mail/graph";
-import { addEvent, setGhlContactId } from "./repo";
+import { aiClient } from "@/lib/ai/client";
+import { reviewApplication } from "@/lib/ai/review";
+import { addEvent, saveAiReview, setGhlContactId } from "./repo";
 import { STATUSES, type ApplicationStatus } from "./status";
 
 const appUrl = () => (process.env.APP_URL ?? "http://localhost:3000").replace(/\/$/, "");
@@ -12,7 +14,24 @@ const describe = (err: unknown) => (err instanceof Error ? err.message : String(
 
 /** Everything that happens after a submission is safely stored. Never throws. */
 export async function onApplicationSubmitted(form: FormDefinition, app: Application) {
-  await Promise.allSettled([pushToGhl(form, app), sendConfirmation(form, app)]);
+  await Promise.allSettled([pushToGhl(form, app), sendConfirmation(form, app), runAiReview(form, app)]);
+}
+
+/** Claude pre-review for the agent. Skipped when no ANTHROPIC_API_KEY is set. */
+export async function runAiReview(form: FormDefinition, app: Application) {
+  const client = aiClient();
+  if (!client) return;
+  try {
+    const review = await reviewApplication(client, form, app.values, { reference: app.reference });
+    await saveAiReview(app.id, review);
+    const high = review.flags.filter((f) => f.severity === "high").length;
+    await addEvent(app.id, "ai_reviewed", "system", {
+      message: `AI review: ${review.flags.length} flag(s)${high ? `, ${high} high` : ""}`,
+    });
+  } catch (err) {
+    console.error("[pipeline] AI review failed", app.reference, err);
+    await addEvent(app.id, "ai_review_failed", "system", { message: describe(err) }).catch(() => {});
+  }
 }
 
 export async function pushToGhl(form: FormDefinition, app: Application) {

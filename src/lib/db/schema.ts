@@ -1,7 +1,8 @@
 import { sql } from "drizzle-orm";
-import { boolean, index, jsonb, pgTable, serial, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { boolean, index, integer, jsonb, pgTable, serial, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import type { FormValues } from "@/lib/forms/types";
 import type { ApplicationStatus } from "@/lib/applications/status";
+import type { AiReview } from "@/lib/ai/review";
 
 /**
  * The application itself lives here — GHL only gets the contact plus a link back.
@@ -26,6 +27,11 @@ export const applications = pgTable(
     /** Flattened text of the whole application, used for full-text search. */
     searchText: text("search_text").notNull(),
 
+    /** Claude's pre-review for the agent (summary, flags, follow-ups). Staff-only. */
+    aiReview: jsonb("ai_review").$type<AiReview>(),
+    /** Count of high-severity flags, so list views can show it without loading the review. */
+    aiHighFlags: integer("ai_high_flags"),
+
     ghlContactId: text("ghl_contact_id"),
     submittedIp: text("submitted_ip"),
     submittedUserAgent: text("submitted_user_agent"),
@@ -47,7 +53,9 @@ export type EventType =
   | "ghl_synced"
   | "ghl_sync_failed"
   | "email_sent"
-  | "email_failed";
+  | "email_failed"
+  | "ai_reviewed"
+  | "ai_review_failed";
 
 /** Append-only history: status timeline for the client, audit log for staff. */
 export const applicationEvents = pgTable(

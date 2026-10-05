@@ -39,6 +39,13 @@ None of the application answers go to GHL.
 ### Statuses
 Received → In review → Information needed → Submitted to carrier → Quote ready → Coverage bound / Declined / Withdrawn. The wording clients see is in `src/lib/applications/status.ts`.
 
+## AI features (Claude)
+Both features are optional. They turn on when `ANTHROPIC_API_KEY` is set.
+- **AI pre-review:** runs on every new submission (and on demand from the application page). It gives a 2–4 sentence summary, flags graded high / medium / low that each cite the answer they come from, missing or inconsistent answers, and follow-up questions for the applicant. High flags show as a badge in the application list. Staff only; clients never see it.
+- **Ask AI** (`/admin/assistant`): staff ask in plain English ("gymnastics gyms in Texas with trampolines"). Claude searches through two **read-only** tools (search and open by reference) and answers with linked reference numbers.
+- **Model:** `claude-opus-5-5` by default (`ANTHROPIC_MODEL` to change). Requests use `fallbacks: "default"`, so a declined request is retried on Anthropic's recommended fallback model.
+- **What gets sent to Anthropic:** the answers are sent to the Anthropic API; signatures and GHL data are not. Applicant text is treated as data, never as instructions.
+
 ## Security
 - **Staff sign-in:** Microsoft 365 sign-in (OpenID Connect with PKCE). It checks the tenant ID and the email domain, so other Microsoft accounts are rejected.
 - **Client sign-in:** one-time links.
@@ -92,4 +99,4 @@ npm run db:generate             # after changing src/lib/db/schema.ts
 
 ## Roadmap
 - **Phase 2:** fill the carrier's PDF application from the answers and email it to the carrier through Graph, with the encryption tag.
-- **Phase 3:** Claude for a summary and underwriting flags on each submission, plus conversational search for staff.
+- ~~**Phase 3:**~~ Done. Claude pre-review and Ask AI are built (see above).

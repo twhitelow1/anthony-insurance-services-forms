@@ -3,6 +3,7 @@ import { randomInt } from "node:crypto";
 import { and, desc, eq, ilike, or, sql, type SQL } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
 import type { Application, EventType } from "@/lib/db/schema";
+import type { AiReview } from "@/lib/ai/review";
 import { searchText } from "@/lib/forms/flatten";
 import type { FormDefinition, FormValues } from "@/lib/forms/types";
 import type { ApplicationStatus } from "./status";
@@ -109,6 +110,7 @@ const listColumns = {
   state: applications.state,
   createdAt: applications.createdAt,
   updatedAt: applications.updatedAt,
+  aiHighFlags: applications.aiHighFlags,
 };
 export type ApplicationListItem = {
   [K in keyof typeof listColumns]: Application[K];
@@ -204,4 +206,22 @@ export async function addStaffNote(id: string, actor: string, message: string, c
 export async function setGhlContactId(id: string, contactId: string) {
   const db = await getDb();
   await db.update(applications).set({ ghlContactId: contactId }).where(eq(applications.id, id));
+}
+
+export async function saveAiReview(id: string, review: AiReview) {
+  const db = await getDb();
+  await db
+    .update(applications)
+    .set({ aiReview: review, aiHighFlags: review.flags.filter((f) => f.severity === "high").length })
+    .where(eq(applications.id, id));
+}
+
+export async function getByReference(reference: string): Promise<Application | undefined> {
+  const db = await getDb();
+  const [app] = await db
+    .select()
+    .from(applications)
+    .where(eq(applications.reference, reference.trim().toUpperCase()))
+    .limit(1);
+  return app;
 }
