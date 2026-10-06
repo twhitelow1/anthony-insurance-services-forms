@@ -5,6 +5,8 @@ import type { FormValues } from "@/lib/forms/types";
 import { createApplication } from "@/lib/applications/repo";
 import { onApplicationSubmitted } from "@/lib/applications/pipeline";
 import { receiptPath } from "@/lib/applications/receipt";
+import { openAccess } from "@/lib/auth/session";
+import { describeDbError } from "@/lib/db/url";
 
 export const maxDuration = 60;
 
@@ -61,8 +63,10 @@ export async function POST(req: NextRequest, ctx: RouteContext<"/api/forms/[slug
     app = await createApplication(form, values, { ip, userAgent: req.headers.get("user-agent") ?? undefined });
   } catch (err) {
     console.error("[submit] could not save application", err);
+    // In testing mode, say why, so setup problems are visible (see /status).
+    const detail = openAccess() ? ` (Testing detail: ${describeDbError(err)}. Check /status.)` : "";
     return Response.json(
-      { error: "We couldn't submit your application right now. Please try again, or call our office." },
+      { error: `We couldn't submit your application right now. Please try again, or call our office.${detail}` },
       { status: 500 },
     );
   }
@@ -71,5 +75,10 @@ export async function POST(req: NextRequest, ctx: RouteContext<"/api/forms/[slug
   // on the application's timeline and can be retried from the admin page.
   after(() => onApplicationSubmitted(form, app));
 
-  return Response.json({ ok: true, reference: app.reference, pdfUrl: await receiptPath(app.id) });
+  // The application is saved; a missing SESSION_SECRET only costs the "view a copy" button.
+  const pdfUrl = await receiptPath(app.id).catch((err) => {
+    console.error("[submit] could not create the receipt link", err);
+    return undefined;
+  });
+  return Response.json({ ok: true, reference: app.reference, pdfUrl });
 }

@@ -1,8 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { sportsFacilityApplication as form } from "@/forms/sports-facility-application";
 import { pruneValues } from "@/lib/forms/validate";
 import type { FormValues } from "@/lib/forms/types";
-import { verify } from "@/lib/auth/session";
+import { getSession, verify } from "@/lib/auth/session";
 import { createApplicationPdf, createCarrierPdf, listDocuments, mainDocument } from "./documents";
 import { receiptPath, RECEIPT_AUDIENCE } from "./receipt";
 import {
@@ -76,5 +76,23 @@ describe("applications CRUD", () => {
     const token = path.replace("/receipt/", "");
     expect(await verify<{ aid: string }>(token, RECEIPT_AUDIENCE)).toMatchObject({ aid: "11111111-2222-3333-4444-555555555555" });
     expect(await verify(token, "ais:session")).toBeNull();
+  });
+});
+
+describe("OPEN_ACCESS testing switch", () => {
+  it("is off unless OPEN_ACCESS=1, and then everyone is staff", async () => {
+    vi.stubEnv("OPEN_ACCESS", "1");
+    try {
+      expect(await getSession()).toMatchObject({ role: "staff" });
+    } finally {
+      vi.unstubAllEnvs();
+    }
+    vi.stubEnv("OPEN_ACCESS", "true");
+    try {
+      // Only the exact value "1" opens it; anything else falls through to cookies (none in tests).
+      await expect(getSession()).rejects.toThrow();
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 });

@@ -1,8 +1,12 @@
 import Link from "next/link";
 import { forms } from "@/forms";
+import { openAccess } from "@/lib/auth/session";
+import { OpenAccessBanner } from "@/components/OpenAccessBanner";
 
 export default function Home() {
   return (
+    <>
+    <OpenAccessBanner />
     <main className="mx-auto w-full max-w-3xl px-4 py-14">
       <p className="mb-3 text-sm font-semibold uppercase tracking-[0.18em] text-[var(--accent-strong)]">
         Anthony Insurance Services
@@ -18,6 +22,12 @@ export default function Home() {
           </li>
         ))}
       </ul>
+      {openAccess() && (
+        <p className="mt-8 text-sm">
+          Testing: <Link className="btn-link" href="/admin">open the admin</Link> to see every submitted application and its PDF.
+        </p>
+      )}
     </main>
+    </>
   );
 }
