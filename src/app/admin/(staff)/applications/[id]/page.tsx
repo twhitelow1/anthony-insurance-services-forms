@@ -29,6 +29,7 @@ export default async function AdminApplication({ params, searchParams }: PagePro
   const aiEnabled = !!process.env.ANTHROPIC_API_KEY;
   const docs = await listDocuments(app.id);
   const ghlFailed = !app.ghlContactId && events.some((e) => e.type === "ghl_sync_failed");
+  const pdfError = !docs.some((d) => d.kind === "carrier_form") ? events.find((e) => e.type === "pdf_failed") : undefined;
 
   return (
     <div>
@@ -120,6 +121,11 @@ export default async function AdminApplication({ params, searchParams }: PagePro
 
           <div className="card space-y-3 !p-5">
             <h2 className="font-semibold">Application PDFs</h2>
+            {pdfError && (
+              <p className="rounded-lg bg-[var(--danger-bg)] p-3 text-sm text-[var(--danger)]" role="alert">
+                The PDF couldn&apos;t be created: {pdfError.message}
+              </p>
+            )}
             <p className="text-sm">
               <a className="btn-link font-medium" href={`/applications/${app.id}/pdf`} target="_blank" rel="noopener">
                 Open current PDF
