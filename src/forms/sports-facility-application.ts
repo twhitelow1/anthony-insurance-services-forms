@@ -16,7 +16,11 @@ import type { Field, FormDefinition, FormValues } from "@/lib/forms/types";
 
 /**
  * Sports & Recreation Facility — General Liability / Accident & Health application.
- * Transcribed from the original GHL form 2rfgPVPlD4jV4cvjczTY.
+ * Transcribed from the original GHL form 2rfgPVPlD4jV4cvjczTY, which is the
+ * carrier's SFIC-STL-APP-001 (04/2026) application. Gymnastics (DSI form
+ * XMURWOwptJyzSHt4WA3d, "PH app" PDF) and boxing gyms (MASI, same widget with
+ * ?insurance_type=Boxing) apply on the same form, so they share these questions
+ * and the carrier PDF mapping, under their own slug, title and tags.
  *
  * Answers are stored in the app's database. Only fields with `ghl.standard`
  * are copied to the GoHighLevel contact.
@@ -53,12 +57,11 @@ const AGE_COLUMNS = [
 
 const hasAerial = (v: FormValues) => Array.isArray(v.aerial_offerings) && v.aerial_offerings.length > 0;
 
-export const sportsFacilityApplication: FormDefinition = {
-  slug: "sports-facility-application",
-  title: "Sports & Recreation Facility Application",
-  subtitle: "General Liability and Accident & Health coverage",
-  tags: ["form:sports-facility-application", "commercial-application"],
-  source: "Anthony Insurance Forms — Sports Facility Application",
+type Variant = Pick<FormDefinition, "slug" | "title" | "subtitle" | "source"> & { tag: string };
+
+const sportsFacilityForm = ({ tag, ...meta }: Variant): FormDefinition => ({
+  ...meta,
+  tags: [`form:${meta.slug}`, tag],
   successMessage:
     "Thank you! Your application has been submitted. An Anthony Insurance Services agent will review it and reach out shortly.",
   sections: [
@@ -543,4 +546,28 @@ export const sportsFacilityApplication: FormDefinition = {
       ],
     },
   ],
-};
+});
+
+export const sportsFacilityApplication = sportsFacilityForm({
+  slug: "sports-facility-application",
+  title: "Sports & Recreation Facility Application",
+  subtitle: "General Liability and Accident & Health coverage",
+  tag: "commercial-application",
+  source: "Anthony Insurance Forms — Sports Facility Application",
+});
+
+export const gymnasticsApplication = sportsFacilityForm({
+  slug: "gymnastics-application",
+  title: "Gymnastics Facility Application",
+  subtitle: "General Liability and Accident & Health coverage for gymnastics teams, leagues and facilities",
+  tag: "sports",
+  source: "Anthony Insurance Forms — Gymnastics Facility Application",
+});
+
+export const boxingGymApplication = sportsFacilityForm({
+  slug: "boxing-gym-application",
+  title: "Boxing Gym Application",
+  subtitle: "General Liability and Accident & Health coverage for boxing gyms and facilities",
+  tag: "martial-arts",
+  source: "Anthony Insurance Forms — Boxing Gym Application",
+});

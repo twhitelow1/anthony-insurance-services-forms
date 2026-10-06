@@ -13,7 +13,8 @@ export interface CarrierFill {
 
 /** A carrier's fillable application and how a web form's answers map onto it. */
 export interface CarrierFormSpec {
-  formSlug: string;
+  /** Web forms whose answers fill this PDF (they share field ids). */
+  formSlugs: string[];
   /** Shown to staff, e.g. "Carrier application (SFIC-STL-APP-001)". */
   name: string;
   /** File name in carrier-forms/. That folder is listed in next.config.ts outputFileTracingIncludes. */

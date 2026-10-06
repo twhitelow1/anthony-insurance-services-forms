@@ -11,7 +11,7 @@ export type { CarrierFormSpec } from "./types";
 
 const SPECS: CarrierFormSpec[] = [sportsFacilityCarrierForm];
 
-export const carrierFormFor = (formSlug: string) => SPECS.find((s) => s.formSlug === formSlug);
+export const carrierFormFor = (formSlug: string) => SPECS.find((s) => s.formSlugs.includes(formSlug));
 
 const templates = new Map<string, Promise<Buffer>>();
 /** Path to a template in carrier-forms/ (kept to that folder so the server bundle only traces it). */

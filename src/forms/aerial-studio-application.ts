@@ -2,8 +2,10 @@ import { is, isYes, money, num, opts, text, US_STATES, yesNo } from "@/lib/forms
 import type { FormDefinition } from "@/lib/forms/types";
 
 /**
- * Aerial Yoga Studio (Aerial Studio Insurance B) — studio liability application.
- * Transcribed from the dancestudioinsurance.com Gravity Form at /aerial-yoga-studio-form/.
+ * Aerial studio liability application. Transcribed from Lead Alchemist form
+ * YK2al1vcLOnPCt3qW1kZ, which dancestudioinsurance.com embeds on both
+ * /aerial-dance-studio-form/ and /aerial-yoga-studio-form/; the two web forms
+ * share these questions under their own slug and title.
  *
  * Answers are stored in the app's database. Only fields with `ghl.standard`
  * are copied to the GoHighLevel contact.
@@ -12,12 +14,11 @@ import type { FormDefinition } from "@/lib/forms/types";
 const notSameAsMailing = is("mailing_same_as_physical", "No");
 const hasSecondLocation = isYes("multiple_locations");
 
-export const aerialYogaStudioApplication: FormDefinition = {
-  slug: "aerial-yoga-studio-application",
-  title: "Aerial Yoga Studio Application",
-  subtitle: "Aerial studio liability for aerial yoga, yoga and group fitness studios",
-  tags: ["form:aerial-yoga-studio-application", "dance-fitness"],
-  source: "Anthony Insurance Forms — Aerial Yoga Studio Application",
+type Variant = Pick<FormDefinition, "slug" | "title" | "subtitle" | "source">;
+
+const aerialStudioForm = (meta: Variant): FormDefinition => ({
+  ...meta,
+  tags: [`form:${meta.slug}`, "dance-fitness"],
   successMessage:
     "Thank you! Your application has been submitted. An Anthony Insurance Services agent will review it and reach out shortly.",
   sections: [
@@ -25,6 +26,7 @@ export const aerialYogaStudioApplication: FormDefinition = {
       id: "policyholder",
       title: "Policyholder Details",
       fields: [
+        text("policy_holder_name", "Name of Policy Holder", { required: true }),
         text("legal_business_name", "Name of Business or Studio", {
           required: true,
           tooltip: "Enter the legal name of the studio or business.",
@@ -41,10 +43,11 @@ export const aerialYogaStudioApplication: FormDefinition = {
         text("mailing_address_line_2", "Address Line 2"),
         text("mailing_city", "City", { required: true, width: "third", ghl: { standard: "city" } }),
         { type: "select", id: "mailing_state", label: "State", options: US_STATES, required: true, width: "third", ghl: { standard: "state" } },
-        text("mailing_postal_code", "ZIP Code", { required: true, width: "third", ghl: { standard: "postalCode" } }),
+        text("mailing_postal_code", "Postal Code", { required: true, width: "third", ghl: { standard: "postalCode" } }),
+        text("mailing_country", "Country", { width: "half" }),
         { type: "content", id: "contact_heading", variant: "subheading", title: "Contact Person" },
-        text("first_name", "First", { required: true, width: "half", ghl: { standard: "firstName" } }),
-        text("last_name", "Last", { required: true, width: "half", ghl: { standard: "lastName" } }),
+        text("first_name", "First Name", { required: true, width: "half", ghl: { standard: "firstName" } }),
+        text("last_name", "Last Name", { required: true, width: "half", ghl: { standard: "lastName" } }),
         { type: "tel", id: "phone", label: "Phone", required: true, width: "half", ghl: { standard: "phone" } },
         { type: "email", id: "email", label: "Email", required: true, width: "half", ghl: { standard: "email" } },
         { type: "url", id: "website", label: "Website", placeholder: "www.example.com", ghl: { standard: "website" } },
@@ -112,31 +115,27 @@ export const aerialYogaStudioApplication: FormDefinition = {
           label: "If your liability policy has been cancelled, please explain and be specific.",
           showIf: isYes("coverage_cancelled"),
         },
-        {
-          type: "radio",
-          id: "risk_management_plan",
-          label: "Do you agree to have a Risk Management Plan in place during the coverage period of your policy?",
-          options: opts("Yes"),
-          required: true,
+        yesNo("risk_management_plan", "Do you agree to have a Risk Management Plan in place during the coverage period of your policy?", {
           tooltip:
-            "Risk Management is a method for identifying risks and developing and implementing programs to first, prevent or reduce accidents, injuries or loss and second, to protect the organization. You have agreed to have a Risk Management Plan in place during the coverage period of your policy.",
-          hint: "If you do not yet have such a plan in place, see our Guide to Risk Management: https://securedanceinsurance.com/DanceStudioInsurance/GuideToRiskManagement",
-        },
+            "A risk management plan includes your organization's written safety procedures—such as an emergency action plan, weather-incident steps, injury/incident report forms, and posted safety rules. You should have these in place or be ready to adopt them at the start of the policy.",
+        }),
       ],
     },
     {
       id: "waiver",
       title: "Waiver Requirement",
       fields: [
-        {
-          type: "radio",
-          id: "waiver_agreement",
-          label: "Do you agree to use a waiver or have a waiver and release system in place at the time coverage is bound?",
-          options: opts("Yes"),
-          required: true,
+        yesNo("waiver_system", "Do you have a participant waiver and release system in place?", {
           tooltip:
             "Each school or studio must implement a Release and Waiver of Liability and Indemnity Agreement for all students and staff members. Unintentional error on your part in securing Waiver and Release forms shall not void your coverage in the event of an occurrence to a student or staff member. However, your failure to maintain an adequate system to regularly secure Waiver and Release forms shall void your coverage in the event of an occurrence to a student or staff member.",
-          hint: "If No, download a waiver: https://dancestudioinsurance.com/wp-content/uploads/2016/02/Waiver.pdf",
+        }),
+        {
+          // The source offers "Upload now" or "Email later"; this app doesn't take uploads yet.
+          type: "content",
+          id: "waiver_email",
+          variant: "info",
+          title: "Waiver",
+          body: "Please email a copy of the studio's waiver form to Melanie@AnthonyInsuranceServices.com after submitting the application.",
         },
       ],
     },
@@ -160,7 +159,7 @@ export const aerialYogaStudioApplication: FormDefinition = {
           required: true,
           width: "half",
           tooltip:
-            "All policies Include $100,000 Accident Policy and $1,000,000.00 Limit Per Occurrence Liability Policy. Please select the general aggregate limit.",
+            "All policies Include $1,000,000.00 Limit Per Occurrence Liability Policy. Please select the general aggregate limit.",
         },
       ],
     },
@@ -169,19 +168,6 @@ export const aerialYogaStudioApplication: FormDefinition = {
       title: "Aerial Underwriting Questions",
       description: "Please answer the questions below for aerial activities offered at your studio.",
       fields: [
-        {
-          type: "content",
-          id: "waiver_upload",
-          variant: "info",
-          title: "Waiver Upload",
-          body: "Please upload a copy of the studio's waiver form. If waiver is not available right now, please email waiver to Melanie@AnthonyInsuranceServices.com after submitting the application.",
-        },
-        {
-          type: "textarea",
-          id: "aerial_activities_description",
-          label: "Provide a description of the aerial activities offered and performed at studio",
-          required: true,
-        },
         text("aerial_max_height", "What is the maximum height of aerial activities off the ground?", {
           required: true,
           width: "half",
@@ -261,4 +247,18 @@ export const aerialYogaStudioApplication: FormDefinition = {
       ],
     },
   ],
-};
+});
+
+export const aerialYogaStudioApplication = aerialStudioForm({
+  slug: "aerial-yoga-studio-application",
+  title: "Aerial Yoga Studio Application",
+  subtitle: "Aerial studio liability for aerial yoga, yoga and group fitness studios",
+  source: "Anthony Insurance Forms — Aerial Yoga Studio Application",
+});
+
+export const aerialDanceStudioApplication = aerialStudioForm({
+  slug: "aerial-dance-studio-application",
+  title: "Aerial Dance Studio Application",
+  subtitle: "Aerial studio liability for aerial dance and dance studios",
+  source: "Anthony Insurance Forms — Aerial Dance Studio Application",
+});
