@@ -29,6 +29,13 @@
       "when": 1791178838107,
       "tag": "0003_documents_opportunity",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1791275929731,
+      "tag": "0004_applicants_ghl",
+      "breakpoints": true
     }
   ]
 }

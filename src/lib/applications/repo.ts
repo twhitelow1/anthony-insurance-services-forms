@@ -2,7 +2,7 @@ import "server-only";
 import { randomInt } from "node:crypto";
 import { and, count, desc, eq, ilike, max, or, sql, type SQL } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
-import type { Application, EventType } from "@/lib/db/schema";
+import type { Applicant, Application, EventType } from "@/lib/db/schema";
 import type { AiReview } from "@/lib/ai/review";
 import { searchText } from "@/lib/forms/flatten";
 import type { FormDefinition, FormValues } from "@/lib/forms/types";
@@ -290,6 +290,7 @@ export interface ApplicantSummary {
   businessName: string | null;
   applications: number;
   lastApplied: Date;
+  ghlContactId: string | null;
 }
 
 /** Everyone who has applied, one row per email address, most recent first. */
@@ -304,8 +305,10 @@ export async function listApplicants({ q, limit = 100 }: { q?: string; limit?: n
       businessName: max(applications.businessName),
       applications: count(),
       lastApplied: max(applications.createdAt),
+      ghlContactId: max(schema.applicants.ghlContactId),
     })
     .from(applications)
+    .leftJoin(schema.applicants, eq(schema.applicants.email, applications.applicantEmail))
     .where(
       like
         ? or(ilike(applications.applicantEmail, like), ilike(applications.applicantName, like), ilike(applications.businessName, like))
@@ -320,5 +323,36 @@ export async function listApplicants({ q, limit = 100 }: { q?: string; limit?: n
     businessName: r.businessName,
     applications: Number(r.applications),
     lastApplied: r.lastApplied ?? new Date(0),
+    ghlContactId: r.ghlContactId ?? null,
   }));
+}
+
+/** The applicant's saved GHL link, if any. */
+export async function getApplicant(email: string): Promise<Applicant | undefined> {
+  const db = await getDb();
+  const [row] = await db.select().from(schema.applicants).where(eq(schema.applicants.email, normalizeEmail(email))).limit(1);
+  return row;
+}
+
+/** Save which GHL contact belongs to this email (null unlinks). */
+export async function linkApplicantGhl(email: string, contactId: string | null) {
+  const db = await getDb();
+  const now = new Date();
+  const set = { ghlContactId: contactId, ghlLinkedAt: contactId ? now : null, updatedAt: now };
+  await db
+    .insert(schema.applicants)
+    .values({ email: normalizeEmail(email), ...set })
+    .onConflictDoUpdate({ target: schema.applicants.email, set });
+}
+
+/** Applicant emails with no GHL contact saved yet (for "Link all to GHL"). */
+export async function unlinkedApplicantEmails(limit = 50): Promise<string[]> {
+  const db = await getDb();
+  const rows = await db
+    .selectDistinct({ email: applications.applicantEmail })
+    .from(applications)
+    .leftJoin(schema.applicants, eq(schema.applicants.email, applications.applicantEmail))
+    .where(sql`${schema.applicants.ghlContactId} is null`)
+    .limit(limit);
+  return rows.map((r) => r.email);
 }

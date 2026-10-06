@@ -3,11 +3,13 @@ import { notFound } from "next/navigation";
 import { forms } from "@/forms";
 import { fmtDate, StatusBadge } from "@/components/portal";
 import { requireStaff } from "@/lib/auth/session";
-import { getApplication, listForEmail, normalizeEmail } from "@/lib/applications/repo";
-import { userModeAction } from "@/app/admin/actions";
+import { getApplicant, getApplication, listForEmail, normalizeEmail } from "@/lib/applications/repo";
+import { linkGhlContactAction, unlinkGhlContactAction, userModeAction } from "@/app/admin/actions";
+import { contactUrl, ghlConfig } from "@/lib/ghl/client";
 
-export default async function Applicant({ params }: PageProps<"/admin/applicants/[email]">) {
+export default async function Applicant({ params, searchParams }: PageProps<"/admin/applicants/[email]">) {
   const { email: raw } = await params;
+  const { ghl: ghlMessage } = await searchParams;
   const email = normalizeEmail(decodeURIComponent(raw));
   await requireStaff(`/admin/applicants/${encodeURIComponent(email)}`);
   const apps = await listForEmail(email);
@@ -15,6 +17,8 @@ export default async function Applicant({ params }: PageProps<"/admin/applicants
   // Contact details from their most recent application.
   const latest = await getApplication(apps[0].id);
   const phone = typeof latest?.values.phone === "string" ? latest.values.phone : null;
+  const ghlContactId = (await getApplicant(email))?.ghlContactId ?? null;
+  const ghlHref = ghlContactId ? contactUrl(ghlContactId) : null;
 
   return (
     <div>
@@ -33,6 +37,41 @@ export default async function Applicant({ params }: PageProps<"/admin/applicants
           <button className="btn-secondary">View portal as this applicant</button>
         </form>
       </div>
+      <section className="card mb-6 !p-4" aria-labelledby="ghl-heading">
+        <h2 id="ghl-heading" className="font-semibold">GoHighLevel contact</h2>
+        {typeof ghlMessage === "string" && (
+          <p className="callout my-2 text-sm" role="status">{ghlMessage}</p>
+        )}
+        {ghlContactId ? (
+          <div className="mt-1 flex flex-wrap items-center gap-3 text-sm">
+            <span>
+              Linked to <code className="text-xs">{ghlContactId}</code>. Every application from this email syncs to this contact,
+              each as its own opportunity.
+            </span>
+            {ghlHref && <a className="btn-link" href={ghlHref} target="_blank" rel="noopener">Open in GHL</a>}
+            <form action={unlinkGhlContactAction}>
+              <input type="hidden" name="email" value={email} />
+              <button className="btn-link text-sm">Unlink</button>
+            </form>
+          </div>
+        ) : (
+          <p className="mt-1 text-sm text-[var(--muted)]">
+            Not linked yet. The next sync matches the GHL contact with this email, or link one now.
+          </p>
+        )}
+        {ghlConfig() ? (
+          <form action={linkGhlContactAction} className="mt-3 flex flex-wrap items-end gap-2">
+            <input type="hidden" name="email" value={email} />
+            <label className="grow text-sm">
+              <span className="mb-1 block text-[var(--muted)]">GHL contact ID or link (leave blank to find by email)</span>
+              <input name="contactId" className="input" placeholder="e.g. 3fG7hK2mN9pQ…" />
+            </label>
+            <button className="btn-secondary">{ghlContactId ? "Re-link" : "Find in GHL"}</button>
+          </form>
+        ) : (
+          <p className="mt-2 text-sm text-[var(--muted)]">GHL isn&apos;t connected (GHL_API_TOKEN / GHL_LOCATION_ID).</p>
+        )}
+      </section>
       <div className="card overflow-x-auto !p-0">
         <table className="data-table">
           <thead>

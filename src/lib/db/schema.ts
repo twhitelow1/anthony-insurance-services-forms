@@ -111,6 +111,19 @@ export const applicationDocuments = pgTable(
   (t) => [index("application_documents_app_idx").on(t.applicationId, t.createdAt)],
 );
 
+/**
+ * One row per applicant email, linking them to their GoHighLevel contact so
+ * every application from the same email lands on the same GHL contact, even
+ * if staff later change details in GHL. (Each application has its own opportunity.)
+ */
+export const applicants = pgTable("applicants", {
+  email: text("email").primaryKey(), // lower-cased, same as applications.applicant_email
+  ghlContactId: text("ghl_contact_id"),
+  ghlLinkedAt: timestamp("ghl_linked_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 /** One-time sign-in links for clients. Only a SHA-256 hash of the token is stored. */
 export const loginTokens = pgTable("login_tokens", {
   tokenHash: text("token_hash").primaryKey(),
@@ -125,3 +138,4 @@ export const loginTokens = pgTable("login_tokens", {
 export type Application = typeof applications.$inferSelect;
 export type ApplicationEvent = typeof applicationEvents.$inferSelect;
 export type ApplicationDocument = typeof applicationDocuments.$inferSelect;
+export type Applicant = typeof applicants.$inferSelect;

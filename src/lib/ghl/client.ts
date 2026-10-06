@@ -29,9 +29,12 @@ export class GhlError extends Error {
   }
 }
 
+/** Env value without stray whitespace, quotes or a pasted "Bearer " prefix. */
+const clean = (v: string | undefined) => (v ?? "").trim().replace(/^["']|["']$/g, "").replace(/^Bearer\s+/i, "").trim();
+
 export function ghlConfig() {
-  const token = process.env.GHL_API_TOKEN;
-  const locationId = process.env.GHL_LOCATION_ID;
+  const token = clean(process.env.GHL_API_TOKEN);
+  const locationId = clean(process.env.GHL_LOCATION_ID);
   if (!token || !locationId) return null;
   return { token, locationId };
 }
@@ -62,11 +65,11 @@ async function ghlFetch<T>(path: string, init: RequestInit & { next?: { revalida
   return body as T;
 }
 
-/** Contact custom fields for the location. Cached for 10 minutes. */
-export async function listCustomFields(): Promise<GhlCustomField[]> {
+/** Contact (or opportunity) custom fields for the location. Cached for 10 minutes. */
+export async function listCustomFields(model: "contact" | "opportunity" = "contact"): Promise<GhlCustomField[]> {
   const { locationId } = ghlConfig()!;
   const data = await ghlFetch<{ customFields: GhlCustomField[] }>(
-    `/locations/${locationId}/customFields?model=contact`,
+    `/locations/${locationId}/customFields?model=${model}`,
     { next: { revalidate: 600 } },
   );
   return data.customFields ?? [];
@@ -98,6 +101,41 @@ export async function upsertContact(input: UpsertContactInput) {
   });
 }
 
+export interface GhlContact {
+  id: string;
+  email?: string | null;
+  firstName?: string | null;
+  lastName?: string | null;
+  contactName?: string | null;
+  companyName?: string | null;
+}
+
+/** The GHL contact with this email, if any (GHL's own duplicate lookup). */
+export async function findContactByEmail(email: string): Promise<GhlContact | null> {
+  const { locationId } = ghlConfig()!;
+  const q = new URLSearchParams({ locationId, email });
+  const data = await ghlFetch<{ contact?: GhlContact | null }>(`/contacts/search/duplicate?${q}`, { cache: "no-store" });
+  return data.contact ?? null;
+}
+
+/** A contact by ID, or null if it was deleted (or merged away). */
+export async function getContact(id: string): Promise<GhlContact | null> {
+  try {
+    const data = await ghlFetch<{ contact?: GhlContact }>(`/contacts/${id}`, { cache: "no-store" });
+    return data.contact ?? null;
+  } catch (err) {
+    if (err instanceof GhlError && (err.status === 404 || err.status === 400)) return null;
+    throw err;
+  }
+}
+
+/** Where staff open a contact in GHL. GHL_APP_URL overrides the host for a white-label domain. */
+export function contactUrl(contactId: string) {
+  const cfg = ghlConfig();
+  const host = (process.env.GHL_APP_URL || "https://app.gohighlevel.com").replace(/\/$/, "");
+  return cfg ? `${host}/v2/location/${cfg.locationId}/contacts/detail/${contactId}` : null;
+}
+
 export async function addContactNote(contactId: string, body: string) {
   return ghlFetch(`/contacts/${contactId}/notes`, {
     method: "POST",
@@ -126,6 +164,7 @@ export interface OpportunityInput {
   status?: "open" | "won" | "lost" | "abandoned";
   source?: string;
   monetaryValue?: number;
+  customFields?: { id: string; field_value: string }[];
 }
 
 export async function createOpportunity(input: OpportunityInput) {
@@ -139,13 +178,14 @@ export async function createOpportunity(input: OpportunityInput) {
 
 export async function updateOpportunity(
   id: string,
-  input: Partial<Pick<OpportunityInput, "pipelineStageId" | "status" | "name">>,
+  input: Partial<Pick<OpportunityInput, "pipelineId" | "pipelineStageId" | "status" | "name" | "customFields">>,
 ) {
   return ghlFetch(`/opportunities/${id}`, { method: "PUT", body: JSON.stringify(input), cache: "no-store" });
 }
 
 export interface GhlOpportunity {
   id: string;
+  contactId?: string;
   name?: string;
   pipelineId?: string;
   pipelineStageId?: string;
