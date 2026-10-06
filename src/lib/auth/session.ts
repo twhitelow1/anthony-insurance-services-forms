@@ -50,7 +50,9 @@ export async function createSession(session: Session) {
 }
 
 export async function destroySession() {
-  (await cookies()).delete(COOKIE);
+  const jar = await cookies();
+  jar.delete(COOKIE);
+  jar.delete(VIEW_AS_COOKIE);
 }
 
 export async function getSession(): Promise<Session | null> {
@@ -66,11 +68,39 @@ export async function requireStaff(returnTo = "/admin") {
   return s;
 }
 
-/** Use at the top of every client portal page and client server action. */
-export async function requireClient() {
+const VIEW_AS_COOKIE = "ais_view_as";
+
+/** Who the client portal is showing. Staff can use the portal too ("user mode"). */
+export type PortalViewer =
+  | { staff: false; email: string }
+  | { staff: true; email: string; staffEmail: string; previewing: boolean };
+
+/**
+ * Use at the top of every client portal page. Clients see their own applications.
+ * Staff see their own too, or a specific applicant's after "View as applicant".
+ */
+export async function requirePortalViewer(): Promise<PortalViewer> {
   const s = await getSession();
-  if (s?.role !== "client") redirect("/portal/login");
-  return s;
+  if (s?.role === "client") return { staff: false, email: s.email };
+  if (s?.role === "staff") {
+    const raw = (await cookies()).get(VIEW_AS_COOKIE)?.value;
+    const as = await verify<{ email: string; by: string }>(raw, "ais:view-as");
+    // Only honoured for the staff member who set it.
+    const email = as && as.by === s.email ? as.email : null;
+    return { staff: true, email: email ?? s.email, staffEmail: s.email, previewing: !!email };
+  }
+  redirect("/portal/login");
+}
+
+/** Staff only: show the portal as `email` sees it, or as themselves when null. */
+export async function setPortalViewAs(staffEmail: string, email: string | null) {
+  const jar = await cookies();
+  if (!email) {
+    jar.delete(VIEW_AS_COOKIE);
+    return;
+  }
+  const maxAge = TTL.staff;
+  jar.set(VIEW_AS_COOKIE, await sign({ email, by: staffEmail }, maxAge, "ais:view-as"), cookieOptions(maxAge));
 }
 
 /** Only allow same-site relative redirects. */

@@ -4,6 +4,7 @@ import { pruneValues, validateForm } from "@/lib/forms/validate";
 import type { FormValues } from "@/lib/forms/types";
 import { createApplication } from "@/lib/applications/repo";
 import { onApplicationSubmitted } from "@/lib/applications/pipeline";
+import { receiptPath } from "@/lib/applications/receipt";
 
 export const maxDuration = 60;
 
@@ -70,5 +71,5 @@ export async function POST(req: NextRequest, ctx: RouteContext<"/api/forms/[slug
   // on the application's timeline and can be retried from the admin page.
   after(() => onApplicationSubmitted(form, app));
 
-  return Response.json({ ok: true, reference: app.reference });
+  return Response.json({ ok: true, reference: app.reference, pdfUrl: await receiptPath(app.id) });
 }

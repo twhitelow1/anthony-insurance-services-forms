@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { entraConfig } from "@/lib/auth/entra";
 import { getSession, safeReturnTo } from "@/lib/auth/session";
+import { requestStaffLinkAction } from "../login-actions";
 
 export const metadata = { title: "Staff sign-in | Anthony Insurance Services" };
 
@@ -9,7 +10,7 @@ export default async function AdminLogin({ searchParams }: PageProps<"/admin/log
   const returnTo = safeReturnTo(typeof sp.returnTo === "string" ? sp.returnTo : null, "/admin");
   if ((await getSession())?.role === "staff") redirect(returnTo);
   const error = typeof sp.error === "string" ? sp.error : null;
-  const configured = !!entraConfig();
+  const microsoft = !!entraConfig();
   const devLogin = process.env.NODE_ENV !== "production" && process.env.DEV_STAFF_LOGIN === "1";
 
   return (
@@ -17,29 +18,39 @@ export default async function AdminLogin({ searchParams }: PageProps<"/admin/log
       <div className="card">
         <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-[var(--accent-strong)]">Anthony Insurance Services</p>
         <h1 className="mb-2 text-2xl font-semibold">Staff sign-in</h1>
-        <p className="mb-6 text-[var(--muted)]">Use your @anthonyinsuranceservices.com Microsoft 365 account.</p>
-        {error && (
-          <p className="mb-4 rounded-lg bg-[var(--danger-bg)] p-3 text-sm text-[var(--danger)]" role="alert">
-            {error}
-          </p>
-        )}
-        {configured ? (
-          <a className="btn-primary w-full gap-3" href={`/api/auth/microsoft/login?returnTo=${encodeURIComponent(returnTo)}`}>
-            <svg viewBox="0 0 21 21" className="h-5 w-5" aria-hidden="true">
-              <path fill="#f25022" d="M1 1h9v9H1z" />
-              <path fill="#7fba00" d="M11 1h9v9h-9z" />
-              <path fill="#00a4ef" d="M1 11h9v9H1z" />
-              <path fill="#ffb900" d="M11 11h9v9h-9z" />
-            </svg>
-            Sign in with Microsoft
-          </a>
+
+        {sp.sent ? (
+          <div role="status">
+            <p className="mb-4">If that&apos;s a staff address, a sign-in link is on its way. It works once and expires in 20 minutes.</p>
+            <p className="text-sm text-[var(--muted)]">
+              Didn&apos;t get it? Check spam or quarantine, or <a className="btn-link" href="/admin/login">try again</a>.
+            </p>
+          </div>
         ) : (
-          <p className="callout callout-notice text-sm">Microsoft sign-in isn&apos;t configured yet (AZURE_TENANT_ID, AZURE_CLIENT_ID, AZURE_CLIENT_SECRET, APP_URL).</p>
-        )}
-        {devLogin && (
-          <a className="btn-secondary mt-3 w-full" href="/api/auth/dev-login">
-            Dev sign-in (local only)
-          </a>
+          <>
+            <p className="mb-6 text-[var(--muted)]">Enter your @anthonyinsuranceservices.com email and we&apos;ll send you a one-time sign-in link.</p>
+            {(error || sp.expired) && (
+              <p className="mb-4 rounded-lg bg-[var(--danger-bg)] p-3 text-sm text-[var(--danger)]" role="alert">
+                {error ?? "That sign-in link has expired or was already used. Request a new one below."}
+              </p>
+            )}
+            <form action={requestStaffLinkAction} className="space-y-3">
+              <input type="hidden" name="returnTo" value={returnTo} />
+              <label htmlFor="email" className="field-label">Work email</label>
+              <input id="email" name="email" type="email" required autoComplete="email" className="input" />
+              <button className="btn-primary w-full">Email me a sign-in link</button>
+            </form>
+            {microsoft && (
+              <a className="btn-secondary mt-3 w-full" href={`/api/auth/microsoft/login?returnTo=${encodeURIComponent(returnTo)}`}>
+                Sign in with Microsoft instead
+              </a>
+            )}
+            {devLogin && (
+              <a className="btn-secondary mt-3 w-full" href="/api/auth/dev-login">
+                Dev sign-in (local only)
+              </a>
+            )}
+          </>
         )}
       </div>
     </main>

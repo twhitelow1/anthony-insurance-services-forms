@@ -6,7 +6,18 @@ import { type FieldErrors, isVisible, pruneValues, validateSection } from "@/lib
 import { type FormValues, type Option, isInputField } from "@/lib/forms/types";
 import { Content, FieldInput, TableInput } from "./Fields";
 
-type Status = { kind: "idle" } | { kind: "submitting" } | { kind: "done"; reference: string } | { kind: "error"; message: string };
+type Status =
+  | { kind: "idle" }
+  | { kind: "submitting" }
+  | { kind: "done"; reference: string; pdfUrl?: string }
+  | { kind: "error"; message: string };
+
+/** Staff editing a submitted application: start from its answers, save with PUT, then go back. */
+export interface EditMode {
+  initial: FormValues;
+  saveUrl: string;
+  doneHref: string;
+}
 
 const draftKey = (slug: string) => `ais-form-draft:${slug}`;
 
@@ -17,9 +28,9 @@ function postToParent(msg: Record<string, unknown>) {
   }
 }
 
-export function FormWizard({ slug }: { slug: string }) {
+export function FormWizard({ slug, edit }: { slug: string; edit?: EditMode }) {
   const form = getForm(slug)!;
-  const [values, setValuesState] = useState<FormValues>({});
+  const [values, setValuesState] = useState<FormValues>(edit?.initial ?? {});
   const [step, setStep] = useState(0);
   const [errors, setErrors] = useState<FieldErrors>({});
   const [status, setStatus] = useState<Status>({ kind: "idle" });
@@ -32,6 +43,7 @@ export function FormWizard({ slug }: { slug: string }) {
   // hydration — localStorage doesn't exist during server rendering.
   /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
+    if (edit) return;
     try {
       const raw = localStorage.getItem(draftKey(slug));
       if (raw) {
@@ -43,11 +55,11 @@ export function FormWizard({ slug }: { slug: string }) {
     } catch {
       /* storage unavailable */
     }
-  }, [slug, form.sections.length]);
+  }, [slug, form.sections.length, edit]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
   useEffect(() => {
-    if (status.kind === "done") return;
+    if (status.kind === "done" || edit) return;
     const t = setTimeout(() => {
       try {
         const { signature: _omit, ...rest } = values;
@@ -58,7 +70,7 @@ export function FormWizard({ slug }: { slug: string }) {
       }
     }, 400);
     return () => clearTimeout(t);
-  }, [values, step, slug, status.kind]);
+  }, [values, step, slug, status.kind, edit]);
 
   // Auto-resize when embedded.
   useEffect(() => {
@@ -121,14 +133,22 @@ export function FormWizard({ slug }: { slug: string }) {
 
     setStatus({ kind: "submitting" });
     try {
-      const res = await fetch(`/api/forms/${slug}/submit`, {
-        method: "POST",
+      const res = await fetch(edit?.saveUrl ?? `/api/forms/${slug}/submit`, {
+        method: edit ? "PUT" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ values: pruneValues(form, values), website_hp: hp }),
       });
       const data = await res.json().catch(() => ({}));
+      if (res.ok && edit) {
+        window.location.assign(edit.doneHref);
+        return;
+      }
       if (res.ok) {
-        setStatus({ kind: "done", reference: String(data.reference ?? "") });
+        setStatus({
+          kind: "done",
+          reference: String(data.reference ?? ""),
+          pdfUrl: typeof data.pdfUrl === "string" && data.pdfUrl.startsWith("/receipt/") ? data.pdfUrl : undefined,
+        });
         try {
           localStorage.removeItem(draftKey(slug));
         } catch {}
@@ -170,6 +190,14 @@ export function FormWizard({ slug }: { slug: string }) {
             Reference number: <span className="font-mono font-semibold">{status.reference}</span>
           </p>
         )}
+        {status.pdfUrl && (
+          <div className="mt-5">
+            <a className="btn-secondary" href={status.pdfUrl} target="_blank" rel="noopener">
+              View a copy of your application (PDF)
+            </a>
+            <p className="mt-2 text-xs text-[var(--muted)]">This link works for one hour. After that, sign in to check your status.</p>
+          </div>
+        )}
         <p className="mt-5 text-sm text-[var(--muted)]">
           We&apos;ve emailed you a confirmation. You can{" "}
           <a className="btn-link" href="/portal/login" target="_top">
@@ -210,9 +238,9 @@ export function FormWizard({ slug }: { slug: string }) {
                 type="button"
                 className={`step-pill ${i === step ? "is-current" : i < step ? "is-done" : ""}`}
                 aria-current={i === step ? "step" : undefined}
-                disabled={i > step}
+                disabled={!edit && i > step}
                 onClick={() => {
-                  if (i < step) {
+                  if (edit || i < step) {
                     setErrors({});
                     setStep(i);
                     scrollTop();
@@ -303,10 +331,22 @@ export function FormWizard({ slug }: { slug: string }) {
             Back
           </button>
           <button type="submit" className="btn-primary" disabled={status.kind === "submitting"}>
-            {isLast ? (status.kind === "submitting" ? "Submitting…" : "Submit application") : "Continue"}
+            {isLast
+              ? status.kind === "submitting"
+                ? edit
+                  ? "Saving…"
+                  : "Submitting…"
+                : edit
+                  ? "Save changes"
+                  : "Submit application"
+              : "Continue"}
           </button>
         </div>
-        <p className="mt-4 text-center text-xs text-[var(--muted)]">Your progress is saved on this device automatically.</p>
+        <p className="mt-4 text-center text-xs text-[var(--muted)]">
+          {edit
+            ? "Changes are saved when you press Save changes on the last step. The PDFs are rebuilt afterwards."
+            : "Your progress is saved on this device automatically."}
+        </p>
       </form>
     </div>
   );

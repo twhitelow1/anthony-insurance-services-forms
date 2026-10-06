@@ -8,22 +8,52 @@ import {
   type UpsertContactInput,
   addContactNote,
   addTags,
+  createOpportunity,
   listCustomFields,
+  updateOpportunity,
   removeTags,
   updateContact,
   upsertContact,
 } from "./client";
+import { applicantPath } from "@/lib/applications/links";
 
 /**
- * GHL holds the contact only. These three custom fields (create them in GHL as
- * single-line text) point staff back to the full application in the portal.
- * Matching is by name and ignores case/spacing/punctuation.
+ * GHL holds the contact (plus an opportunity), not the application. These
+ * custom fields (create them in GHL as single-line text) point staff back to
+ * the portal. Matching is by name and ignores case/spacing/punctuation.
  */
 export const PORTAL_FIELDS = {
   reference: "Application Reference",
   status: "Application Status",
   link: "Application Link",
+  pdf: "Application PDF",
 } as const;
+
+/**
+ * Opportunity pipeline. GHL_PIPELINE_ID + GHL_PIPELINE_STAGE_ID (the stage new
+ * applications land in) turn opportunities on. GHL_STAGE_IDS optionally maps
+ * portal statuses to stages, e.g. {"in_review":"<stage id>","quoted":"<stage id>"},
+ * so a status change moves the opportunity.
+ */
+export function pipelineConfig() {
+  const pipelineId = process.env.GHL_PIPELINE_ID;
+  const initialStage = process.env.GHL_PIPELINE_STAGE_ID;
+  if (!pipelineId || !initialStage) return null;
+  let stages: Partial<Record<ApplicationStatus, string>> = {};
+  try {
+    stages = JSON.parse(process.env.GHL_STAGE_IDS || "{}");
+  } catch {
+    console.warn("[ghl] GHL_STAGE_IDS is not valid JSON — ignoring");
+  }
+  return { pipelineId, initialStage, stages };
+}
+
+/** Opportunity status for terminal portal statuses. */
+const OPP_STATUS: Partial<Record<ApplicationStatus, "won" | "lost" | "abandoned">> = {
+  bound: "won",
+  declined: "lost",
+  withdrawn: "abandoned",
+};
 
 export const statusTag = (s: ApplicationStatus) => `app-status:${s}`;
 
@@ -34,8 +64,8 @@ export function findField(fields: GhlCustomField[], name: string): GhlCustomFiel
   return fields.find((f) => normalize(f.name) === n || normalize(f.fieldKey.replace(/^contact\./, "")) === n);
 }
 
-export const adminUrl = (app: Pick<Application, "id">) =>
-  `${(process.env.APP_URL ?? "").replace(/\/$/, "")}/admin/applications/${app.id}`;
+const appBase = () => (process.env.APP_URL ?? "").replace(/\/$/, "");
+export const adminUrl = (app: Pick<Application, "id">) => `${appBase()}/admin/applications/${app.id}`;
 
 /** Standard contact fields copied from the answers (fields marked `ghl.standard`). */
 export function standardContactFields(form: FormDefinition, values: FormValues): UpsertContactInput {
@@ -53,11 +83,13 @@ export function standardContactFields(form: FormDefinition, values: FormValues):
 export function portalCustomFields(
   app: Pick<Application, "id" | "reference" | "status">,
   fields: GhlCustomField[],
+  pdfUrl?: string,
 ): { id: string; field_value: string }[] {
   const wanted: [string, string][] = [
     [PORTAL_FIELDS.reference, app.reference],
     [PORTAL_FIELDS.status, STATUSES[app.status].label],
     [PORTAL_FIELDS.link, adminUrl(app)],
+    ...(pdfUrl ? ([[PORTAL_FIELDS.pdf, pdfUrl]] as [string, string][]) : []),
   ];
   return wanted.flatMap(([name, value]) => {
     const f = findField(fields, name);
@@ -65,10 +97,17 @@ export function portalCustomFields(
   });
 }
 
-/** New submission → create/update the contact, tag it, and leave a short note with the link. */
-export async function syncNewApplication(form: FormDefinition, app: Application): Promise<{ contactId: string; missingFields: string[] }> {
+/**
+ * New submission → create/update the contact, tag it, link the application and
+ * its PDF, open an opportunity (if a pipeline is configured), and leave a short note.
+ */
+export async function syncNewApplication(
+  form: FormDefinition,
+  app: Application,
+  pdfUrl?: string,
+): Promise<{ contactId: string; opportunityId?: string; missingFields: string[] }> {
   const fields = await listCustomFields();
-  const custom = portalCustomFields(app, fields);
+  const custom = portalCustomFields(app, fields, pdfUrl);
   const missingFields = Object.values(PORTAL_FIELDS).filter((n) => !findField(fields, n));
 
   const { contact } = await upsertContact({
@@ -84,11 +123,26 @@ export async function syncNewApplication(form: FormDefinition, app: Application)
       `📋 New ${form.title} — ${app.reference}`,
       app.businessName ? `Business: ${app.businessName}` : null,
       `Open the full application: ${adminUrl(app)}`,
+      pdfUrl ? `Application PDF (staff sign-in required): ${pdfUrl}` : null,
+      `All applications from ${app.applicantEmail}: ${appBase()}${applicantPath(app.applicantEmail)}`,
     ]
       .filter(Boolean)
       .join("\n"),
   );
-  return { contactId: contact.id, missingFields };
+
+  let opportunityId: string | undefined;
+  const pipe = pipelineConfig();
+  if (pipe && !app.ghlOpportunityId) {
+    const { opportunity } = await createOpportunity({
+      pipelineId: pipe.pipelineId,
+      pipelineStageId: pipe.stages[app.status] ?? pipe.initialStage,
+      name: `${app.businessName ?? app.applicantName} — ${form.title} (${app.reference})`,
+      contactId: contact.id,
+      source: form.source,
+    });
+    opportunityId = opportunity.id;
+  }
+  return { contactId: contact.id, opportunityId, missingFields };
 }
 
 /** Status changed in the portal → mirror it on the contact so GHL workflows can react. */
@@ -98,4 +152,13 @@ export async function syncStatus(app: Application, previous: ApplicationStatus) 
   await updateContact(app.ghlContactId, { customFields: portalCustomFields(app, fields) });
   await addTags(app.ghlContactId, [statusTag(app.status)]);
   if (previous !== app.status) await removeTags(app.ghlContactId, [statusTag(previous)]);
+
+  const pipe = pipelineConfig();
+  if (pipe && app.ghlOpportunityId) {
+    const stage = pipe.stages[app.status];
+    const status = OPP_STATUS[app.status] ?? "open";
+    if (stage || OPP_STATUS[app.status] || OPP_STATUS[previous]) {
+      await updateOpportunity(app.ghlOpportunityId, { ...(stage ? { pipelineStageId: stage } : {}), status });
+    }
+  }
 }

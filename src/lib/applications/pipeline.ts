@@ -3,8 +3,11 @@ import type { Application } from "@/lib/db/schema";
 import type { FormDefinition } from "@/lib/forms/types";
 import { ghlConfig } from "@/lib/ghl/client";
 import { syncNewApplication, syncStatus } from "@/lib/ghl/sync";
-import { emailLayout, sendMail } from "@/lib/mail/graph";
-import { addEvent, setGhlContactId } from "./repo";
+import { emailLayout, sendMail } from "@/lib/mail";
+import { aiClient } from "@/lib/ai/client";
+import { reviewApplication } from "@/lib/ai/review";
+import { applicationPdfUrl, createApplicationPdf, createCarrierPdf, mainDocument } from "./documents";
+import { addEvent, saveAiReview, setGhlIds } from "./repo";
 import { STATUSES, type ApplicationStatus } from "./status";
 
 const appUrl = () => (process.env.APP_URL ?? "http://localhost:3000").replace(/\/$/, "");
@@ -12,19 +15,85 @@ const describe = (err: unknown) => (err instanceof Error ? err.message : String(
 
 /** Everything that happens after a submission is safely stored. Never throws. */
 export async function onApplicationSubmitted(form: FormDefinition, app: Application) {
-  await Promise.allSettled([pushToGhl(form, app), sendConfirmation(form, app)]);
+  // The PDF comes first so its link can go onto the GHL contact.
+  await Promise.allSettled([
+    makePdf(form, app).then(() => pushToGhl(form, app)),
+    sendConfirmation(form, app),
+    runAiReview(form, app),
+  ]);
+}
+
+/** Fill the carrier's application and create the answer summary, then store both. Never throws. */
+export async function makePdf(form: FormDefinition, app: Application) {
+  // One after the other: the carrier form first, so it's what the GHL link and portal show from the start.
+  for (const task of [
+    async () => {
+      try {
+        const result = await createCarrierPdf(app);
+        if (!result) return;
+        const { doc, unknownFields, addendumCount } = result;
+        await addEvent(app.id, "pdf_created", "system", {
+          message: [
+            `Carrier application filled (${Math.round(doc.size / 1024)} KB)`,
+            addendumCount ? `${addendumCount} item(s) on the addendum page` : null,
+            unknownFields.length ? `Not on the carrier PDF: ${unknownFields.join(", ")}` : null,
+          ]
+            .filter(Boolean)
+            .join(". "),
+          data: { documentId: doc.id, kind: doc.kind, unknownFields },
+        });
+      } catch (err) {
+        console.error("[pipeline] carrier PDF failed", app.reference, err);
+        await addEvent(app.id, "pdf_failed", "system", { message: `Carrier application: ${describe(err)}` }).catch(() => {});
+      }
+    },
+    async () => {
+      try {
+        const doc = await createApplicationPdf(form, app);
+        await addEvent(app.id, "pdf_created", "system", {
+          message: `Answer summary PDF created (${Math.round(doc.size / 1024)} KB)`,
+          data: { documentId: doc.id, kind: doc.kind },
+        });
+      } catch (err) {
+        console.error("[pipeline] summary PDF failed", app.reference, err);
+        await addEvent(app.id, "pdf_failed", "system", { message: `Answer summary: ${describe(err)}` }).catch(() => {});
+      }
+    },
+  ])
+    await task();
+}
+
+/** Claude pre-review for the agent. Skipped when no ANTHROPIC_API_KEY is set. */
+export async function runAiReview(form: FormDefinition, app: Application) {
+  const client = aiClient();
+  if (!client) return;
+  try {
+    const review = await reviewApplication(client, form, app.values, { reference: app.reference });
+    await saveAiReview(app.id, review);
+    const high = review.flags.filter((f) => f.severity === "high").length;
+    await addEvent(app.id, "ai_reviewed", "system", {
+      message: `AI review: ${review.flags.length} flag(s)${high ? `, ${high} high` : ""}`,
+    });
+  } catch (err) {
+    console.error("[pipeline] AI review failed", app.reference, err);
+    await addEvent(app.id, "ai_review_failed", "system", { message: describe(err) }).catch(() => {});
+  }
 }
 
 export async function pushToGhl(form: FormDefinition, app: Application) {
   if (!ghlConfig()) return;
   try {
-    const { contactId, missingFields } = await syncNewApplication(form, app);
-    await setGhlContactId(app.id, contactId);
+    const pdf = await mainDocument(app.id);
+    const { contactId, opportunityId, missingFields } = await syncNewApplication(form, app, pdf ? applicationPdfUrl(app) : undefined);
+    await setGhlIds(app.id, { contactId, opportunityId });
     await addEvent(app.id, "ghl_synced", "system", {
-      message: missingFields.length
-        ? `Contact synced. Create these GHL custom fields to show status & link: ${missingFields.join(", ")}`
-        : "Contact synced to GoHighLevel",
-      data: { contactId, missingFields },
+      message: [
+        opportunityId ? "Contact and opportunity synced to GoHighLevel" : "Contact synced to GoHighLevel",
+        missingFields.length ? `Create these GHL custom fields to show them on the contact: ${missingFields.join(", ")}` : null,
+      ]
+        .filter(Boolean)
+        .join(". "),
+      data: { contactId, opportunityId, missingFields },
     });
   } catch (err) {
     console.error("[pipeline] GHL sync failed", app.reference, err);

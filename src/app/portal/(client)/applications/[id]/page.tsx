@@ -2,19 +2,21 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getForm } from "@/forms";
 import { Answers, fmtDate, StatusBadge, Timeline } from "@/components/portal";
-import { requireClient } from "@/lib/auth/session";
+import { requirePortalViewer } from "@/lib/auth/session";
 import { getApplication, getEvents } from "@/lib/applications/repo";
 import { STATUSES } from "@/lib/applications/status";
 import { answerSections } from "@/lib/forms/flatten";
+import { mainDocument } from "@/lib/applications/documents";
 
 export default async function ClientApplication({ params }: PageProps<"/portal/applications/[id]">) {
-  const client = await requireClient();
+  const client = await requirePortalViewer();
   const { id } = await params;
   const app = await getApplication(id);
   // Same 404 whether it doesn't exist or belongs to someone else.
   if (!app || app.applicantEmail !== client.email) notFound();
   const form = getForm(app.formSlug);
   const events = await getEvents(app.id, { clientOnly: true });
+  const pdf = await mainDocument(app.id);
 
   return (
     <div className="space-y-6">
@@ -29,6 +31,11 @@ export default async function ClientApplication({ params }: PageProps<"/portal/a
           <StatusBadge status={app.status} />
         </div>
         <p className="callout mt-4">{STATUSES[app.status].description}</p>
+        {pdf && (
+          <a className="btn-secondary mt-4" href={`/applications/${app.id}/pdf?download=1`}>
+            Download your application (PDF)
+          </a>
+        )}
       </div>
 
       <div className="card">

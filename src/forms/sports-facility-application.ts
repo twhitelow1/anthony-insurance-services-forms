@@ -129,6 +129,14 @@ export const sportsFacilityApplication: FormDefinition = {
         }),
         text("dba", "DBA/Trade Name (If Applicable)"),
         {
+          type: "radio",
+          id: "business_entity",
+          label: "Form of Business",
+          // The carrier's application lists these six; anything else goes on its addendum page.
+          options: opts("LLC", "Corporation", "Individual", "Partnership", "Joint Venture", "Trust", "Non-Profit"),
+          required: true,
+        },
+        {
           type: "select",
           id: "business_type",
           label: "Type Of Business",

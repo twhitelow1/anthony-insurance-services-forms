@@ -117,3 +117,43 @@ export async function addTags(contactId: string, tags: string[]) {
 export async function removeTags(contactId: string, tags: string[]) {
   return ghlFetch(`/contacts/${contactId}/tags`, { method: "DELETE", body: JSON.stringify({ tags }), cache: "no-store" });
 }
+
+export interface OpportunityInput {
+  pipelineId: string;
+  pipelineStageId: string;
+  name: string;
+  contactId: string;
+  status?: "open" | "won" | "lost" | "abandoned";
+  source?: string;
+  monetaryValue?: number;
+}
+
+export async function createOpportunity(input: OpportunityInput) {
+  const { locationId } = ghlConfig()!;
+  return ghlFetch<{ opportunity: { id: string } }>("/opportunities/", {
+    method: "POST",
+    body: JSON.stringify({ status: "open", ...input, locationId }),
+    cache: "no-store",
+  });
+}
+
+export async function updateOpportunity(
+  id: string,
+  input: Partial<Pick<OpportunityInput, "pipelineStageId" | "status" | "name">>,
+) {
+  return ghlFetch(`/opportunities/${id}`, { method: "PUT", body: JSON.stringify(input), cache: "no-store" });
+}
+
+export interface GhlPipeline {
+  id: string;
+  name: string;
+  stages: { id: string; name: string }[];
+}
+
+export async function listPipelines(): Promise<GhlPipeline[]> {
+  const { locationId } = ghlConfig()!;
+  const data = await ghlFetch<{ pipelines: GhlPipeline[] }>(`/opportunities/pipelines?locationId=${locationId}`, {
+    cache: "no-store",
+  });
+  return data.pipelines ?? [];
+}

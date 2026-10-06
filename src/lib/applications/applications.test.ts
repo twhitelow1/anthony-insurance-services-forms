@@ -5,7 +5,7 @@ import { pruneValues, validateForm } from "@/lib/forms/validate";
 import type { FormValues } from "@/lib/forms/types";
 import { portalCustomFields, standardContactFields, findField } from "@/lib/ghl/sync";
 import { consumeMagicLink, requestMagicLink } from "@/lib/auth/magic-link";
-import * as mail from "@/lib/mail/graph";
+import * as mail from "@/lib/mail";
 import {
   createApplication,
   getEvents,
