@@ -4,6 +4,11 @@ import { databaseUrl, describeDbError } from "@/lib/db/url";
 import { openAccess } from "@/lib/auth/session";
 import { mailConfigured } from "@/lib/mail";
 import { ghlConfig } from "@/lib/ghl/client";
+import { access } from "node:fs/promises";
+import { desc } from "drizzle-orm";
+import { schema } from "@/lib/db";
+import { carrierFormFor, templatePath } from "@/lib/pdf/carrier";
+import { sportsFacilityApplication } from "@/forms/sports-facility-application";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Status | Anthony Insurance Services" };
@@ -21,20 +26,61 @@ async function checkDatabase() {
   }
 }
 
+async function checkPdfTemplate() {
+  const spec = carrierFormFor(sportsFacilityApplication.slug);
+  if (!spec) return { ok: false, detail: "No carrier form is mapped for this form." };
+  try {
+    await access(templatePath(spec.template));
+    return { ok: true, detail: `Carrier PDF template ${spec.template} is on the server.` };
+  } catch {
+    return { ok: false, detail: `Carrier PDF template ${spec.template} is missing from the server bundle, so PDFs can't be created.` };
+  }
+}
+
+async function checkStoredPdfs() {
+  try {
+    const db = await getDb();
+    const { applicationDocuments: d, applicationEvents: e } = schema;
+    const [latest] = await db.select().from(d).orderBy(desc(d.createdAt)).limit(1);
+    const [failure] = await db
+      .select({ message: e.message, at: e.createdAt })
+      .from(e)
+      .where(sql`${e.type} = 'pdf_failed'`)
+      .orderBy(desc(e.createdAt))
+      .limit(1);
+    const lastError = failure ? ` Last PDF error (${failure.at.toISOString().slice(0, 16)} UTC): ${failure.message}` : "";
+    if (!latest) return { ok: false, detail: `No PDFs stored yet. Submit a test application.${lastError}` };
+    const bytes = latest.content;
+    const valid = bytes.length === latest.size && bytes.subarray(0, 5).toString("latin1") === "%PDF-";
+    return valid
+      ? { ok: true, detail: `Latest PDF (${latest.kind}, ${Math.round(latest.size / 1024)} KB) reads back correctly.${lastError}` }
+      : {
+          ok: false,
+          detail: `Latest PDF reads back damaged: stored ${latest.size} bytes, read ${bytes.length}, starts with ${JSON.stringify(bytes.subarray(0, 8).toString("latin1"))}.${lastError}`,
+        };
+  } catch (err) {
+    return { ok: false, detail: `Couldn't check stored PDFs: ${describeDbError(err)}` };
+  }
+}
+
 /** Public setup checklist: which settings are present (never their values) and whether the database works. */
 export default async function Status() {
-  const db = await checkDatabase();
+  const [db, template, pdfs] = await Promise.all([checkDatabase(), checkPdfTemplate(), checkStoredPdfs()]);
   const rows: { name: string; ok: boolean; detail: string; required?: boolean }[] = [
     { name: "Database", required: true, ...db },
+    { name: "Carrier PDF template", required: true, ...template },
+    { name: "Stored PDFs", required: true, ...pdfs },
     {
       name: "Sign-in",
       ok: openAccess() || (process.env.SESSION_SECRET?.length ?? 0) >= 32,
       required: true,
       detail: openAccess()
-        ? "OPEN_ACCESS=1: sign-in is off for testing. Everyone can see every application."
+        ? "Testing mode (OPEN_ACCESS) is on: sign-in is off. Everyone can see every application."
         : (process.env.SESSION_SECRET?.length ?? 0) >= 32
           ? "SESSION_SECRET is set."
-          : "SESSION_SECRET is missing or shorter than 32 characters (or set OPEN_ACCESS=1 to test without sign-in).",
+          : process.env.OPEN_ACCESS !== undefined
+            ? `OPEN_ACCESS is set, but to a value this app doesn't recognise (${JSON.stringify(process.env.OPEN_ACCESS.slice(0, 20))}). Change it to 1 and redeploy.`
+            : `This deployment doesn't see OPEN_ACCESS or SESSION_SECRET. Add OPEN_ACCESS = 1 for the ${process.env.VERCEL_ENV ?? "current"} environment in Vercel, then redeploy.`,
     },
     {
       name: "Site address",
