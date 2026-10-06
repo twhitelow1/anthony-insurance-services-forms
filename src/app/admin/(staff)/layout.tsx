@@ -2,11 +2,13 @@ import Link from "next/link";
 import { TopBar } from "@/components/portal";
 import { requireStaff } from "@/lib/auth/session";
 import { userModeAction } from "../actions";
+import { OpenAccessBanner } from "@/components/OpenAccessBanner";
 
 export default async function StaffLayout({ children }: LayoutProps<"/admin">) {
   const staff = await requireStaff();
   return (
     <>
+      <OpenAccessBanner />
       <TopBar title="Applications admin" href="/admin" who={staff.email}>
         <nav className="flex flex-wrap items-center gap-4 font-medium">
           <Link href="/admin" className="hover:underline">Applications</Link>

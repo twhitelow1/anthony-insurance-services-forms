@@ -101,6 +101,14 @@ Both features are optional. They turn on when `ANTHROPIC_API_KEY` is set.
 - **Encrypted carrier email:** staff send the prepared draft from Outlook, so the agency's subject-tag encryption rule applies.
 - **Audit trail:** every submission, status change, note, sync, email, PDF and carrier draft is recorded on the application's activity log.
 
+## Testing without sign-in
+Set `OPEN_ACCESS=1` in Vercel and redeploy.
+- Sign-in is switched off: everyone is treated as staff, so `/admin`, every application and every PDF open without a sign-in link.
+- A red banner shows on every admin and portal page while it's on.
+- Only `DATABASE_URL` is needed in this mode. Without `SESSION_SECRET` the app uses a fixed key, which is fine only because nothing is protected.
+
+Delete the variable and redeploy to turn sign-in back on. Don't leave it on once real applicants use the form.
+
 ## Setup
 The full step-by-step guide is the shared setup doc. In short:
 1. **Database:** Vercel → Storage → Neon Postgres. Migrations run on every deploy.

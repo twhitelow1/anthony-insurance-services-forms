@@ -10,9 +10,21 @@ export type Session =
 const COOKIE = "ais_session";
 const TTL = { staff: 60 * 60 * 10, client: 60 * 60 * 24 } as const; // 10h staff, 24h clients
 
+/**
+ * TESTING ONLY. With OPEN_ACCESS=1 there is no sign-in: everyone is treated as
+ * staff and can see every application and PDF. Remove the variable to turn
+ * sign-in back on.
+ */
+export const openAccess = () => process.env.OPEN_ACCESS === "1";
+const OPEN_ACCESS_USER = { role: "staff", email: "open-access@test", name: "Open access (testing)" } as const;
+
 function secret() {
   const s = process.env.SESSION_SECRET;
-  if (!s || s.length < 32) throw new Error("SESSION_SECRET must be set (32+ random characters)");
+  if (!s || s.length < 32) {
+    // Nothing is protected in open-access mode, so a fixed key is fine there.
+    if (openAccess()) return new TextEncoder().encode("open-access-mode-no-secret-configured-000000");
+    throw new Error("SESSION_SECRET must be set (32+ random characters)");
+  }
   return new TextEncoder().encode(s);
 }
 
@@ -56,6 +68,7 @@ export async function destroySession() {
 }
 
 export async function getSession(): Promise<Session | null> {
+  if (openAccess()) return OPEN_ACCESS_USER;
   const s = await verify<Session>((await cookies()).get(COOKIE)?.value, "ais:session");
   if (!s || (s.role !== "staff" && s.role !== "client") || typeof s.email !== "string") return null;
   return s.role === "staff" ? { role: "staff", email: s.email, name: s.name } : { role: "client", email: s.email };

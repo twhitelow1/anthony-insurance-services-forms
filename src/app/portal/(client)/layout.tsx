@@ -1,11 +1,13 @@
 import { TopBar } from "@/components/portal";
 import { requirePortalViewer } from "@/lib/auth/session";
 import { exitUserModeAction } from "@/app/admin/actions";
+import { OpenAccessBanner } from "@/components/OpenAccessBanner";
 
 export default async function ClientLayout({ children }: LayoutProps<"/portal">) {
   const viewer = await requirePortalViewer();
   return (
     <>
+      <OpenAccessBanner />
       <TopBar title="My applications" href="/portal" who={viewer.staff ? viewer.staffEmail : viewer.email}>
         {viewer.staff && (
           <form action={exitUserModeAction}>
