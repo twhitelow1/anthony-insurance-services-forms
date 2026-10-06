@@ -102,7 +102,7 @@ Both features are optional. They turn on when `ANTHROPIC_API_KEY` is set.
 - **Audit trail:** every submission, status change, note, sync, email, PDF and carrier draft is recorded on the application's activity log.
 
 ## Testing without sign-in
-Set `OPEN_ACCESS=1` in Vercel and redeploy.
+Set `OPEN_ACCESS=1` (or `true`) in Vercel for Production and redeploy. `/status` shows whether the running deployment sees it.
 - Sign-in is switched off: everyone is treated as staff, so `/admin`, every application and every PDF open without a sign-in link.
 - A red banner shows on every admin and portal page while it's on.
 - Only `DATABASE_URL` is needed in this mode. Without `SESSION_SECRET` the app uses a fixed key, which is fine only because nothing is protected.

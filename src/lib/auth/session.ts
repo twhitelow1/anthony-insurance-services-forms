@@ -15,7 +15,7 @@ const TTL = { staff: 60 * 60 * 10, client: 60 * 60 * 24 } as const; // 10h staff
  * staff and can see every application and PDF. Remove the variable to turn
  * sign-in back on.
  */
-export const openAccess = () => process.env.OPEN_ACCESS === "1";
+export const openAccess = () => /^(1|true|yes|on)$/i.test((process.env.OPEN_ACCESS ?? "").trim().replace(/^["']|["']$/g, ""));
 const OPEN_ACCESS_USER = { role: "staff", email: "open-access@test", name: "Open access (testing)" } as const;
 
 function secret() {

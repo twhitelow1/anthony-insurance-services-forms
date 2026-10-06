@@ -80,19 +80,26 @@ describe("applications CRUD", () => {
 });
 
 describe("OPEN_ACCESS testing switch", () => {
-  it("is off unless OPEN_ACCESS=1, and then everyone is staff", async () => {
-    vi.stubEnv("OPEN_ACCESS", "1");
-    try {
-      expect(await getSession()).toMatchObject({ role: "staff" });
-    } finally {
-      vi.unstubAllEnvs();
+  it("turns on for 1/true/yes/on (any case, quoted or padded), and then everyone is staff", async () => {
+    for (const value of ["1", "true", "TRUE", " yes ", '"1"', "on"]) {
+      vi.stubEnv("OPEN_ACCESS", value);
+      try {
+        expect(await getSession(), value).toMatchObject({ role: "staff" });
+      } finally {
+        vi.unstubAllEnvs();
+      }
     }
-    vi.stubEnv("OPEN_ACCESS", "true");
-    try {
-      // Only the exact value "1" opens it; anything else falls through to cookies (none in tests).
-      await expect(getSession()).rejects.toThrow();
-    } finally {
-      vi.unstubAllEnvs();
+  });
+
+  it("stays off for anything else", async () => {
+    for (const value of ["0", "false", "", "no"]) {
+      vi.stubEnv("OPEN_ACCESS", value);
+      try {
+        // Falls through to reading the session cookie, which fails outside a request.
+        await expect(getSession(), value).rejects.toThrow();
+      } finally {
+        vi.unstubAllEnvs();
+      }
     }
   });
 });

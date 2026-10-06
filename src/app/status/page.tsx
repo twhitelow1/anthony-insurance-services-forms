@@ -31,10 +31,12 @@ export default async function Status() {
       ok: openAccess() || (process.env.SESSION_SECRET?.length ?? 0) >= 32,
       required: true,
       detail: openAccess()
-        ? "OPEN_ACCESS=1: sign-in is off for testing. Everyone can see every application."
+        ? "Testing mode (OPEN_ACCESS) is on: sign-in is off. Everyone can see every application."
         : (process.env.SESSION_SECRET?.length ?? 0) >= 32
           ? "SESSION_SECRET is set."
-          : "SESSION_SECRET is missing or shorter than 32 characters (or set OPEN_ACCESS=1 to test without sign-in).",
+          : process.env.OPEN_ACCESS !== undefined
+            ? `OPEN_ACCESS is set, but to a value this app doesn't recognise (${JSON.stringify(process.env.OPEN_ACCESS.slice(0, 20))}). Change it to 1 and redeploy.`
+            : `This deployment doesn't see OPEN_ACCESS or SESSION_SECRET. Add OPEN_ACCESS = 1 for the ${process.env.VERCEL_ENV ?? "current"} environment in Vercel, then redeploy.`,
     },
     {
       name: "Site address",
