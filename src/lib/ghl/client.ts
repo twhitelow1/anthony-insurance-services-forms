@@ -144,10 +144,30 @@ export async function updateOpportunity(
   return ghlFetch(`/opportunities/${id}`, { method: "PUT", body: JSON.stringify(input), cache: "no-store" });
 }
 
+export interface GhlOpportunity {
+  id: string;
+  name?: string;
+  pipelineId?: string;
+  pipelineStageId?: string;
+  status?: string;
+  createdAt?: string;
+}
+
+/** Open opportunities for a contact in a pipeline, newest first. */
+export async function findOpenOpportunities(contactId: string, pipelineId: string): Promise<GhlOpportunity[]> {
+  const { locationId } = ghlConfig()!;
+  const q = new URLSearchParams({ location_id: locationId, contact_id: contactId, pipeline_id: pipelineId, status: "open" });
+  const data = await ghlFetch<{ opportunities?: GhlOpportunity[] }>(`/opportunities/search?${q}`, { cache: "no-store" });
+  return (data.opportunities ?? [])
+    .filter((o) => (!o.status || o.status === "open") && (!o.pipelineId || o.pipelineId === pipelineId))
+    .sort((a, b) => (b.createdAt ?? "").localeCompare(a.createdAt ?? ""));
+}
+
 export interface GhlPipeline {
   id: string;
   name: string;
-  stages: { id: string; name: string }[];
+  /** GHL can omit this for an empty pipeline. */
+  stages?: { id: string; name: string }[];
 }
 
 export async function listPipelines(): Promise<GhlPipeline[]> {

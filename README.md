@@ -4,7 +4,7 @@ Online insurance applications plus a portal around them. Clients apply and track
 
 | Who | URL | Sign-in |
 | --- | --- | --- |
-| Applicant | `/forms/sports-facility-application` | none |
+| Applicant | `/` lists every form; each is at `/forms/<slug>` (see `docs/forms-review.md`) | none |
 | Applicant | `/portal` | one-time email link (no password) |
 | Staff | `/admin` | one-time email link, `@anthonyinsuranceservices.com` only |
 
@@ -37,7 +37,7 @@ Client ──► /portal ──► email → one-time link → their application
   - `Application Status`: e.g. "Information needed"
   - `Application Link`: opens that application in `/admin`. Staff click it from the contact.
   - `Application PDF`: `/applications/<id>/pdf`, which always opens the newest filled carrier application, including after an edit. Staff must be signed in; the PDF is never public.
-- **An opportunity** in `GHL_PIPELINE_ID`, at stage `GHL_PIPELINE_STAGE_ID`. If `GHL_STAGE_IDS` maps statuses to stages, status changes move it. Bound marks it won, declined marks it lost, withdrawn marks it abandoned.
+- **An opportunity** in `GHL_PIPELINE_ID`, at stage `GHL_PIPELINE_STAGE_ID`. Both accept GHL's ID or the name as shown in GHL, e.g. `Applications` / `Application Submitted`. **Admin → GHL setup** confirms what they resolve to. If the contact already has an open opportunity in that pipeline (e.g. from the quote request), that one is moved to the stage instead of opening a duplicate. If `GHL_STAGE_IDS` maps statuses to stages, status changes move it. Bound marks it won, declined marks it lost, withdrawn marks it abandoned.
 - **One note** with the reference, the application link, the PDF link, and a link to every application from that email address.
 
 None of the application answers go to GHL.
@@ -58,6 +58,12 @@ Received → In review → Information needed → Submitted to carrier → Quote
   - "View portal as this applicant" on an applicant's page shows exactly what they see.
   - "Switch to admin" takes you back.
 - **Applicant's copy:** the confirmation screen has a "View a copy of your application (PDF)" button. It works for one hour without signing in. After that, the applicant uses the portal.
+
+## Staff alerts
+Set `NOTIFY_EMAILS` (comma-separated) and those staff get an email for every new application, with links to the application and its PDF. This needs email (Resend) set up.
+
+## Application PDFs
+Every application gets a PDF in Anthony Insurance's format. It has a branded header, an applicant summary, numbered sections, Yes/No checkboxes, schedules as tables and the signature block. For forms without a carrier PDF, this is the one sent to the carrier.
 
 ## Carrier PDF
 Each submission fills in the carrier's own fillable application (`carrier-forms/sfic-stl-app-001.pdf`, SFIC-STL-APP-001 04/2026).
@@ -133,8 +139,8 @@ npm run db:generate             # after changing src/lib/db/schema.ts
 ```
 
 ## Adding a form
-1. Copy `src/forms/sports-facility-application.ts` and edit the sections and fields.
-2. Register the new form in `src/forms/index.ts`.
+1. Copy `src/forms/sports-facility-application.ts` and edit the sections and fields. Keep the shared contact ids (`first_name`, `last_name`, `email`, `phone`, `legal_business_name`, `mailing_*`, `requested_effective_date`) and the final `signature` field.
+2. Register the new form in `src/forms/index.ts`. `src/forms/forms.test.ts` then checks it automatically: contact fields, GHL mappings, unique ids, and that a fully answered application validates, saves and builds its PDF.
 3. Fields with `ghl: { standard: "…" }` are copied onto the GHL contact.
 
 ## Embedding the form elsewhere

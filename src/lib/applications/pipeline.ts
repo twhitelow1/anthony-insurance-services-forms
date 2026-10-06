@@ -17,7 +17,7 @@ const describe = (err: unknown) => (err instanceof Error ? err.message : String(
 export async function onApplicationSubmitted(form: FormDefinition, app: Application) {
   // The PDF comes first so its link can go onto the GHL contact.
   await Promise.allSettled([
-    makePdf(form, app).then(() => pushToGhl(form, app)),
+    makePdf(form, app).then(() => Promise.allSettled([pushToGhl(form, app), notifyStaff(form, app)])),
     sendConfirmation(form, app),
     runAiReview(form, app),
   ]);
@@ -51,12 +51,12 @@ export async function makePdf(form: FormDefinition, app: Application) {
       try {
         const doc = await createApplicationPdf(form, app);
         await addEvent(app.id, "pdf_created", "system", {
-          message: `Answer summary PDF created (${Math.round(doc.size / 1024)} KB)`,
+          message: `Application PDF created (${Math.round(doc.size / 1024)} KB)`,
           data: { documentId: doc.id, kind: doc.kind },
         });
       } catch (err) {
         console.error("[pipeline] summary PDF failed", app.reference, err);
-        await addEvent(app.id, "pdf_failed", "system", { message: `Answer summary: ${describe(err)}` }).catch(() => {});
+        await addEvent(app.id, "pdf_failed", "system", { message: `Application PDF: ${describe(err)}` }).catch(() => {});
       }
     },
   ])
@@ -84,20 +84,61 @@ export async function pushToGhl(form: FormDefinition, app: Application) {
   if (!ghlConfig()) return;
   try {
     const pdf = await mainDocument(app.id);
-    const { contactId, opportunityId, missingFields } = await syncNewApplication(form, app, pdf ? applicationPdfUrl(app) : undefined);
+    const { contactId, opportunityId, opportunityReused, missingFields } = await syncNewApplication(
+      form,
+      app,
+      pdf ? applicationPdfUrl(app) : undefined,
+    );
     await setGhlIds(app.id, { contactId, opportunityId });
     await addEvent(app.id, "ghl_synced", "system", {
       message: [
-        opportunityId ? "Contact and opportunity synced to GoHighLevel" : "Contact synced to GoHighLevel",
+        opportunityId
+          ? opportunityReused
+            ? "Contact synced to GoHighLevel; the lead's existing opportunity moved to the application stage"
+            : "Contact synced to GoHighLevel; new opportunity created"
+          : "Contact synced to GoHighLevel",
         missingFields.length ? `Create these GHL custom fields to show them on the contact: ${missingFields.join(", ")}` : null,
       ]
         .filter(Boolean)
         .join(". "),
-      data: { contactId, opportunityId, missingFields },
+      data: { contactId, opportunityId, opportunityReused, missingFields },
     });
   } catch (err) {
     console.error("[pipeline] GHL sync failed", app.reference, err);
     await addEvent(app.id, "ghl_sync_failed", "system", { message: describe(err) }).catch(() => {});
+  }
+}
+
+/** NOTIFY_EMAILS: comma-separated staff addresses told about every new application. */
+export const staffNotifyList = () =>
+  (process.env.NOTIFY_EMAILS ?? "")
+    .split(",")
+    .map((e) => e.trim())
+    .filter(Boolean);
+
+async function notifyStaff(form: FormDefinition, app: Application) {
+  const to = staffNotifyList();
+  if (!to.length) return;
+  try {
+    const pdf = await mainDocument(app.id);
+    const effective = typeof app.values.requested_effective_date === "string" ? app.values.requested_effective_date : null;
+    await sendMail({
+      to,
+      subject: `New ${form.title}: ${app.businessName ?? app.applicantName} (${app.reference})`,
+      html: emailLayout({
+        heading: `New application: ${app.businessName ?? app.applicantName}`,
+        paragraphs: [
+          `${form.title} from ${app.applicantName} (${app.applicantEmail})${app.state ? `, ${app.state}` : ""}.`,
+          ...(effective ? [`Requested effective date: ${effective}.`] : []),
+          pdf ? `The application PDF is ready: ${appUrl()}/applications/${app.id}/pdf` : "The PDF is still being created.",
+        ],
+        button: { label: "Open the application", url: `${appUrl()}/admin/applications/${app.id}` },
+      }),
+    });
+    await addEvent(app.id, "email_sent", "system", { message: `New-application alert sent to ${to.length} staff address(es)` });
+  } catch (err) {
+    console.error("[pipeline] staff alert failed", app.reference, err);
+    await addEvent(app.id, "email_failed", "system", { message: `Staff alert: ${describe(err)}` }).catch(() => {});
   }
 }
 
