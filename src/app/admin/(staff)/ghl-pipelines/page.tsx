@@ -110,7 +110,10 @@ export default async function GhlPipelinesPage() {
         Put the pipeline in <code>GHL_PIPELINE_ID</code> and the stage new applications should land in, into <code>GHL_PIPELINE_STAGE_ID</code>.
         Either the ID below or the name exactly as GHL shows it works (e.g. <code>Application Submitted</code>). To move opportunities when the
         status changes, set <code>GHL_STAGE_IDS</code> as JSON with these keys: {STATUS_KEYS.map((k) => `${k} (${STATUSES[k].label})`).join(", ")},
-        e.g. <code>{`{"quoted":"Quote Sent","bound":"Won"}`}</code>.
+        e.g. <code>{`{"quoted":"Quote Sent","bound":"Won"}`}</code>. To take leads out of your lead pipeline when they apply,
+        set <code>GHL_LEAD_PIPELINE_ID</code> (and optionally <code>GHL_LEAD_STAGE_ID</code>, e.g. the booked-call stage). To store the
+        reference, link and PDF on each opportunity, create opportunity custom fields named Application Reference, Application Status,
+        Application Link and Application PDF.
       </p>
       <dl className="callout mb-6 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
         <dt className="font-medium">GHL_API_TOKEN</dt>
@@ -121,13 +124,30 @@ export default async function GhlPipelinesPage() {
         <dd>{process.env.GHL_PIPELINE_ID ? <code>{process.env.GHL_PIPELINE_ID}</code> : "not set"}</dd>
         <dt className="font-medium">GHL_PIPELINE_STAGE_ID</dt>
         <dd>{process.env.GHL_PIPELINE_STAGE_ID ? <code>{process.env.GHL_PIPELINE_STAGE_ID}</code> : "not set"}</dd>
+        <dt className="font-medium">GHL_LEAD_PIPELINE_ID</dt>
+        <dd>{process.env.GHL_LEAD_PIPELINE_ID ? <code>{process.env.GHL_LEAD_PIPELINE_ID}</code> : "not set (leads aren't moved)"}</dd>
+        <dt className="font-medium">GHL_LEAD_STAGE_ID</dt>
+        <dd>{process.env.GHL_LEAD_STAGE_ID ? <code>{process.env.GHL_LEAD_STAGE_ID}</code> : "not set (any stage)"}</dd>
         <dt className="font-medium">GHL answered</dt>
         <dd>{!ghlConfig() ? "not called" : errorStatus !== null ? "with an error (below)" : `${pipelines.length} pipeline${pipelines.length === 1 ? "" : "s"}`}</dd>
       </dl>
       {configured && (
         <p className="callout mb-6 text-sm" role="status">
           Connected: new applications go to <strong>{configured.pipelineName}</strong>, stage{" "}
-          <strong>{pipelines.flatMap((p) => p.stages ?? []).find((s) => s.id === configured.initialStage)?.name}</strong>.
+          <strong>{pipelines.flatMap((p) => p.stages ?? []).find((s) => s.id === configured.initialStage)?.name}</strong>, each
+          application as its own opportunity.
+          {configured.lead && (
+            <>
+              {" "}A lead&apos;s open opportunity in <strong>{configured.lead.pipelineName}</strong>
+              {configured.lead.stageId && (
+                <>
+                  {" "}(stage{" "}
+                  <strong>{pipelines.flatMap((p) => p.stages ?? []).find((s) => s.id === configured.lead!.stageId)?.name}</strong>)
+                </>
+              )}{" "}
+              is moved over when they apply.
+            </>
+          )}
         </p>
       )}
       {configError && (

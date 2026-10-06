@@ -9,8 +9,11 @@ import {
   createApplication,
   deleteApplication,
   getApplication,
+  getApplicant,
   getEvents,
+  linkApplicantGhl,
   listApplicants,
+  unlinkedApplicantEmails,
   searchApplications,
   updateAnswers,
 } from "./repo";
@@ -101,5 +104,23 @@ describe("OPEN_ACCESS testing switch", () => {
         vi.unstubAllEnvs();
       }
     }
+  });
+});
+
+describe("applicant ↔ GHL contact link", () => {
+  it("saves one GHL contact per email and shows it on the applicants list", async () => {
+    const email = `ghl-${Date.now()}@example.com`;
+    await createApplication(form, answers({ email }), {});
+    await createApplication(form, answers({ email: email.toUpperCase() }), {});
+    expect(await unlinkedApplicantEmails(500)).toContain(email);
+
+    await linkApplicantGhl(email.toUpperCase(), "contact123");
+    expect((await getApplicant(email))?.ghlContactId).toBe("contact123");
+    const [row] = await listApplicants({ q: email });
+    expect(row).toMatchObject({ email, applications: 2, ghlContactId: "contact123" });
+    expect(await unlinkedApplicantEmails(500)).not.toContain(email);
+
+    await linkApplicantGhl(email, null);
+    expect((await getApplicant(email))?.ghlContactId).toBeNull();
   });
 });

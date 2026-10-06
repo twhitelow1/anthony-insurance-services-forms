@@ -10,8 +10,11 @@ import {
   addTags,
   createOpportunity,
   findOpenOpportunities,
+  getContact,
+  GhlError,
   listPipelines,
   type GhlPipeline,
+  type GhlOpportunity,
   listCustomFields,
   updateOpportunity,
   removeTags,
@@ -34,10 +37,17 @@ export const PORTAL_FIELDS = {
 
 /**
  * Opportunity pipeline. GHL_PIPELINE_ID + GHL_PIPELINE_STAGE_ID (the stage new
- * applications land in) turn opportunities on. GHL_STAGE_IDS optionally maps
- * portal statuses to stages, e.g. {"in_review":"<stage>","quoted":"<stage>"},
- * so a status change moves the opportunity. Each value may be GHL's ID or the
- * pipeline/stage name as shown in GHL (see resolvePipeline).
+ * applications land in) turn opportunities on: every application gets its own
+ * opportunity there. GHL_STAGE_IDS optionally maps portal statuses to stages,
+ * e.g. {"in_review":"<stage>","quoted":"<stage>"}, so a status change moves the
+ * opportunity.
+ *
+ * GHL_LEAD_PIPELINE_ID (optional, plus GHL_LEAD_STAGE_ID to narrow it to one
+ * stage) is where leads wait before applying. When an application lands, the
+ * lead's open opportunity there is moved into the applications pipeline and
+ * becomes that application's opportunity, so the lead leaves the lead pipeline.
+ *
+ * Each value may be GHL's ID or the pipeline/stage name as shown in GHL (see resolvePipeline).
  */
 export function pipelineConfig() {
   const pipelineId = process.env.GHL_PIPELINE_ID;
@@ -49,7 +59,9 @@ export function pipelineConfig() {
   } catch {
     console.warn("[ghl] GHL_STAGE_IDS is not valid JSON — ignoring");
   }
-  return { pipelineId, initialStage, stages };
+  const leadPipeline = process.env.GHL_LEAD_PIPELINE_ID?.trim() || null;
+  const leadStage = process.env.GHL_LEAD_STAGE_ID?.trim() || null;
+  return { pipelineId, initialStage, stages, leadPipeline, leadStage };
 }
 
 /** True when `value` names `item` by ID or by name (ignoring case, spaces and punctuation). */
@@ -74,13 +86,14 @@ export async function resolvePipeline() {
   const cfg = pipelineConfig();
   if (!cfg) return null;
   const pipelines = await cachedPipelines();
-  const pipeline = pipelines.find((p) => matches(p, cfg.pipelineId));
-  if (!pipeline) {
-    throw new Error(
-      `GHL_PIPELINE_ID "${cfg.pipelineId}" doesn't match any pipeline. Available: ${pipelines.map((p) => p.name).join(", ") || "none"}`,
-    );
-  }
-  const stageId = (value: string, setting: string) => {
+  const findPipeline = (value: string, setting: string) => {
+    const found = pipelines.find((p) => matches(p, value));
+    if (!found) {
+      throw new Error(`${setting} "${value}" doesn't match any pipeline. Available: ${pipelines.map((p) => p.name).join(", ") || "none"}`);
+    }
+    return found;
+  };
+  const findStage = (pipeline: GhlPipeline, value: string, setting: string) => {
     const stage = (pipeline.stages ?? []).find((s) => matches(s, value));
     if (!stage) {
       throw new Error(
@@ -88,6 +101,18 @@ export async function resolvePipeline() {
       );
     }
     return stage.id;
+  };
+  const pipeline = findPipeline(cfg.pipelineId, "GHL_PIPELINE_ID");
+  const leadPipeline = cfg.leadPipeline ? findPipeline(cfg.leadPipeline, "GHL_LEAD_PIPELINE_ID") : null;
+  const lead = leadPipeline
+    ? {
+        pipelineId: leadPipeline.id,
+        pipelineName: leadPipeline.name,
+        stageId: cfg.leadStage ? findStage(leadPipeline, cfg.leadStage, "GHL_LEAD_STAGE_ID") : null,
+      }
+    : null;
+  const stageId = (value: string, setting: string) => {
+    return findStage(pipeline, value, setting);
   };
   const stages: Partial<Record<ApplicationStatus, string>> = {};
   for (const [status, value] of Object.entries(cfg.stages)) {
@@ -98,6 +123,7 @@ export async function resolvePipeline() {
     pipelineName: pipeline.name,
     initialStage: stageId(cfg.initialStage, "GHL_PIPELINE_STAGE_ID"),
     stages,
+    lead,
   };
 }
 
@@ -151,27 +177,63 @@ export function portalCustomFields(
 }
 
 /**
+ * The applicant's GHL contact, created or updated. A contact ID saved from an
+ * earlier sync wins, so later applications land on the same contact even if
+ * staff edited it in GHL; otherwise GHL matches on email (upsert).
+ */
+async function syncContact(
+  form: FormDefinition,
+  app: Application,
+  customFields: { id: string; field_value: string }[],
+  savedId?: string | null,
+): Promise<{ contactId: string; matchedBy: "saved_id" | "email" }> {
+  const fields = standardContactFields(form, app.values);
+  const tags = [...form.tags, statusTag(app.status)];
+  if (savedId) {
+    try {
+      // Email is left alone: it's what links them, and staff may have changed it in GHL on purpose.
+      const { email: _email, ...rest } = fields;
+      void _email;
+      await updateContact(savedId, { ...rest, customFields });
+      await addTags(savedId, tags);
+      return { contactId: savedId, matchedBy: "saved_id" };
+    } catch (err) {
+      // Deleted or merged away in GHL → fall back to matching on email. Anything else is a real error.
+      const gone = err instanceof GhlError && (err.status === 400 || err.status === 404) && !(await getContact(savedId));
+      if (!gone) throw err;
+    }
+  }
+  const { contact } = await upsertContact({ ...fields, source: form.source, tags, customFields });
+  return { contactId: contact.id, matchedBy: "email" };
+}
+
+/**
  * New submission → create/update the contact, tag it, link the application and
- * its PDF, open an opportunity (if a pipeline is configured), and leave a short note.
+ * its PDF, open or move an opportunity (if a pipeline is configured), and leave a short note.
  */
 export async function syncNewApplication(
   form: FormDefinition,
   app: Application,
   pdfUrl?: string,
-): Promise<{ contactId: string; opportunityId?: string; opportunityReused?: boolean; missingFields: string[] }> {
+  /** GHL contact ID saved for this applicant's email (applicants table), if any. */
+  savedContactId?: string | null,
+): Promise<{
+  contactId: string;
+  matchedBy: "saved_id" | "email";
+  opportunityId?: string;
+  /** True when the lead's opportunity was moved over from the lead pipeline. */
+  movedFromLead?: boolean;
+  missingFields: string[];
+  missingOpportunityFields?: string[];
+}> {
   const fields = await listCustomFields();
   const custom = portalCustomFields(app, fields, pdfUrl);
   const missingFields = Object.values(PORTAL_FIELDS).filter((n) => !findField(fields, n));
 
-  const { contact } = await upsertContact({
-    ...standardContactFields(form, app.values),
-    source: form.source,
-    tags: [...form.tags, statusTag(app.status)],
-    customFields: custom,
-  });
+  const { contactId, matchedBy } = await syncContact(form, app, custom, savedContactId);
 
   await addContactNote(
-    contact.id,
+    contactId,
     [
       `📋 New ${form.title} — ${app.reference}`,
       app.businessName ? `Business: ${app.businessName}` : null,
@@ -184,32 +246,42 @@ export async function syncNewApplication(
   );
 
   let opportunityId: string | undefined;
-  let opportunityReused = false;
+  let movedFromLead = false;
+  let missingOpportunityFields: string[] = [];
   const pipe = await resolvePipeline();
   if (pipe && !app.ghlOpportunityId) {
-    const stage = pipe.stages[app.status] ?? pipe.initialStage;
-    // The lead usually already has an open opportunity (from the quote request):
-    // move it to the "application submitted" stage instead of opening a duplicate.
-    const [existing] = await findOpenOpportunities(contact.id, pipe.pipelineId).catch((err) => {
-      console.warn("[ghl] opportunity search failed; creating a new one", err);
-      return [];
+    // Every application is its own opportunity, carrying its reference, link and PDF.
+    const oppFields = await listCustomFields("opportunity").catch((err) => {
+      console.warn("[ghl] couldn't list opportunity custom fields", err);
+      return [] as GhlCustomField[];
     });
-    if (existing) {
-      await updateOpportunity(existing.id, { pipelineStageId: stage });
-      opportunityId = existing.id;
-      opportunityReused = true;
-    } else {
-      const { opportunity } = await createOpportunity({
-        pipelineId: pipe.pipelineId,
-        pipelineStageId: stage,
-        name: `${app.businessName ?? app.applicantName} — ${form.title} (${app.reference})`,
-        contactId: contact.id,
-        source: form.source,
+    missingOpportunityFields = Object.values(PORTAL_FIELDS).filter((n) => !findField(oppFields, n));
+    const opp = {
+      pipelineId: pipe.pipelineId,
+      pipelineStageId: pipe.stages[app.status] ?? pipe.initialStage,
+      name: `${app.businessName ?? app.applicantName} — ${form.title} (${app.reference})`,
+      customFields: portalCustomFields(app, oppFields, pdfUrl),
+    };
+    // A lead waiting in the lead pipeline is moved over: its opportunity becomes this
+    // application's, so it leaves the lead pipeline. Later applications get new ones.
+    let lead: GhlOpportunity | undefined;
+    if (pipe.lead) {
+      const open = await findOpenOpportunities(contactId, pipe.lead.pipelineId).catch((err) => {
+        console.warn("[ghl] lead opportunity search failed", err);
+        return [] as GhlOpportunity[];
       });
+      lead = open.find((o) => !pipe.lead!.stageId || o.pipelineStageId === pipe.lead!.stageId);
+    }
+    if (lead) {
+      await updateOpportunity(lead.id, opp);
+      opportunityId = lead.id;
+      movedFromLead = true;
+    } else {
+      const { opportunity } = await createOpportunity({ ...opp, contactId, source: form.source });
       opportunityId = opportunity.id;
     }
   }
-  return { contactId: contact.id, opportunityId, opportunityReused, missingFields };
+  return { contactId, matchedBy, opportunityId, movedFromLead, missingFields, missingOpportunityFields };
 }
 
 /** Status changed in the portal → mirror it on the contact so GHL workflows can react. */
@@ -224,8 +296,12 @@ export async function syncStatus(app: Application, previous: ApplicationStatus) 
   if (pipe && app.ghlOpportunityId) {
     const stage = pipe.stages[app.status];
     const status = OPP_STATUS[app.status] ?? "open";
-    if (stage || OPP_STATUS[app.status] || OPP_STATUS[previous]) {
-      await updateOpportunity(app.ghlOpportunityId, { ...(stage ? { pipelineStageId: stage } : {}), status });
-    }
+    const oppFields = await listCustomFields("opportunity").catch(() => [] as GhlCustomField[]);
+    const statusField = findField(oppFields, PORTAL_FIELDS.status);
+    await updateOpportunity(app.ghlOpportunityId, {
+      ...(stage ? { pipelineStageId: stage } : {}),
+      ...(stage || OPP_STATUS[app.status] || OPP_STATUS[previous] ? { status } : {}),
+      ...(statusField ? { customFields: [{ id: statusField.id, field_value: STATUSES[app.status].label }] } : {}),
+    });
   }
 }

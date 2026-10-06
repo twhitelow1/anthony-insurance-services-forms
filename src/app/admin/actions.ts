@@ -5,7 +5,16 @@ import { redirect } from "next/navigation";
 import { after } from "next/server";
 import { getForm } from "@/forms";
 import { getSession, requireStaff, setPortalViewAs } from "@/lib/auth/session";
-import { addStaffNote, deleteApplication, getApplication, normalizeEmail, setStatus } from "@/lib/applications/repo";
+import {
+  addStaffNote,
+  deleteApplication,
+  getApplication,
+  linkApplicantGhl,
+  normalizeEmail,
+  setStatus,
+  unlinkedApplicantEmails,
+} from "@/lib/applications/repo";
+import { findContactByEmail, getContact, ghlConfig } from "@/lib/ghl/client";
 import { makePdf, onStatusChanged, pushToGhl, runAiReview } from "@/lib/applications/pipeline";
 import { aiClient } from "@/lib/ai/client";
 import { type AssistantReply, type ChatTurn, askAssistant } from "@/lib/ai/assistant";
@@ -107,4 +116,73 @@ export async function deleteApplicationAction(formData: FormData) {
   console.info(`[admin] ${staff.email} deleted application ${app.reference} (${app.applicantEmail})`);
   revalidatePath("/admin");
   redirect(`/admin?deleted=${encodeURIComponent(app.reference)}`);
+}
+
+const applicantHref = (email: string, msg: string) =>
+  `/admin/applicants/${encodeURIComponent(email)}?ghl=${encodeURIComponent(msg)}`;
+
+/**
+ * Link an applicant to their GHL contact: the contact ID staff pasted, or else
+ * GHL's contact with the same email. Later syncs use the saved ID.
+ */
+export async function linkGhlContactAction(formData: FormData) {
+  await requireStaff();
+  const email = normalizeEmail(String(formData.get("email") ?? ""));
+  const pasted = String(formData.get("contactId") ?? "").trim();
+  if (!email) throw new Error("Missing email");
+  if (!ghlConfig()) redirect(applicantHref(email, "GHL isn't connected yet (GHL_API_TOKEN / GHL_LOCATION_ID)."));
+
+  // Accept a full GHL contact URL as well as a bare ID.
+  const id = pasted.match(/contacts\/detail\/([A-Za-z0-9]+)/)?.[1] ?? pasted;
+  if (id && !/^[A-Za-z0-9]{6,64}$/.test(id)) redirect(applicantHref(email, `"${id.slice(0, 80)}" isn't a GHL contact ID.`));
+
+  let msg: string;
+  try {
+    const contact = id ? await getContact(id) : await findContactByEmail(email);
+    if (contact) {
+      await linkApplicantGhl(email, contact.id);
+      msg = `Linked to GHL contact ${[contact.firstName, contact.lastName].filter(Boolean).join(" ") || contact.email || contact.id}.`;
+    } else {
+      msg = id ? `No GHL contact with ID ${id}.` : `No GHL contact has the email ${email}. It will be created on the next sync.`;
+    }
+  } catch (err) {
+    msg = `GHL lookup failed: ${err instanceof Error ? err.message : String(err)}`;
+  }
+  revalidatePath("/admin/applicants");
+  redirect(applicantHref(email, msg));
+}
+
+export async function unlinkGhlContactAction(formData: FormData) {
+  await requireStaff();
+  const email = normalizeEmail(String(formData.get("email") ?? ""));
+  await linkApplicantGhl(email, null);
+  revalidatePath("/admin/applicants");
+  redirect(applicantHref(email, "Unlinked. The next sync will match the GHL contact by email."));
+}
+
+/** Look up every not-yet-linked applicant in GHL by email (50 per click). */
+export async function linkAllGhlAction() {
+  await requireStaff();
+  if (!ghlConfig()) redirect(`/admin/applicants?ghl=${encodeURIComponent("GHL isn't connected yet.")}`);
+  const emails = await unlinkedApplicantEmails(50);
+  let linked = 0;
+  let missing = 0;
+  let failed = "";
+  for (const email of emails) {
+    try {
+      const contact = await findContactByEmail(email);
+      if (contact) {
+        await linkApplicantGhl(email, contact.id);
+        linked++;
+      } else missing++;
+    } catch (err) {
+      failed = err instanceof Error ? err.message : String(err);
+      break;
+    }
+  }
+  const msg = failed
+    ? `Stopped after ${linked} linked: ${failed}`
+    : `Linked ${linked} applicant${linked === 1 ? "" : "s"} to GHL.${missing ? ` ${missing} have no GHL contact yet.` : ""}`;
+  revalidatePath("/admin/applicants");
+  redirect(`/admin/applicants?ghl=${encodeURIComponent(msg)}`);
 }

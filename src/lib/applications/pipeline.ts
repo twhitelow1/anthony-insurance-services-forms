@@ -7,7 +7,7 @@ import { emailLayout, sendMail } from "@/lib/mail";
 import { aiClient } from "@/lib/ai/client";
 import { reviewApplication } from "@/lib/ai/review";
 import { applicationPdfUrl, createApplicationPdf, createCarrierPdf, mainDocument } from "./documents";
-import { addEvent, saveAiReview, setGhlIds } from "./repo";
+import { addEvent, getApplicant, linkApplicantGhl, saveAiReview, setGhlIds } from "./repo";
 import { STATUSES, type ApplicationStatus } from "./status";
 
 const appUrl = () => (process.env.APP_URL ?? "http://localhost:3000").replace(/\/$/, "");
@@ -84,24 +84,28 @@ export async function pushToGhl(form: FormDefinition, app: Application) {
   if (!ghlConfig()) return;
   try {
     const pdf = await mainDocument(app.id);
-    const { contactId, opportunityId, opportunityReused, missingFields } = await syncNewApplication(
-      form,
-      app,
-      pdf ? applicationPdfUrl(app) : undefined,
-    );
-    await setGhlIds(app.id, { contactId, opportunityId });
+    // Same email → same GHL contact: use the contact ID saved from earlier syncs.
+    const saved = await getApplicant(app.applicantEmail);
+    const r = await syncNewApplication(form, app, pdf ? applicationPdfUrl(app) : undefined, saved?.ghlContactId);
+    await setGhlIds(app.id, { contactId: r.contactId, opportunityId: r.opportunityId });
+    await linkApplicantGhl(app.applicantEmail, r.contactId);
+    const missing = [
+      r.missingFields.length ? `contact fields: ${r.missingFields.join(", ")}` : null,
+      r.missingOpportunityFields?.length ? `opportunity fields: ${r.missingOpportunityFields.join(", ")}` : null,
+    ].filter(Boolean);
     await addEvent(app.id, "ghl_synced", "system", {
-      message: [
-        opportunityId
-          ? opportunityReused
-            ? "Contact synced to GoHighLevel; the lead's existing opportunity moved to the application stage"
-            : "Contact synced to GoHighLevel; new opportunity created"
-          : "Contact synced to GoHighLevel",
-        missingFields.length ? `Create these GHL custom fields to show them on the contact: ${missingFields.join(", ")}` : null,
+      message: `Synced to GoHighLevel: ${[
+        r.matchedBy === "saved_id" ? "matched the applicant's saved GHL contact" : "matched the GHL contact by email",
+        r.opportunityId
+          ? r.movedFromLead
+            ? "moved the lead's opportunity from the lead pipeline into the applications pipeline"
+            : "created this application's opportunity"
+          : null,
+        missing.length ? `create these GHL custom fields to fill them in: ${missing.join("; ")}` : null,
       ]
         .filter(Boolean)
-        .join(". "),
-      data: { contactId, opportunityId, opportunityReused, missingFields },
+        .join("; ")}`,
+      data: { ...r },
     });
   } catch (err) {
     console.error("[pipeline] GHL sync failed", app.reference, err);
