@@ -3,12 +3,12 @@ import { getForm } from "@/forms";
 import { getSession } from "@/lib/auth/session";
 import { addEvent, getApplication } from "@/lib/applications/repo";
 import { buildApplicationPdf } from "@/lib/pdf/summary";
-import { latestDocument } from "@/lib/applications/documents";
+import { mainDocument } from "@/lib/applications/documents";
 import { buildEml } from "@/lib/mail/eml";
 import { emailLayout, subjectFor } from "@/lib/mail";
 
 /**
- * GET ?format=eml (default) → an Outlook draft to the carrier with the application PDF attached.
+ * GET ?format=eml (default) → an Outlook draft to the carrier with the filled carrier application attached.
  * GET ?format=pdf           → just the PDF.
  * Staff only.
  */
@@ -21,15 +21,15 @@ export async function GET(req: NextRequest, ctx: RouteContext<"/api/admin/applic
   const form = app && getForm(app.formSlug);
   if (!app || !form) return new Response("Not found", { status: 404 });
 
-  // Prefer the stored PDF (what the GHL link and the client see); build one if none exists yet.
-  const stored = await latestDocument(app.id);
+  // The filled carrier application (what the GHL link and the client see); else the summary; else build one.
+  const stored = await mainDocument(app.id);
   const pdf = stored ? new Uint8Array(stored.content) : await buildApplicationPdf(form, app);
   const base = `${app.reference} ${app.businessName ?? app.applicantName}`.replace(/[^\w .&-]+/g, "").trim();
   const headers = { "Cache-Control": "no-store, private", "X-Content-Type-Options": "nosniff" };
 
   if (req.nextUrl.searchParams.get("format") === "pdf") {
     return new Response(Buffer.from(pdf), {
-      headers: { ...headers, "Content-Type": "application/pdf", "Content-Disposition": `attachment; filename="${base}.pdf"` },
+      headers: { ...headers, "Content-Type": "application/pdf", "Content-Disposition": `attachment; filename="${stored?.filename ?? `${base}.pdf`}"` },
     });
   }
 
@@ -46,7 +46,7 @@ export async function GET(req: NextRequest, ctx: RouteContext<"/api/admin/applic
         "Please let us know if you need anything else to quote.",
       ],
     }),
-    attachments: [{ filename: `${base}.pdf`, contentType: "application/pdf", content: pdf }],
+    attachments: [{ filename: stored?.filename ?? `${base}.pdf`, contentType: "application/pdf", content: pdf }],
   });
 
   await addEvent(app.id, "carrier_email_prepared", `staff:${session.email}`, {

@@ -99,7 +99,7 @@ export const applicationDocuments = pgTable(
     applicationId: uuid("application_id")
       .notNull()
       .references(() => applications.id, { onDelete: "cascade" }),
-    /** "application_pdf" now; "carrier_form" once the carrier PDF is mapped. */
+    /** "carrier_form" (the carrier's application, filled) or "application_pdf" (answer summary). */
     kind: text("kind").notNull(),
     filename: text("filename").notNull(),
     contentType: text("content_type").notNull(),

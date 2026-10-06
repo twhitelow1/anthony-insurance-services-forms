@@ -4,6 +4,7 @@ import { getDb, schema } from "@/lib/db";
 import type { Application, ApplicationDocument } from "@/lib/db/schema";
 import type { FormDefinition } from "@/lib/forms/types";
 import { buildApplicationPdf } from "@/lib/pdf/summary";
+import { buildCarrierPdf, carrierFormFor } from "@/lib/pdf/carrier";
 
 const { applicationDocuments } = schema;
 
@@ -13,22 +14,38 @@ export const documentUrl = (doc: Pick<ApplicationDocument, "id">) =>
 const fileBase = (app: Application) =>
   `${app.reference} ${app.businessName ?? app.applicantName}`.replace(/[^\w .&-]+/g, "").trim();
 
-/** Generate the application PDF from the stored answers and save it. */
-export async function createApplicationPdf(form: FormDefinition, app: Application): Promise<ApplicationDocument> {
-  const bytes = Buffer.from(await buildApplicationPdf(form, app));
+export type DocumentKind = "carrier_form" | "application_pdf";
+
+export const DOCUMENT_LABELS: Record<string, string> = {
+  carrier_form: "Carrier application (filled)",
+  application_pdf: "Answer summary",
+};
+
+async function saveDocument(app: Application, kind: DocumentKind, filename: string, data: Uint8Array) {
+  const bytes = Buffer.from(data);
   const db = await getDb();
   const [doc] = await db
     .insert(applicationDocuments)
-    .values({
-      applicationId: app.id,
-      kind: "application_pdf",
-      filename: `${fileBase(app)}.pdf`,
-      contentType: "application/pdf",
-      content: bytes,
-      size: bytes.length,
-    })
+    .values({ applicationId: app.id, kind, filename, contentType: "application/pdf", content: bytes, size: bytes.length })
     .returning();
   return doc;
+}
+
+/** Generate the summary PDF (every answer, in the web form's order) and save it. */
+export async function createApplicationPdf(form: FormDefinition, app: Application): Promise<ApplicationDocument> {
+  return saveDocument(app, "application_pdf", `${fileBase(app)} - answers.pdf`, await buildApplicationPdf(form, app));
+}
+
+/**
+ * Fill the carrier's own application from the answers and save it.
+ * Returns undefined when this form has no carrier PDF mapped.
+ */
+export async function createCarrierPdf(app: Application) {
+  const spec = carrierFormFor(app.formSlug);
+  if (!spec) return undefined;
+  const { bytes, unknownFields, addendumCount } = await buildCarrierPdf(spec, app);
+  const doc = await saveDocument(app, "carrier_form", `${fileBase(app)} - carrier application.pdf`, bytes);
+  return { doc, unknownFields, addendumCount };
 }
 
 /** Metadata only (no file bytes), newest first. */
@@ -54,7 +71,7 @@ export async function getDocument(id: string): Promise<ApplicationDocument | und
   return doc;
 }
 
-export async function latestDocument(applicationId: string, kind = "application_pdf"): Promise<ApplicationDocument | undefined> {
+export async function latestDocument(applicationId: string, kind: DocumentKind = "application_pdf"): Promise<ApplicationDocument | undefined> {
   const db = await getDb();
   const [doc] = await db
     .select()
@@ -63,4 +80,9 @@ export async function latestDocument(applicationId: string, kind = "application_
     .orderBy(desc(applicationDocuments.createdAt))
     .limit(1);
   return doc;
+}
+
+/** The PDF to share: the filled carrier application if there is one, else the summary. */
+export async function mainDocument(applicationId: string) {
+  return (await latestDocument(applicationId, "carrier_form")) ?? (await latestDocument(applicationId, "application_pdf"));
 }

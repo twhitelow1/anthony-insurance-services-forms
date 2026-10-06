@@ -6,7 +6,7 @@ import { syncNewApplication, syncStatus } from "@/lib/ghl/sync";
 import { emailLayout, sendMail } from "@/lib/mail";
 import { aiClient } from "@/lib/ai/client";
 import { reviewApplication } from "@/lib/ai/review";
-import { createApplicationPdf, documentUrl, latestDocument } from "./documents";
+import { createApplicationPdf, createCarrierPdf, documentUrl, mainDocument } from "./documents";
 import { addEvent, saveAiReview, setGhlIds } from "./repo";
 import { STATUSES, type ApplicationStatus } from "./status";
 
@@ -23,19 +23,42 @@ export async function onApplicationSubmitted(form: FormDefinition, app: Applicat
   ]);
 }
 
-/** Generate and store the application PDF. Never throws. */
+/** Fill the carrier's application and create the answer summary, then store both. Never throws. */
 export async function makePdf(form: FormDefinition, app: Application) {
-  try {
-    const doc = await createApplicationPdf(form, app);
-    await addEvent(app.id, "pdf_created", "system", {
-      message: `Application PDF created (${Math.round(doc.size / 1024)} KB)`,
-      data: { documentId: doc.id },
-    });
-    return doc;
-  } catch (err) {
-    console.error("[pipeline] PDF generation failed", app.reference, err);
-    await addEvent(app.id, "pdf_failed", "system", { message: describe(err) }).catch(() => {});
-  }
+  await Promise.allSettled([
+    (async () => {
+      try {
+        const result = await createCarrierPdf(app);
+        if (!result) return;
+        const { doc, unknownFields, addendumCount } = result;
+        await addEvent(app.id, "pdf_created", "system", {
+          message: [
+            `Carrier application filled (${Math.round(doc.size / 1024)} KB)`,
+            addendumCount ? `${addendumCount} item(s) on the addendum page` : null,
+            unknownFields.length ? `Not on the carrier PDF: ${unknownFields.join(", ")}` : null,
+          ]
+            .filter(Boolean)
+            .join(". "),
+          data: { documentId: doc.id, kind: doc.kind, unknownFields },
+        });
+      } catch (err) {
+        console.error("[pipeline] carrier PDF failed", app.reference, err);
+        await addEvent(app.id, "pdf_failed", "system", { message: `Carrier application: ${describe(err)}` }).catch(() => {});
+      }
+    })(),
+    (async () => {
+      try {
+        const doc = await createApplicationPdf(form, app);
+        await addEvent(app.id, "pdf_created", "system", {
+          message: `Answer summary PDF created (${Math.round(doc.size / 1024)} KB)`,
+          data: { documentId: doc.id, kind: doc.kind },
+        });
+      } catch (err) {
+        console.error("[pipeline] summary PDF failed", app.reference, err);
+        await addEvent(app.id, "pdf_failed", "system", { message: `Answer summary: ${describe(err)}` }).catch(() => {});
+      }
+    })(),
+  ]);
 }
 
 /** Claude pre-review for the agent. Skipped when no ANTHROPIC_API_KEY is set. */
@@ -58,7 +81,7 @@ export async function runAiReview(form: FormDefinition, app: Application) {
 export async function pushToGhl(form: FormDefinition, app: Application) {
   if (!ghlConfig()) return;
   try {
-    const pdf = await latestDocument(app.id);
+    const pdf = await mainDocument(app.id);
     const { contactId, opportunityId, missingFields } = await syncNewApplication(form, app, pdf ? documentUrl(pdf) : undefined);
     await setGhlIds(app.id, { contactId, opportunityId });
     await addEvent(app.id, "ghl_synced", "system", {

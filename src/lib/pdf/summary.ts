@@ -17,7 +17,7 @@ const RULE = rgb(0.86, 0.88, 0.92);
 type Fonts = { regular: PDFFont; bold: PDFFont };
 
 /** Standard PDF fonts only cover WinAnsi; swap anything else for a close ASCII stand-in. */
-function safeText(font: PDFFont, text: string): string {
+export function safeText(font: PDFFont, text: string): string {
   const supported = new Set(font.getCharacterSet());
   return [...text.replace(/\r/g, "")]
     .map((ch) => {
@@ -28,7 +28,7 @@ function safeText(font: PDFFont, text: string): string {
     .join("");
 }
 
-function wrap(font: PDFFont, text: string, size: number, width: number): string[] {
+export function wrap(font: PDFFont, text: string, size: number, width: number): string[] {
   const lines: string[] = [];
   for (const para of safeText(font, text).split("\n")) {
     let line = "";

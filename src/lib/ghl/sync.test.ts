@@ -43,7 +43,7 @@ describe("documents", () => {
     const app = await newApp();
     const doc = await createApplicationPdf(form, app);
     expect(doc.content.subarray(0, 4).toString()).toBe("%PDF");
-    expect(doc.filename).toBe(`${app.reference} Lee Gym.pdf`);
+    expect(doc.filename).toBe(`${app.reference} Lee Gym - answers.pdf`);
     expect((await getDocument(doc.id))?.size).toBe(doc.size);
     expect((await latestDocument(app.id))?.id).toBe(doc.id);
     expect(documentUrl(doc)).toBe(`https://forms.example.com/documents/${doc.id}`);

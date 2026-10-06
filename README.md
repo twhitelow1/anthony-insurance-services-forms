@@ -15,16 +15,16 @@ Applicant ──► form ──► POST /api/forms/<slug>/submit
                          1. validate on the server
                          2. save to Postgres  ◄── system of record (nothing lost if GHL is down)
                          3. after response:
-                            ├─ create the application PDF, store it privately
+                            ├─ fill the carrier's own PDF application + make an answer summary; store both privately
                             ├─ GHL: upsert contact + tags + 4 custom fields (incl. PDF link) + opportunity
                             ├─ Resend: confirmation email to the applicant
                             └─ Claude: AI pre-review for staff (optional)
 
 Staff  ──► /admin (email sign-in link) ──► search · view · status · notes · PDF · Ask AI
                          status change ──► GHL field + tag + opportunity stage; optional client email
-                         "Prepare carrier email" ──► Outlook draft (.eml) with PDF + [encrypt] subject
+                         "Prepare carrier email" ──► Outlook draft (.eml) with the filled carrier PDF + [encrypt] subject
 
-Client ──► /portal ──► email → one-time link → their applications, status, notes, PDF download
+Client ──► /portal ──► email → one-time link → their applications, status, notes, filled application PDF
 ```
 
 ### What GoHighLevel receives
@@ -34,7 +34,7 @@ Client ──► /portal ──► email → one-time link → their application
   - `Application Reference`: e.g. `AIS-7K3Q-9XF2`
   - `Application Status`: e.g. "Information needed"
   - `Application Link`: opens that application in `/admin`. Staff click it from the contact.
-  - `Application PDF`: opens the stored PDF. Staff must be signed in; the PDF is never public.
+  - `Application PDF`: opens the filled carrier application. Staff must be signed in; the PDF is never public.
 - **An opportunity** in `GHL_PIPELINE_ID`, at stage `GHL_PIPELINE_STAGE_ID`. If `GHL_STAGE_IDS` maps statuses to stages, status changes move it. Bound marks it won, declined marks it lost, withdrawn marks it abandoned.
 - **One note** with the reference and the link.
 
@@ -42,6 +42,25 @@ None of the application answers go to GHL.
 
 ### Statuses
 Received → In review → Information needed → Submitted to carrier → Quote ready → Coverage bound / Declined / Withdrawn. The wording clients see is in `src/lib/applications/status.ts`.
+
+## Carrier PDF
+Each submission fills in the carrier's own fillable application (`carrier-forms/sfic-stl-app-001.pdf`, SFIC-STL-APP-001 04/2026).
+- **What goes on it:** every web form answer is copied onto the matching box or field. The applicant's drawn signature and the date go on the signature line.
+- **Addendum page:** answers that don't fit go on an extra last page, as the form's instructions allow. That covers:
+  - text too long for its box
+  - a third or later location
+  - non-renewal details
+  - the requested effective date
+  - any answer with no matching box on the PDF
+- **Left blank:** questions the web form doesn't ask: Form of Business, Location Name, overnight events and Title.
+- **Still editable:** the fields stay fillable, so staff can correct anything before sending.
+- **Answer summary:** a summary PDF of the answers is also created for reference.
+- **Mapping:** lives in `src/lib/pdf/carrier/sports-facility.ts`. The PDF's field names are generic (`Yes_20`), so each one sits next to its question.
+- **New version from the carrier:**
+  1. Replace the file in `carrier-forms/`.
+  2. Update the field names in the mapping.
+  3. Run `npm test`. A test fails on any field name the new PDF doesn't have.
+  4. To look at a filled sample, run `CARRIER_PDF_OUT=/tmp/filled.pdf npx vitest run src/lib/pdf/carrier`.
 
 ## AI features (Claude)
 Both features are optional. They turn on when `ANTHROPIC_API_KEY` is set.
@@ -100,5 +119,6 @@ npm run db:generate             # after changing src/lib/db/schema.ts
 ```
 
 ## Roadmap
-- **Next:** fill the carrier's own fillable PDF (5 pages, 295 fields) from the answers once the updated version arrives; it replaces the summary PDF as the carrier attachment.
+- ~~Fill the carrier's own fillable PDF.~~ Done (see Carrier PDF). Swap in the updated version when it arrives.
+- **Next:** send to the carrier automatically. Today staff download the Outlook draft and press Send.
 - ~~**Phase 3:**~~ Done. Claude pre-review and Ask AI are built (see above).
