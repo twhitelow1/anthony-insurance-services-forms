@@ -92,6 +92,15 @@ export const sportsFacilityCarrierForm: CarrierFormSpec = {
   // Page 5: signature line runs x 40–333 at 256pt from the bottom; date line x 370–572.
   signature: { page: 4, x: 44, y: 258, width: 285, height: 30 },
   date: { page: 4, x: 374, y: 260 },
+  blanks: {
+    // Every Yes/No question on this PDF is a "Yes_<n>" box followed by "No_<n+1>".
+    yesNoPair: /^Yes_(\d+)$/,
+    keepBlank: [
+      /^g\d+c\d+_\d+$/, // participant / camp table cells: empty rows stay empty
+      /^(Yes_131|No_132)$/, // "If either above is 'No', do you agree…": a default "No" would read as refusing
+      /^Title:_295$/, // the signer's title isn't asked; leave room to write it in
+    ],
+  },
 
   map(values, f) {
     // ── Section 1: Applicant information

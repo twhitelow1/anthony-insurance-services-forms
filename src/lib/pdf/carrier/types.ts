@@ -21,6 +21,13 @@ export interface CarrierFormSpec {
   /** Signature image box and date position, in PDF points from the bottom-left of the page (0-based page). */
   signature: { page: number; x: number; y: number; width: number; height: number };
   date: { page: number; x: number; y: number };
+  /**
+   * Questions the applicant never saw (hidden by an earlier answer, e.g. the
+   * trampoline follow-ups after "No trampolines") would otherwise print blank.
+   * After mapping, each Yes/No pair with neither box ticked gets "No" and each
+   * empty text box gets "N/A", except the fields listed here.
+   */
+  blanks: { yesNoPair: RegExp; keepBlank: RegExp[] };
   map(values: FormValues, fill: Filler): void;
 }
 

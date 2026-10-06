@@ -186,6 +186,46 @@ describe("carrier PDF mapping (SFIC-STL-APP-001)", () => {
     if (process.env.CARRIER_PDF_OUT) (await import("node:fs")).writeFileSync(process.env.CARRIER_PDF_OUT, bytes);
   });
 
+  it("marks skipped questions No / N/A on the PDF, but leaves the exceptions blank", async () => {
+    const app = await createApplication(
+      form,
+      pruneValues(form, {
+        ...fullAnswers(),
+        has_trampolines: "No",
+        has_pool: "No",
+        has_climbing_walls: "No",
+        aerial_offerings: [],
+        hnoa: "No",
+        liquor_liability: "No",
+      }),
+      {},
+    );
+    const { bytes, defaulted } = await buildCarrierPdf(spec, app);
+    const f = (await PDFDocument.load(bytes)).getForm();
+    const checked = (n: string) => f.getCheckBox(n).isChecked();
+    const text = (n: string) => f.getTextField(n).getText();
+
+    // Trampoline follow-ups the applicant never saw: No, not blank.
+    expect(checked("No_281") && !checked("Yes_280")).toBe(true);
+    expect(checked("No_283") && !checked("Yes_282")).toBe(true);
+    // Pool, climbing and auto follow-ups too.
+    expect(checked("No_242")).toBe(true); // diving board
+    expect(checked("No_250")).toBe(true); // climbing walls installed by a rigger
+    expect(checked("No_126")).toBe(true); // commercial auto in force
+    // Text boxes behind a "No": N/A (counts were already 0).
+    expect(text("Height_(ft):_248")).toBe("N/A");
+    expect(text("Climbing_wall_instructor__253")).toBe("N/A");
+    expect(text("Number_of_Trampolines:_279")).toBe("0");
+    expect(text("Name:_289")).toBe("N/A"); // second additional insured, not given
+    // Answered questions keep their answers.
+    expect(checked("Yes_20") && !checked("No_21")).toBe(true);
+    // Exceptions stay blank.
+    expect(checked("Yes_131") || checked("No_132")).toBe(false);
+    expect(text("Title:_295") ?? "").toBe("");
+    expect(text("g4c0_68") ?? "").toBe(""); // empty participant row
+    expect(defaulted.no).toBeGreaterThan(10);
+  });
+
   it("stores it as the application's main document", async () => {
     const app = await createApplication(form, pruneValues(form, fullAnswers()), {});
     const result = await createCarrierPdf(app);
