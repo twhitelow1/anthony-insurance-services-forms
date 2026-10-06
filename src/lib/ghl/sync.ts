@@ -9,6 +9,7 @@ import {
   addContactNote,
   addTags,
   createOpportunity,
+  findOpenOpportunities,
   listCustomFields,
   updateOpportunity,
   removeTags,
@@ -105,7 +106,7 @@ export async function syncNewApplication(
   form: FormDefinition,
   app: Application,
   pdfUrl?: string,
-): Promise<{ contactId: string; opportunityId?: string; missingFields: string[] }> {
+): Promise<{ contactId: string; opportunityId?: string; opportunityReused?: boolean; missingFields: string[] }> {
   const fields = await listCustomFields();
   const custom = portalCustomFields(app, fields, pdfUrl);
   const missingFields = Object.values(PORTAL_FIELDS).filter((n) => !findField(fields, n));
@@ -131,18 +132,32 @@ export async function syncNewApplication(
   );
 
   let opportunityId: string | undefined;
+  let opportunityReused = false;
   const pipe = pipelineConfig();
   if (pipe && !app.ghlOpportunityId) {
-    const { opportunity } = await createOpportunity({
-      pipelineId: pipe.pipelineId,
-      pipelineStageId: pipe.stages[app.status] ?? pipe.initialStage,
-      name: `${app.businessName ?? app.applicantName} — ${form.title} (${app.reference})`,
-      contactId: contact.id,
-      source: form.source,
+    const stage = pipe.stages[app.status] ?? pipe.initialStage;
+    // The lead usually already has an open opportunity (from the quote request):
+    // move it to the "application submitted" stage instead of opening a duplicate.
+    const [existing] = await findOpenOpportunities(contact.id, pipe.pipelineId).catch((err) => {
+      console.warn("[ghl] opportunity search failed; creating a new one", err);
+      return [];
     });
-    opportunityId = opportunity.id;
+    if (existing) {
+      await updateOpportunity(existing.id, { pipelineStageId: stage });
+      opportunityId = existing.id;
+      opportunityReused = true;
+    } else {
+      const { opportunity } = await createOpportunity({
+        pipelineId: pipe.pipelineId,
+        pipelineStageId: stage,
+        name: `${app.businessName ?? app.applicantName} — ${form.title} (${app.reference})`,
+        contactId: contact.id,
+        source: form.source,
+      });
+      opportunityId = opportunity.id;
+    }
   }
-  return { contactId: contact.id, opportunityId, missingFields };
+  return { contactId: contact.id, opportunityId, opportunityReused, missingFields };
 }
 
 /** Status changed in the portal → mirror it on the contact so GHL workflows can react. */

@@ -11,7 +11,7 @@ afterEach(() => {
 });
 
 /** Fake GHL API: records requests, answers the endpoints sync uses. */
-function fakeGhl() {
+function fakeGhl(existingOpportunities: { id: string; status?: string; pipelineId?: string }[] = []) {
   vi.stubEnv("GHL_API_TOKEN", "pit-test");
   vi.stubEnv("GHL_LOCATION_ID", "loc1");
   const calls: { method: string; path: string; body: Record<string, unknown> | null }[] = [];
@@ -30,6 +30,7 @@ function fakeGhl() {
       });
     if (url.pathname === "/contacts/upsert") return json({ new: true, contact: { id: "c1" } });
     if (url.pathname === "/opportunities/") return json({ opportunity: { id: "opp1" } });
+    if (url.pathname === "/opportunities/search") return json({ opportunities: existingOpportunities });
     return json({});
   });
   return calls;
@@ -58,13 +59,29 @@ describe("GHL sync with pipeline", () => {
     const app = await newApp();
 
     const res = await syncNewApplication(form, app, "https://forms.example.com/documents/abc");
-    expect(res).toEqual({ contactId: "c1", opportunityId: "opp1", missingFields: [] });
+    expect(res).toEqual({ contactId: "c1", opportunityId: "opp1", opportunityReused: false, missingFields: [] });
 
     const upsert = calls.find((c) => c.path === "/contacts/upsert")!.body!;
     expect(upsert.customFields).toContainEqual({ id: "cf3", field_value: "https://forms.example.com/documents/abc" });
     const opp = calls.find((c) => c.path === "/opportunities/")!.body!;
     expect(opp).toMatchObject({ pipelineId: "pipe1", pipelineStageId: "stage-new", contactId: "c1", status: "open", locationId: "loc1" });
     expect(String(opp.name)).toContain(app.reference);
+  });
+
+  it("moves the lead's existing open opportunity instead of creating a duplicate", async () => {
+    vi.stubEnv("GHL_PIPELINE_ID", "pipe1");
+    vi.stubEnv("GHL_PIPELINE_STAGE_ID", "stage-app-submitted");
+    const calls = fakeGhl([{ id: "lead-opp", status: "open", pipelineId: "pipe1" }]);
+    const app = await newApp();
+
+    const res = await syncNewApplication(form, app);
+    expect(res).toMatchObject({ opportunityId: "lead-opp", opportunityReused: true });
+    const search = calls.find((c) => c.path === "/opportunities/search")!;
+    expect(search).toBeTruthy();
+    expect(calls.some((c) => c.path === "/opportunities/")).toBe(false);
+    expect(calls.find((c) => c.method === "PUT" && c.path === "/opportunities/lead-opp")!.body).toEqual({
+      pipelineStageId: "stage-app-submitted",
+    });
   });
 
   it("skips the opportunity when no pipeline is configured", async () => {
