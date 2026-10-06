@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import { PDFCheckBox, PDFDocument, PDFTextField, rgb, StandardFonts } from "pdf-lib";
+import { PDFCheckBox, PDFDocument, type PDFForm, PDFTextField, rgb, StandardFonts } from "pdf-lib";
 import type { Application } from "@/lib/db/schema";
 import { safeText, wrap } from "@/lib/pdf/summary";
 import { embedSignature } from "@/lib/pdf/signature";
@@ -73,6 +73,8 @@ export async function buildCarrierPdf(spec: CarrierFormSpec, app: Application) {
   }
   if (unknownFields.length) console.warn(`[carrier-pdf] ${spec.template} has no field(s): ${unknownFields.join(", ")}`);
 
+  const defaulted = fillBlanks(form, spec.blanks);
+
   form.updateFieldAppearances(helv);
 
   // Signature and date on the signature line.
@@ -89,7 +91,33 @@ export async function buildCarrierPdf(spec: CarrierFormSpec, app: Application) {
 
   doc.setTitle(`${spec.name} — ${app.businessName ?? app.applicantName} (${app.reference})`);
   doc.setAuthor("Anthony Insurance Services");
-  return { bytes: await doc.save(), unknownFields, addendumCount: addendum.length };
+  return { bytes: await doc.save(), unknownFields, addendumCount: addendum.length, defaulted };
+}
+
+/**
+ * Skipped questions: tick "No" on every Yes/No pair left empty and write "N/A" in
+ * every empty text box, except `keepBlank`. Returns how many of each it filled.
+ */
+export function fillBlanks(form: PDFForm, { yesNoPair, keepBlank }: CarrierFormSpec["blanks"]) {
+  const kept = (name: string) => keepBlank.some((re) => re.test(name));
+  let no = 0;
+  let na = 0;
+  for (const field of form.getFields()) {
+    const name = field.getName();
+    if (kept(name)) continue;
+    const pair = name.match(yesNoPair);
+    if (pair && field instanceof PDFCheckBox) {
+      const noBox = form.getFieldMaybe(`No_${Number(pair[1]) + 1}`);
+      if (noBox instanceof PDFCheckBox && !kept(noBox.getName()) && !field.isChecked() && !noBox.isChecked()) {
+        noBox.check();
+        no++;
+      }
+    } else if (field instanceof PDFTextField && !field.getText()?.trim()) {
+      field.setText("N/A");
+      na++;
+    }
+  }
+  return { no, na };
 }
 
 function signedDate(d: Date) {

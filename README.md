@@ -68,7 +68,8 @@ Each submission fills in the carrier's own fillable application (`carrier-forms/
   - non-renewal details
   - the requested effective date
   - any answer with no matching box on the PDF
-- **Left blank:** questions the web form doesn't ask: Location Name, overnight events and Title.
+- **Skipped questions:** a question the applicant never saw, because an earlier answer hid it (e.g. the trampoline follow-ups after "No trampolines"), prints as **No** on Yes/No pairs and **N/A** in text boxes. The same applies to questions the web form doesn't ask, like Location Name or overnight events.
+- **Left blank on purpose:** empty participant and camp table rows, the signer's Title, and "If either above is 'No', do you agree to do so going forward?", where a default "No" would read as a refusal. These exceptions are listed in `blanks.keepBlank` in the mapping.
 - **Corporation:** the PDF's Form of Business has no Corporation box, so that answer goes on the addendum.
 - **Still editable:** the fields stay fillable, so staff can correct anything before sending.
 - **Answer summary:** a summary PDF of the answers is also created for reference.
