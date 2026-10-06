@@ -23,7 +23,7 @@ export type DocumentKind = "carrier_form" | "application_pdf";
 
 export const DOCUMENT_LABELS: Record<string, string> = {
   carrier_form: "Carrier application (filled)",
-  application_pdf: "Answer summary",
+  application_pdf: "Application (Anthony Insurance format)",
 };
 
 async function saveDocument(app: Application, kind: DocumentKind, filename: string, data: Uint8Array) {
@@ -36,9 +36,13 @@ async function saveDocument(app: Application, kind: DocumentKind, filename: stri
   return doc;
 }
 
-/** Generate the summary PDF (every answer, in the web form's order) and save it. */
+/**
+ * Generate the application PDF in Anthony Insurance's format (every answer, in
+ * the web form's order) and save it. For forms with no carrier PDF, this is the
+ * one sent to the carrier.
+ */
 export async function createApplicationPdf(form: FormDefinition, app: Application): Promise<ApplicationDocument> {
-  return saveDocument(app, "application_pdf", `${fileBase(app)} - answers.pdf`, await buildApplicationPdf(form, app));
+  return saveDocument(app, "application_pdf", `${fileBase(app)} - application.pdf`, await buildApplicationPdf(form, app));
 }
 
 /**

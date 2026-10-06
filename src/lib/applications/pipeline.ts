@@ -51,12 +51,12 @@ export async function makePdf(form: FormDefinition, app: Application) {
       try {
         const doc = await createApplicationPdf(form, app);
         await addEvent(app.id, "pdf_created", "system", {
-          message: `Answer summary PDF created (${Math.round(doc.size / 1024)} KB)`,
+          message: `Application PDF created (${Math.round(doc.size / 1024)} KB)`,
           data: { documentId: doc.id, kind: doc.kind },
         });
       } catch (err) {
         console.error("[pipeline] summary PDF failed", app.reference, err);
-        await addEvent(app.id, "pdf_failed", "system", { message: `Answer summary: ${describe(err)}` }).catch(() => {});
+        await addEvent(app.id, "pdf_failed", "system", { message: `Application PDF: ${describe(err)}` }).catch(() => {});
       }
     },
   ])
