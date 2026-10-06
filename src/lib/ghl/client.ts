@@ -166,7 +166,8 @@ export async function findOpenOpportunities(contactId: string, pipelineId: strin
 export interface GhlPipeline {
   id: string;
   name: string;
-  stages: { id: string; name: string }[];
+  /** GHL can omit this for an empty pipeline. */
+  stages?: { id: string; name: string }[];
 }
 
 export async function listPipelines(): Promise<GhlPipeline[]> {

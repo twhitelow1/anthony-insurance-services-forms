@@ -10,6 +10,8 @@ import {
   addTags,
   createOpportunity,
   findOpenOpportunities,
+  listPipelines,
+  type GhlPipeline,
   listCustomFields,
   updateOpportunity,
   removeTags,
@@ -33,8 +35,9 @@ export const PORTAL_FIELDS = {
 /**
  * Opportunity pipeline. GHL_PIPELINE_ID + GHL_PIPELINE_STAGE_ID (the stage new
  * applications land in) turn opportunities on. GHL_STAGE_IDS optionally maps
- * portal statuses to stages, e.g. {"in_review":"<stage id>","quoted":"<stage id>"},
- * so a status change moves the opportunity.
+ * portal statuses to stages, e.g. {"in_review":"<stage>","quoted":"<stage>"},
+ * so a status change moves the opportunity. Each value may be GHL's ID or the
+ * pipeline/stage name as shown in GHL (see resolvePipeline).
  */
 export function pipelineConfig() {
   const pipelineId = process.env.GHL_PIPELINE_ID;
@@ -47,6 +50,55 @@ export function pipelineConfig() {
     console.warn("[ghl] GHL_STAGE_IDS is not valid JSON — ignoring");
   }
   return { pipelineId, initialStage, stages };
+}
+
+/** True when `value` names `item` by ID or by name (ignoring case, spaces and punctuation). */
+const matches = (item: { id: string; name: string }, value: string) =>
+  item.id === value.trim() || normalize(item.name) === normalize(value);
+
+let pipelinesCache: { at: number; list: Promise<GhlPipeline[]> } | null = null;
+const cachedPipelines = () => {
+  if (!pipelinesCache || Date.now() - pipelinesCache.at > 10 * 60_000) {
+    pipelinesCache = { at: Date.now(), list: listPipelines() };
+    pipelinesCache.list.catch(() => (pipelinesCache = null));
+  }
+  return pipelinesCache.list;
+};
+
+/**
+ * The configured pipeline and stages as GHL IDs. Settings may hold IDs or the
+ * names shown in GHL ("Applications" / "Application Submitted"); names are
+ * looked up in the location's pipelines. Throws a readable error if one isn't found.
+ */
+export async function resolvePipeline() {
+  const cfg = pipelineConfig();
+  if (!cfg) return null;
+  const pipelines = await cachedPipelines();
+  const pipeline = pipelines.find((p) => matches(p, cfg.pipelineId));
+  if (!pipeline) {
+    throw new Error(
+      `GHL_PIPELINE_ID "${cfg.pipelineId}" doesn't match any pipeline. Available: ${pipelines.map((p) => p.name).join(", ") || "none"}`,
+    );
+  }
+  const stageId = (value: string, setting: string) => {
+    const stage = (pipeline.stages ?? []).find((s) => matches(s, value));
+    if (!stage) {
+      throw new Error(
+        `${setting} "${value}" isn't a stage of "${pipeline.name}". Stages: ${(pipeline.stages ?? []).map((s) => s.name).join(", ") || "none"}`,
+      );
+    }
+    return stage.id;
+  };
+  const stages: Partial<Record<ApplicationStatus, string>> = {};
+  for (const [status, value] of Object.entries(cfg.stages)) {
+    if (typeof value === "string" && value.trim()) stages[status as ApplicationStatus] = stageId(value, `GHL_STAGE_IDS.${status}`);
+  }
+  return {
+    pipelineId: pipeline.id,
+    pipelineName: pipeline.name,
+    initialStage: stageId(cfg.initialStage, "GHL_PIPELINE_STAGE_ID"),
+    stages,
+  };
 }
 
 /** Opportunity status for terminal portal statuses. */
@@ -133,7 +185,7 @@ export async function syncNewApplication(
 
   let opportunityId: string | undefined;
   let opportunityReused = false;
-  const pipe = pipelineConfig();
+  const pipe = await resolvePipeline();
   if (pipe && !app.ghlOpportunityId) {
     const stage = pipe.stages[app.status] ?? pipe.initialStage;
     // The lead usually already has an open opportunity (from the quote request):
@@ -168,7 +220,7 @@ export async function syncStatus(app: Application, previous: ApplicationStatus) 
   await addTags(app.ghlContactId, [statusTag(app.status)]);
   if (previous !== app.status) await removeTags(app.ghlContactId, [statusTag(previous)]);
 
-  const pipe = pipelineConfig();
+  const pipe = app.ghlOpportunityId ? await resolvePipeline() : null;
   if (pipe && app.ghlOpportunityId) {
     const stage = pipe.stages[app.status];
     const status = OPP_STATUS[app.status] ?? "open";

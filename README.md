@@ -37,7 +37,7 @@ Client ──► /portal ──► email → one-time link → their application
   - `Application Status`: e.g. "Information needed"
   - `Application Link`: opens that application in `/admin`. Staff click it from the contact.
   - `Application PDF`: `/applications/<id>/pdf`, which always opens the newest filled carrier application, including after an edit. Staff must be signed in; the PDF is never public.
-- **An opportunity** in `GHL_PIPELINE_ID`, at stage `GHL_PIPELINE_STAGE_ID`. If the contact already has an open opportunity in that pipeline (e.g. from the quote request), that one is moved to the stage instead of opening a duplicate. If `GHL_STAGE_IDS` maps statuses to stages, status changes move it. Bound marks it won, declined marks it lost, withdrawn marks it abandoned.
+- **An opportunity** in `GHL_PIPELINE_ID`, at stage `GHL_PIPELINE_STAGE_ID`. Both accept GHL's ID or the name as shown in GHL, e.g. `Applications` / `Application Submitted`. **Admin → GHL setup** confirms what they resolve to. If the contact already has an open opportunity in that pipeline (e.g. from the quote request), that one is moved to the stage instead of opening a duplicate. If `GHL_STAGE_IDS` maps statuses to stages, status changes move it. Bound marks it won, declined marks it lost, withdrawn marks it abandoned.
 - **One note** with the reference, the application link, the PDF link, and a link to every application from that email address.
 
 None of the application answers go to GHL.

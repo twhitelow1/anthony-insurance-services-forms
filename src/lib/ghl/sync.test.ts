@@ -31,6 +31,21 @@ function fakeGhl(existingOpportunities: { id: string; status?: string; pipelineI
     if (url.pathname === "/contacts/upsert") return json({ new: true, contact: { id: "c1" } });
     if (url.pathname === "/opportunities/") return json({ opportunity: { id: "opp1" } });
     if (url.pathname === "/opportunities/search") return json({ opportunities: existingOpportunities });
+    if (url.pathname === "/opportunities/pipelines")
+      return json({
+        pipelines: [
+          {
+            id: "pipe1",
+            name: "Applications",
+            stages: [
+              { id: "stage-new", name: "New Lead" },
+              { id: "stage-app-submitted", name: "Application Submitted" },
+              { id: "stage-review", name: "In Review" },
+              { id: "stage-bound", name: "Won" },
+            ],
+          },
+        ],
+      });
     return json({});
   });
   return calls;
@@ -82,6 +97,25 @@ describe("GHL sync with pipeline", () => {
     expect(calls.find((c) => c.method === "PUT" && c.path === "/opportunities/lead-opp")!.body).toEqual({
       pipelineStageId: "stage-app-submitted",
     });
+  });
+
+  it("accepts pipeline and stage names as shown in GHL, not just IDs", async () => {
+    vi.stubEnv("GHL_PIPELINE_ID", "applications");
+    vi.stubEnv("GHL_PIPELINE_STAGE_ID", "Application Submitted");
+    const calls = fakeGhl();
+    const app = await newApp();
+    await syncNewApplication(form, app);
+    expect(calls.find((c) => c.path === "/opportunities/")!.body).toMatchObject({
+      pipelineId: "pipe1",
+      pipelineStageId: "stage-app-submitted",
+    });
+  });
+
+  it("explains a stage name that doesn't exist", async () => {
+    vi.stubEnv("GHL_PIPELINE_ID", "pipe1");
+    vi.stubEnv("GHL_PIPELINE_STAGE_ID", "Submited");
+    fakeGhl();
+    await expect(syncNewApplication(form, await newApp())).rejects.toThrow(/isn't a stage of "Applications".*Application Submitted/);
   });
 
   it("skips the opportunity when no pipeline is configured", async () => {
