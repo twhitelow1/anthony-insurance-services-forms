@@ -6,7 +6,7 @@ import { createApplication } from "@/lib/applications/repo";
 import { createCarrierPdf, mainDocument } from "@/lib/applications/documents";
 import { tableCellId, tableRowCountId, type FormValues } from "@/lib/forms/types";
 import { pruneValues } from "@/lib/forms/validate";
-import { buildCarrierPdf, carrierFormFor, mapAnswers } from ".";
+import { buildCarrierPdf, carrierFormFor, mapAnswers, templatePath } from ".";
 
 const spec = carrierFormFor(form.slug)!;
 
@@ -35,6 +35,7 @@ function fullAnswers(): FormValues {
     location_3_street: "3 Third St", location_3_city: "Cedar Park", location_3_state: "TX", location_3_zip: "78613",
     legal_business_name: "Flip Zone LLC",
     dba: "Flip Zone",
+    business_entity: "LLC",
     business_type: "Gymnastics",
     business_start_year: "2015",
     business_description: "Recreational and competitive gymnastics for ages 3-18. ".repeat(4),
@@ -109,7 +110,7 @@ function fullAnswers(): FormValues {
 
 describe("carrier PDF mapping (SFIC-STL-APP-001)", () => {
   it("only uses field names the template has, with the right field types", async () => {
-    const pdf = await PDFDocument.load(readFileSync(spec.template));
+    const pdf = await PDFDocument.load(readFileSync(templatePath(spec.template)));
     const fields = new Map(pdf.getForm().getFields().map((f) => [f.getName(), f]));
     const fill = mapAnswers(spec, pruneValues(form, fullAnswers()));
     const wrong = [
@@ -133,7 +134,7 @@ describe("carrier PDF mapping (SFIC-STL-APP-001)", () => {
     expect(text("g1c2_52")).toBe("80");
     expect(text("g0c1_75")).toBe("20");
     for (const box of [
-      "No_10", "Yes_28", "Yes_32", "$2M_97", "Yes_101", "$2M_104", "$4M_106", "$300K_108", "$5K_111",
+      "No_10", "LLC_11", "Yes_28", "Yes_32", "$2M_97", "Yes_101", "$2M_104", "$4M_106", "$300K_108", "$5K_111",
       "$100K_$300K_118", "Yes_123", "No_126", "$2M_$2M_137", "$50K_153", "$50K_161", "Excess_163",
       "$250_167", "Hired_transportation_212", "Personal_vehicle(s)_214", "4'_or_less_227",
     ])
@@ -149,8 +150,15 @@ describe("carrier PDF mapping (SFIC-STL-APP-001)", () => {
   it("puts answers this PDF has no box for on the addendum instead of dropping them", () => {
     const fill = mapAnswers(
       spec,
-      pruneValues(form, { ...fullAnswers(), medical_payment_max: "$1,000", professional_liability: "No", has_pool: "No" }),
+      pruneValues(form, {
+        ...fullAnswers(),
+        medical_payment_max: "$1,000",
+        professional_liability: "No",
+        has_pool: "No",
+        business_entity: "Corporation",
+      }),
     );
+    expect(fill.addendum).toContainEqual({ label: "Form of business", value: "Corporation" });
     expect(fill.addendum).toContainEqual({ label: "Medical payments limit", value: "$1,000" });
     expect(fill.checked).toContain("N_A_141");
     expect(fill.text.get("Number_of_Swimming_Pools:_226")?.value).toBe("0");

@@ -2,6 +2,7 @@ import { PDFDocument, type PDFFont, type PDFPage, rgb, StandardFonts } from "pdf
 import { answerSections } from "@/lib/forms/flatten";
 import type { FormDefinition } from "@/lib/forms/types";
 import type { Application } from "@/lib/db/schema";
+import { embedSignature } from "@/lib/pdf/signature";
 
 /**
  * A clean, printable PDF of a submitted application (every answer + signature).
@@ -134,8 +135,8 @@ export async function buildApplicationPdf(form: FormDefinition, app: Application
     "The applicant declared that the statements in this application are true, complete and accurate, and acknowledged that signing does not bind coverage.",
     { size: 9, color: MUTED, gap: 6 },
   );
-  if (app.signature?.startsWith("data:image/png;base64,")) {
-    const png = await doc.embedPng(Buffer.from(app.signature.split(",")[1], "base64"));
+  const png = await embedSignature(doc, app.signature);
+  if (png) {
     const scale = Math.min(220 / png.width, 70 / png.height);
     w.ensure(png.height * scale + 30);
     w.y -= png.height * scale;

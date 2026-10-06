@@ -28,6 +28,7 @@ const EVENT_LABEL: Record<string, string> = {
   carrier_email_prepared: "Carrier email",
   pdf_created: "PDF",
   pdf_failed: "PDF failed",
+  answers_edited: "Answers edited",
 };
 
 export function Timeline({ events, audience }: { events: ApplicationEvent[]; audience: "staff" | "client" }) {

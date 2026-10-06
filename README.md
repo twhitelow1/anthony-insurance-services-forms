@@ -20,7 +20,9 @@ Applicant ──► form ──► POST /api/forms/<slug>/submit
                             ├─ Resend: confirmation email to the applicant
                             └─ Claude: AI pre-review for staff (optional)
 
-Staff  ──► /admin (email sign-in link) ──► search · view · status · notes · PDF · Ask AI
+Staff  ──► /admin (email sign-in link) ──► search · view · edit · delete · status · notes · PDF · Ask AI
+                         /admin/applicants ──► every applicant by email, with all their applications
+                         "Switch to user mode" ──► the client portal, as yourself or as any applicant
                          status change ──► GHL field + tag + opportunity stage; optional client email
                          "Prepare carrier email" ──► Outlook draft (.eml) with the filled carrier PDF + [encrypt] subject
 
@@ -34,14 +36,28 @@ Client ──► /portal ──► email → one-time link → their application
   - `Application Reference`: e.g. `AIS-7K3Q-9XF2`
   - `Application Status`: e.g. "Information needed"
   - `Application Link`: opens that application in `/admin`. Staff click it from the contact.
-  - `Application PDF`: opens the filled carrier application. Staff must be signed in; the PDF is never public.
+  - `Application PDF`: `/applications/<id>/pdf`, which always opens the newest filled carrier application, including after an edit. Staff must be signed in; the PDF is never public.
 - **An opportunity** in `GHL_PIPELINE_ID`, at stage `GHL_PIPELINE_STAGE_ID`. If `GHL_STAGE_IDS` maps statuses to stages, status changes move it. Bound marks it won, declined marks it lost, withdrawn marks it abandoned.
-- **One note** with the reference and the link.
+- **One note** with the reference, the application link, the PDF link, and a link to every application from that email address.
 
 None of the application answers go to GHL.
 
 ### Statuses
 Received → In review → Information needed → Submitted to carrier → Quote ready → Coverage bound / Declined / Withdrawn. The wording clients see is in `src/lib/applications/status.ts`.
+
+## Managing applications (staff)
+- **Applicants** (`/admin/applicants`): one row per email address. Open one to see all of their applications, each with its PDF.
+- **Edit answers:** the button on an application page opens the same form, already filled in, and you can jump to any section.
+  - Saving runs the same checks as the public form.
+  - The activity log records which questions changed.
+  - Both PDFs are rebuilt, and the GHL link opens the new version.
+- **Delete:** at the bottom of an application page. You type the reference to confirm.
+  - It permanently removes the application, its PDFs and its log.
+  - The GHL contact is left as it is.
+- **User mode:** "Switch to user mode" opens the client portal for your own email.
+  - "View portal as this applicant" on an applicant's page shows exactly what they see.
+  - "Switch to admin" takes you back.
+- **Applicant's copy:** the confirmation screen has a "View a copy of your application (PDF)" button. It works for one hour without signing in. After that, the applicant uses the portal.
 
 ## Carrier PDF
 Each submission fills in the carrier's own fillable application (`carrier-forms/sfic-stl-app-001.pdf`, SFIC-STL-APP-001 04/2026).
@@ -52,7 +68,8 @@ Each submission fills in the carrier's own fillable application (`carrier-forms/
   - non-renewal details
   - the requested effective date
   - any answer with no matching box on the PDF
-- **Left blank:** questions the web form doesn't ask: Form of Business, Location Name, overnight events and Title.
+- **Left blank:** questions the web form doesn't ask: Location Name, overnight events and Title.
+- **Corporation:** the PDF's Form of Business has no Corporation box, so that answer goes on the addendum.
 - **Still editable:** the fields stay fillable, so staff can correct anything before sending.
 - **Answer summary:** a summary PDF of the answers is also created for reference.
 - **Mapping:** lives in `src/lib/pdf/carrier/sports-facility.ts`. The PDF's field names are generic (`Yes_20`), so each one sits next to its question.

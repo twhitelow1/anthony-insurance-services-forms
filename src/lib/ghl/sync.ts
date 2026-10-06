@@ -15,6 +15,7 @@ import {
   updateContact,
   upsertContact,
 } from "./client";
+import { applicantPath } from "@/lib/applications/links";
 
 /**
  * GHL holds the contact (plus an opportunity), not the application. These
@@ -63,8 +64,8 @@ export function findField(fields: GhlCustomField[], name: string): GhlCustomFiel
   return fields.find((f) => normalize(f.name) === n || normalize(f.fieldKey.replace(/^contact\./, "")) === n);
 }
 
-export const adminUrl = (app: Pick<Application, "id">) =>
-  `${(process.env.APP_URL ?? "").replace(/\/$/, "")}/admin/applications/${app.id}`;
+const appBase = () => (process.env.APP_URL ?? "").replace(/\/$/, "");
+export const adminUrl = (app: Pick<Application, "id">) => `${appBase()}/admin/applications/${app.id}`;
 
 /** Standard contact fields copied from the answers (fields marked `ghl.standard`). */
 export function standardContactFields(form: FormDefinition, values: FormValues): UpsertContactInput {
@@ -123,6 +124,7 @@ export async function syncNewApplication(
       app.businessName ? `Business: ${app.businessName}` : null,
       `Open the full application: ${adminUrl(app)}`,
       pdfUrl ? `Application PDF (staff sign-in required): ${pdfUrl}` : null,
+      `All applications from ${app.applicantEmail}: ${appBase()}${applicantPath(app.applicantEmail)}`,
     ]
       .filter(Boolean)
       .join("\n"),

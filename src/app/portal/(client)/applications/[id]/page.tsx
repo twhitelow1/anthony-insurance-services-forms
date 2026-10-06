@@ -2,14 +2,14 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getForm } from "@/forms";
 import { Answers, fmtDate, StatusBadge, Timeline } from "@/components/portal";
-import { requireClient } from "@/lib/auth/session";
+import { requirePortalViewer } from "@/lib/auth/session";
 import { getApplication, getEvents } from "@/lib/applications/repo";
 import { STATUSES } from "@/lib/applications/status";
 import { answerSections } from "@/lib/forms/flatten";
 import { mainDocument } from "@/lib/applications/documents";
 
 export default async function ClientApplication({ params }: PageProps<"/portal/applications/[id]">) {
-  const client = await requireClient();
+  const client = await requirePortalViewer();
   const { id } = await params;
   const app = await getApplication(id);
   // Same 404 whether it doesn't exist or belongs to someone else.
@@ -32,7 +32,7 @@ export default async function ClientApplication({ params }: PageProps<"/portal/a
         </div>
         <p className="callout mt-4">{STATUSES[app.status].description}</p>
         {pdf && (
-          <a className="btn-secondary mt-4" href={`/documents/${pdf.id}?download=1`}>
+          <a className="btn-secondary mt-4" href={`/applications/${app.id}/pdf?download=1`}>
             Download your application (PDF)
           </a>
         )}

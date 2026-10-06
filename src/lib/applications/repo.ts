@@ -1,6 +1,6 @@
 import "server-only";
 import { randomInt } from "node:crypto";
-import { and, desc, eq, ilike, or, sql, type SQL } from "drizzle-orm";
+import { and, count, desc, eq, ilike, max, or, sql, type SQL } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
 import type { Application, EventType } from "@/lib/db/schema";
 import type { AiReview } from "@/lib/ai/review";
@@ -21,16 +21,29 @@ export const normalizeEmail = (e: string) => e.trim().toLowerCase();
 
 const str = (v: FormValues[string]) => (typeof v === "string" ? v.trim() : "");
 
+/** Columns derived from the answers, kept in sync on create and edit. */
+function derived(form: FormDefinition, values: FormValues, reference: string) {
+  const { signature, ...answers } = values;
+  const email = normalizeEmail(str(values.email));
+  const name = [str(values.first_name), str(values.last_name)].filter(Boolean).join(" ");
+  const businessName = str(values.legal_business_name) || null;
+  return {
+    applicantEmail: email,
+    applicantName: name || email,
+    businessName,
+    state: str(values.mailing_state) || null,
+    values: answers,
+    signature: typeof signature === "string" ? signature : null,
+    searchText: searchText(form, answers, [reference, email, name, businessName ?? "", str(values.dba)]),
+  };
+}
+
 export async function createApplication(
   form: FormDefinition,
   values: FormValues,
   meta: { ip?: string; userAgent?: string },
 ): Promise<Application> {
   const db = await getDb();
-  const { signature, ...answers } = values;
-  const email = normalizeEmail(str(values.email));
-  const name = [str(values.first_name), str(values.last_name)].filter(Boolean).join(" ");
-  const businessName = str(values.legal_business_name) || null;
 
   for (let attempt = 0; ; attempt++) {
     const reference = newReference();
@@ -40,18 +53,12 @@ export async function createApplication(
         .values({
           reference,
           formSlug: form.slug,
-          applicantEmail: email,
-          applicantName: name || email,
-          businessName,
-          state: str(values.mailing_state) || null,
-          values: answers,
-          signature: typeof signature === "string" ? signature : null,
-          searchText: searchText(form, answers, [reference, email, name, businessName ?? "", str(values.dba)]),
+          ...derived(form, values, reference),
           submittedIp: meta.ip,
           submittedUserAgent: meta.userAgent,
         })
         .returning();
-      await addEvent(app.id, "submitted", "client:" + email, { clientVisible: true, message: "Application submitted" });
+      await addEvent(app.id, "submitted", "client:" + app.applicantEmail, { clientVisible: true, message: "Application submitted" });
       return app;
     } catch (err) {
       // Reference collision is astronomically unlikely; retry a couple of times then give up.
@@ -227,4 +234,91 @@ export async function getByReference(reference: string): Promise<Application | u
     .where(eq(applications.reference, reference.trim().toUpperCase()))
     .limit(1);
   return app;
+}
+
+/**
+ * Staff edit of the answers. Returns the updated application and the labels of
+ * the questions that changed (recorded on the activity log).
+ */
+export async function updateAnswers(
+  form: FormDefinition,
+  id: string,
+  values: FormValues,
+  actor: string,
+): Promise<{ app: Application; changed: string[] } | undefined> {
+  const current = await getApplication(id);
+  if (!current) return undefined;
+  const next = derived(form, values, current.reference);
+  // Keep the applicant's signature unless staff replaced it.
+  if (!next.signature) next.signature = current.signature;
+
+  const before: FormValues = { ...current.values, signature: current.signature ?? undefined };
+  const after: FormValues = { ...next.values, signature: next.signature ?? undefined };
+  const labels = new Map(form.sections.flatMap((s) => s.fields).map((f) => [f.id, "label" in f && f.label ? f.label : f.id]));
+  const keys = new Set([...Object.keys(before), ...Object.keys(after)]);
+  const changed = [...keys]
+    .filter((k) => JSON.stringify(before[k] ?? "") !== JSON.stringify(after[k] ?? ""))
+    .map((k) => labels.get(k) ?? labels.get(k.split("__")[0]) ?? k);
+  const uniqueChanged = [...new Set(changed)];
+
+  const db = await getDb();
+  const [app] = await db
+    .update(applications)
+    .set({ ...next, updatedAt: new Date() })
+    .where(eq(applications.id, id))
+    .returning();
+  await addEvent(id, "answers_edited", actor, {
+    message: uniqueChanged.length ? `Edited: ${uniqueChanged.join(", ")}` : "Saved with no changes",
+    data: { changed: uniqueChanged },
+  });
+  return { app, changed: uniqueChanged };
+}
+
+/** Permanently delete an application with its PDFs and activity log. */
+export async function deleteApplication(id: string) {
+  const db = await getDb();
+  const [row] = await db
+    .delete(applications)
+    .where(eq(applications.id, id))
+    .returning({ reference: applications.reference });
+  return row;
+}
+
+export interface ApplicantSummary {
+  email: string;
+  name: string;
+  businessName: string | null;
+  applications: number;
+  lastApplied: Date;
+}
+
+/** Everyone who has applied, one row per email address, most recent first. */
+export async function listApplicants({ q, limit = 100 }: { q?: string; limit?: number } = {}): Promise<ApplicantSummary[]> {
+  const db = await getDb();
+  const query = q?.trim();
+  const like = query ? `%${query.replace(/[%_\\]/g, (c) => "\\" + c)}%` : undefined;
+  const rows = await db
+    .select({
+      email: applications.applicantEmail,
+      name: max(applications.applicantName),
+      businessName: max(applications.businessName),
+      applications: count(),
+      lastApplied: max(applications.createdAt),
+    })
+    .from(applications)
+    .where(
+      like
+        ? or(ilike(applications.applicantEmail, like), ilike(applications.applicantName, like), ilike(applications.businessName, like))
+        : undefined,
+    )
+    .groupBy(applications.applicantEmail)
+    .orderBy(desc(max(applications.createdAt)))
+    .limit(Math.min(limit, 500));
+  return rows.map((r) => ({
+    email: r.email,
+    name: r.name ?? r.email,
+    businessName: r.businessName,
+    applications: Number(r.applications),
+    lastApplied: r.lastApplied ?? new Date(0),
+  }));
 }

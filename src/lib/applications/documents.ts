@@ -8,8 +8,13 @@ import { buildCarrierPdf, carrierFormFor } from "@/lib/pdf/carrier";
 
 const { applicationDocuments } = schema;
 
-export const documentUrl = (doc: Pick<ApplicationDocument, "id">) =>
-  `${(process.env.APP_URL ?? "").replace(/\/$/, "")}/documents/${doc.id}`;
+const appUrl = () => (process.env.APP_URL ?? "").replace(/\/$/, "");
+
+/** One specific stored version. */
+export const documentUrl = (doc: Pick<ApplicationDocument, "id">) => `${appUrl()}/documents/${doc.id}`;
+
+/** Always the application's current PDF — the link to store in GHL. */
+export const applicationPdfUrl = (app: Pick<Application, "id">) => `${appUrl()}/applications/${app.id}/pdf`;
 
 const fileBase = (app: Application) =>
   `${app.reference} ${app.businessName ?? app.applicantName}`.replace(/[^\w .&-]+/g, "").trim();

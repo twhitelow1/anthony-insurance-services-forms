@@ -3,6 +3,7 @@ import path from "node:path";
 import { PDFCheckBox, PDFDocument, PDFTextField, rgb, StandardFonts } from "pdf-lib";
 import type { Application } from "@/lib/db/schema";
 import { safeText, wrap } from "@/lib/pdf/summary";
+import { embedSignature } from "@/lib/pdf/signature";
 import { sportsFacilityCarrierForm } from "./sports-facility";
 import { Filler, type CarrierFormSpec } from "./types";
 
@@ -13,8 +14,10 @@ const SPECS: CarrierFormSpec[] = [sportsFacilityCarrierForm];
 export const carrierFormFor = (formSlug: string) => SPECS.find((s) => s.formSlug === formSlug);
 
 const templates = new Map<string, Promise<Buffer>>();
+/** Path to a template in carrier-forms/ (kept to that folder so the server bundle only traces it). */
+export const templatePath = (file: string) => path.join(process.cwd(), "carrier-forms", path.basename(file));
 const loadTemplate = (file: string) => {
-  if (!templates.has(file)) templates.set(file, readFile(path.join(process.cwd(), file)));
+  if (!templates.has(file)) templates.set(file, readFile(templatePath(file)));
   return templates.get(file)!;
 };
 
@@ -74,8 +77,8 @@ export async function buildCarrierPdf(spec: CarrierFormSpec, app: Application) {
 
   // Signature and date on the signature line.
   const pages = doc.getPages();
-  if (app.signature?.startsWith("data:image/png;base64,")) {
-    const png = await doc.embedPng(Buffer.from(app.signature.split(",")[1], "base64"));
+  const png = await embedSignature(doc, app.signature);
+  if (png) {
     const { x, y, width, height, page } = spec.signature;
     const scale = Math.min(width / png.width, height / png.height);
     pages[page].drawImage(png, { x, y, width: png.width * scale, height: png.height * scale });

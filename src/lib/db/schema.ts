@@ -60,7 +60,8 @@ export type EventType =
   | "ai_review_failed"
   | "carrier_email_prepared"
   | "pdf_created"
-  | "pdf_failed";
+  | "pdf_failed"
+  | "answers_edited";
 
 /** Append-only history: status timeline for the client, audit log for staff. */
 export const applicationEvents = pgTable(

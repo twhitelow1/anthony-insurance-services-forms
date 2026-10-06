@@ -6,7 +6,7 @@ import { syncNewApplication, syncStatus } from "@/lib/ghl/sync";
 import { emailLayout, sendMail } from "@/lib/mail";
 import { aiClient } from "@/lib/ai/client";
 import { reviewApplication } from "@/lib/ai/review";
-import { createApplicationPdf, createCarrierPdf, documentUrl, mainDocument } from "./documents";
+import { applicationPdfUrl, createApplicationPdf, createCarrierPdf, mainDocument } from "./documents";
 import { addEvent, saveAiReview, setGhlIds } from "./repo";
 import { STATUSES, type ApplicationStatus } from "./status";
 
@@ -25,8 +25,9 @@ export async function onApplicationSubmitted(form: FormDefinition, app: Applicat
 
 /** Fill the carrier's application and create the answer summary, then store both. Never throws. */
 export async function makePdf(form: FormDefinition, app: Application) {
-  await Promise.allSettled([
-    (async () => {
+  // One after the other: the carrier form first, so it's what the GHL link and portal show from the start.
+  for (const task of [
+    async () => {
       try {
         const result = await createCarrierPdf(app);
         if (!result) return;
@@ -45,8 +46,8 @@ export async function makePdf(form: FormDefinition, app: Application) {
         console.error("[pipeline] carrier PDF failed", app.reference, err);
         await addEvent(app.id, "pdf_failed", "system", { message: `Carrier application: ${describe(err)}` }).catch(() => {});
       }
-    })(),
-    (async () => {
+    },
+    async () => {
       try {
         const doc = await createApplicationPdf(form, app);
         await addEvent(app.id, "pdf_created", "system", {
@@ -57,8 +58,9 @@ export async function makePdf(form: FormDefinition, app: Application) {
         console.error("[pipeline] summary PDF failed", app.reference, err);
         await addEvent(app.id, "pdf_failed", "system", { message: `Answer summary: ${describe(err)}` }).catch(() => {});
       }
-    })(),
-  ]);
+    },
+  ])
+    await task();
 }
 
 /** Claude pre-review for the agent. Skipped when no ANTHROPIC_API_KEY is set. */
@@ -82,7 +84,7 @@ export async function pushToGhl(form: FormDefinition, app: Application) {
   if (!ghlConfig()) return;
   try {
     const pdf = await mainDocument(app.id);
-    const { contactId, opportunityId, missingFields } = await syncNewApplication(form, app, pdf ? documentUrl(pdf) : undefined);
+    const { contactId, opportunityId, missingFields } = await syncNewApplication(form, app, pdf ? applicationPdfUrl(app) : undefined);
     await setGhlIds(app.id, { contactId, opportunityId });
     await addEvent(app.id, "ghl_synced", "system", {
       message: [

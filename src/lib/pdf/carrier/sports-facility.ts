@@ -88,7 +88,7 @@ function table(f: Filler, tableId: string, cols: string[], maxRows: number, firs
 export const sportsFacilityCarrierForm: CarrierFormSpec = {
   formSlug: "sports-facility-application",
   name: "Carrier application (SFIC-STL-APP-001)",
-  template: "carrier-forms/sfic-stl-app-001.pdf",
+  template: "sfic-stl-app-001.pdf",
   // Page 5: signature line runs x 40–333 at 256pt from the bottom; date line x 370–572.
   signature: { page: 4, x: 44, y: 258, width: 285, height: 30 },
   date: { page: 4, x: 374, y: 260 },
@@ -107,7 +107,14 @@ export const sportsFacilityCarrierForm: CarrierFormSpec = {
     f.yesNo("mailing_same_as_physical", "Yes_9", "No_10");
 
     // ── Section 2: Business information
-    // Form of Business (LLC_11 … Non-Profit_16) isn't asked on the web form; left blank.
+    f.option("business_entity", "Form of business", {
+      LLC: "LLC_11",
+      Individual: "Individual_12",
+      Partnership: "Partnership_13",
+      "Joint Venture": "Joint_Venture_14",
+      Trust: "Trust_15",
+      "Non-Profit": "Non-Profit_16",
+    });
     f.answer("Business_Start_Year:_17", "business_start_year", "Business start year");
     f.answer("Business_Website:_18", "website", "Business website");
     const type = f.get("business_type");

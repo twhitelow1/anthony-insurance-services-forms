@@ -4,6 +4,7 @@ import { fmtDate, StatusBadge } from "@/components/portal";
 import { requireStaff } from "@/lib/auth/session";
 import { searchApplications } from "@/lib/applications/repo";
 import { STATUSES, STATUS_KEYS, isStatus } from "@/lib/applications/status";
+import { applicantPath } from "@/lib/applications/links";
 
 export const metadata = { title: "Applications | Anthony Insurance Services" };
 
@@ -23,6 +24,9 @@ export default async function AdminHome({ searchParams }: PageProps<"/admin">) {
         </div>
       </div>
 
+      {typeof sp.deleted === "string" && (
+        <p className="callout mb-6 text-sm" role="status">Application {sp.deleted} was deleted.</p>
+      )}
       <form className="card mb-6 grid gap-3 !p-4 sm:grid-cols-[1fr_220px_auto]" role="search">
         <label className="sr-only" htmlFor="q">Search applications</label>
         <input id="q" name="q" defaultValue={q} className="input" placeholder='e.g. "trampoline" Austin, AIS-7K3Q, jane@…' />
@@ -56,7 +60,8 @@ export default async function AdminHome({ searchParams }: PageProps<"/admin">) {
                 <td>
                   <div className="font-medium">{a.businessName ?? a.applicantName}</div>
                   <div className="text-xs text-[var(--muted)]">
-                    {a.applicantName} · {a.applicantEmail}
+                    {a.applicantName} ·{" "}
+                    <Link className="hover:underline" href={applicantPath(a.applicantEmail)}>{a.applicantEmail}</Link>
                     {a.state ? ` · ${a.state}` : ""}
                   </div>
                 </td>

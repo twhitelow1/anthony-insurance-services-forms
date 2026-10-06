@@ -16,7 +16,7 @@ export interface CarrierFormSpec {
   formSlug: string;
   /** Shown to staff, e.g. "Carrier application (SFIC-STL-APP-001)". */
   name: string;
-  /** Path from the project root. Listed in next.config.ts outputFileTracingIncludes. */
+  /** File name in carrier-forms/. That folder is listed in next.config.ts outputFileTracingIncludes. */
   template: string;
   /** Signature image box and date position, in PDF points from the bottom-left of the page (0-based page). */
   signature: { page: number; x: number; y: number; width: number; height: number };

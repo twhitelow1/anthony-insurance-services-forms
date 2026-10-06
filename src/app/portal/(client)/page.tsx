@@ -1,14 +1,14 @@
 import Link from "next/link";
 import { forms } from "@/forms";
 import { fmtDate, StatusBadge } from "@/components/portal";
-import { requireClient } from "@/lib/auth/session";
+import { requirePortalViewer } from "@/lib/auth/session";
 import { listForEmail } from "@/lib/applications/repo";
 import { STATUSES } from "@/lib/applications/status";
 
 export const metadata = { title: "My applications | Anthony Insurance Services" };
 
 export default async function PortalHome() {
-  const client = await requireClient();
+  const client = await requirePortalViewer();
   const apps = await listForEmail(client.email);
 
   return (

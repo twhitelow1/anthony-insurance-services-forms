@@ -1,10 +1,11 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { after } from "next/server";
 import { getForm } from "@/forms";
-import { requireStaff } from "@/lib/auth/session";
-import { addStaffNote, getApplication, setStatus } from "@/lib/applications/repo";
+import { getSession, requireStaff, setPortalViewAs } from "@/lib/auth/session";
+import { addStaffNote, deleteApplication, getApplication, normalizeEmail, setStatus } from "@/lib/applications/repo";
 import { makePdf, onStatusChanged, pushToGhl, runAiReview } from "@/lib/applications/pipeline";
 import { aiClient } from "@/lib/ai/client";
 import { type AssistantReply, type ChatTurn, askAssistant } from "@/lib/ai/assistant";
@@ -77,4 +78,33 @@ export async function regeneratePdfAction(formData: FormData) {
   if (!app || !form) throw new Error("Application not found");
   await makePdf(form, app);
   revalidatePath(`/admin/applications/${app.id}`);
+}
+
+/** "User mode": open the client portal. With an email, see it exactly as that applicant does. */
+export async function userModeAction(formData: FormData) {
+  const staff = await requireStaff();
+  const email = normalizeEmail(String(formData.get("email") ?? ""));
+  await setPortalViewAs(staff.email, email || null);
+  redirect("/portal");
+}
+
+/** Back from the client portal to the admin. */
+export async function exitUserModeAction() {
+  const session = await getSession();
+  if (session?.role === "staff") await setPortalViewAs(session.email, null);
+  redirect(session?.role === "staff" ? "/admin" : "/portal");
+}
+
+/** Permanently delete an application. Staff must type its reference to confirm. */
+export async function deleteApplicationAction(formData: FormData) {
+  const staff = await requireStaff();
+  const app = await getApplication(String(formData.get("id") ?? ""));
+  if (!app) throw new Error("Application not found");
+  if (String(formData.get("confirm") ?? "").trim().toUpperCase() !== app.reference) {
+    redirect(`/admin/applications/${app.id}?deleteError=1#delete`);
+  }
+  await deleteApplication(app.id);
+  console.info(`[admin] ${staff.email} deleted application ${app.reference} (${app.applicantEmail})`);
+  revalidatePath("/admin");
+  redirect(`/admin?deleted=${encodeURIComponent(app.reference)}`);
 }
