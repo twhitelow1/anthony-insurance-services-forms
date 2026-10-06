@@ -86,7 +86,9 @@ function table(f: Filler, tableId: string, cols: string[], maxRows: number, firs
 }
 
 export const sportsFacilityCarrierForm: CarrierFormSpec = {
-  formSlug: "sports-facility-application",
+  // Gymnastics and boxing gyms apply on the same carrier form (the website's
+  // "PH app" PDF and the Lead Alchemist gymnastics / boxing widgets).
+  formSlugs: ["sports-facility-application", "gymnastics-application", "boxing-gym-application"],
   name: "Carrier application (SFIC-STL-APP-001)",
   template: "sfic-stl-app-001.pdf",
   // Page 5: signature line runs x 40–333 at 256pt from the bottom; date line x 370–572.

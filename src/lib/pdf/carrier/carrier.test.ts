@@ -1,7 +1,11 @@
 import { readFileSync } from "node:fs";
 import { PDFCheckBox, PDFDocument, PDFTextField } from "pdf-lib";
 import { describe, expect, it } from "vitest";
-import { sportsFacilityApplication as form } from "@/forms/sports-facility-application";
+import {
+  boxingGymApplication,
+  gymnasticsApplication,
+  sportsFacilityApplication as form,
+} from "@/forms/sports-facility-application";
 import { createApplication } from "@/lib/applications/repo";
 import { createCarrierPdf, mainDocument } from "@/lib/applications/documents";
 import { tableCellId, tableRowCountId, type FormValues } from "@/lib/forms/types";
@@ -232,5 +236,16 @@ describe("carrier PDF mapping (SFIC-STL-APP-001)", () => {
     expect(result?.doc.kind).toBe("carrier_form");
     expect(result?.doc.filename).toMatch(/carrier application\.pdf$/);
     expect((await mainDocument(app.id))?.id).toBe(result?.doc.id);
+  });
+});
+
+describe("forms that share the SFIC-STL-APP-001 carrier form", () => {
+  it.each([gymnasticsApplication, boxingGymApplication])("$slug fills the same carrier PDF", async (variant) => {
+    expect(carrierFormFor(variant.slug)).toBe(spec);
+    const app = await createApplication(variant, pruneValues(variant, fullAnswers()), {});
+    const result = await createCarrierPdf(app);
+    expect(result?.doc.kind).toBe("carrier_form");
+    const pdf = await PDFDocument.load(result!.doc.content);
+    expect(pdf.getForm().getTextField("Applicant_Name:_1").getText()).toBe("Flip Zone LLC DBA Flip Zone");
   });
 });
