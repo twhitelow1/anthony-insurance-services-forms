@@ -29,9 +29,12 @@ export class GhlError extends Error {
   }
 }
 
+/** Env value without stray whitespace, quotes or a pasted "Bearer " prefix. */
+const clean = (v: string | undefined) => (v ?? "").trim().replace(/^["']|["']$/g, "").replace(/^Bearer\s+/i, "").trim();
+
 export function ghlConfig() {
-  const token = process.env.GHL_API_TOKEN;
-  const locationId = process.env.GHL_LOCATION_ID;
+  const token = clean(process.env.GHL_API_TOKEN);
+  const locationId = clean(process.env.GHL_LOCATION_ID);
   if (!token || !locationId) return null;
   return { token, locationId };
 }

@@ -4,11 +4,14 @@ import { pipelineConfig, resolvePipeline } from "@/lib/ghl/sync";
 import { STATUSES, STATUS_KEYS } from "@/lib/applications/status";
 
 export const metadata = { title: "GHL pipelines | Anthony Insurance Services" };
+// Always ask GHL live; never serve a copy rendered at build time.
+export const dynamic = "force-dynamic";
 
 /** Setup helper: shows the GHL pipeline and stage IDs to paste into Vercel. */
 export default async function GhlPipelinesPage() {
   await requireStaff("/admin/ghl-pipelines");
   const raw = pipelineConfig();
+  const token = (process.env.GHL_API_TOKEN ?? "").trim();
 
   // Fetch first, render after: JSX built inside try/catch wouldn't have its render errors caught.
   let pipelines: GhlPipeline[] = [];
@@ -109,6 +112,18 @@ export default async function GhlPipelinesPage() {
         status changes, set <code>GHL_STAGE_IDS</code> as JSON with these keys: {STATUS_KEYS.map((k) => `${k} (${STATUSES[k].label})`).join(", ")},
         e.g. <code>{`{"quoted":"Quote Sent","bound":"Won"}`}</code>.
       </p>
+      <dl className="callout mb-6 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
+        <dt className="font-medium">GHL_API_TOKEN</dt>
+        <dd>{token ? `set (${token.startsWith("pit-") ? "Private Integration token" : "not a pit- token"}, ${token.length} characters)` : "missing"}</dd>
+        <dt className="font-medium">GHL_LOCATION_ID</dt>
+        <dd>{process.env.GHL_LOCATION_ID ? <code>{process.env.GHL_LOCATION_ID}</code> : "missing"}</dd>
+        <dt className="font-medium">GHL_PIPELINE_ID</dt>
+        <dd>{process.env.GHL_PIPELINE_ID ? <code>{process.env.GHL_PIPELINE_ID}</code> : "not set"}</dd>
+        <dt className="font-medium">GHL_PIPELINE_STAGE_ID</dt>
+        <dd>{process.env.GHL_PIPELINE_STAGE_ID ? <code>{process.env.GHL_PIPELINE_STAGE_ID}</code> : "not set"}</dd>
+        <dt className="font-medium">GHL answered</dt>
+        <dd>{!ghlConfig() ? "not called" : errorStatus !== null ? "with an error (below)" : `${pipelines.length} pipeline${pipelines.length === 1 ? "" : "s"}`}</dd>
+      </dl>
       {configured && (
         <p className="callout mb-6 text-sm" role="status">
           Connected: new applications go to <strong>{configured.pipelineName}</strong>, stage{" "}
