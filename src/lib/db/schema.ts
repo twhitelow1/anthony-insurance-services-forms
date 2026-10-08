@@ -124,6 +124,15 @@ export const applicants = pgTable("applicants", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+/** Settings staff edit in Admin → Settings (see src/lib/settings.ts). One row per setting. */
+export const appSettings = pgTable("app_settings", {
+  key: text("key").primaryKey(),
+  value: jsonb("value").$type<unknown>().notNull(),
+  /** "staff:<email>" */
+  updatedBy: text("updated_by"),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 /** One-time sign-in links for clients. Only a SHA-256 hash of the token is stored. */
 export const loginTokens = pgTable("login_tokens", {
   tokenHash: text("token_hash").primaryKey(),

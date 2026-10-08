@@ -39,7 +39,7 @@ export async function sendMail(mail: Mail) {
     console.info(`\n[mail:dev] To: ${[mail.to].flat().join(", ")}\n[mail:dev] Subject: ${subjectFor(mail)}\n${mail.html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ")}\n`);
     return;
   }
-  throw new Error("Email is not configured (set RESEND_API_KEY and MAIL_FROM)");
+  throw new Error("Email is not configured (set RESEND_API_KEY in Vercel)");
 }
 
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);

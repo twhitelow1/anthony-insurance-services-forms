@@ -5,6 +5,9 @@ import { getDb, schema } from "@/lib/db";
 import { hasApplications, normalizeEmail } from "@/lib/applications/repo";
 import { emailLayout, sendMail } from "@/lib/mail";
 import { safeReturnTo } from "./session";
+import { isStaffEmail } from "./staff";
+
+export { isStaffEmail };
 
 /**
  * One-time sign-in links, for clients (portal) and staff (admin).
@@ -21,25 +24,6 @@ export type LinkPurpose = "client" | "staff";
 const hash = (token: string) => createHash("sha256").update(token).digest("hex");
 const appUrl = () => (process.env.APP_URL ?? "http://localhost:3000").replace(/\/$/, "");
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-/**
- * Who counts as staff: anyone on STAFF_EMAILS if that list is set; otherwise
- * any address at one of STAFF_EMAIL_DOMAINS (default anthonyinsuranceservices.com).
- */
-export function isStaffEmail(rawEmail: string): boolean {
-  const email = normalizeEmail(rawEmail);
-  if (!EMAIL_RE.test(email)) return false;
-  const list = (process.env.STAFF_EMAILS ?? "")
-    .split(",")
-    .map((e) => normalizeEmail(e))
-    .filter(Boolean);
-  if (list.length) return list.includes(email);
-  const domains = (process.env.STAFF_EMAIL_DOMAINS ?? "anthonyinsuranceservices.com")
-    .split(",")
-    .map((d) => d.trim().toLowerCase())
-    .filter(Boolean);
-  return domains.includes(email.split("@")[1]);
-}
 
 async function issueLink(email: string, purpose: LinkPurpose, returnTo?: string): Promise<string | null> {
   const db = await getDb();
@@ -95,7 +79,7 @@ export async function requestMagicLink(rawEmail: string): Promise<void> {
 /** Staff link — only sent to staff addresses (see isStaffEmail). Same silent response otherwise. */
 export async function requestStaffLink(rawEmail: string, returnTo?: string): Promise<void> {
   const email = normalizeEmail(rawEmail);
-  if (!isStaffEmail(email)) return;
+  if (!(await isStaffEmail(email))) return;
   const url = await issueLink(email, "staff", returnTo);
   if (!url) return;
   await sendMail({
@@ -130,8 +114,7 @@ export async function consumeMagicLink(token: string, purpose: LinkPurpose = "cl
     )
     .returning({ email: loginTokens.email });
   if (!row) return null;
-  // Staff status is re-checked at sign-in, so removing someone from STAFF_EMAILS
-  // also kills any link they already have.
-  if (purpose === "staff" && !isStaffEmail(row.email)) return null;
+  // Staff status is re-checked at sign-in, so removing an admin also kills any link they already have.
+  if (purpose === "staff" && !(await isStaffEmail(row.email))) return null;
   return row.email;
 }

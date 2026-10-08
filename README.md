@@ -29,6 +29,16 @@ Staff  ──► /admin (email sign-in link) ──► search · view · edit ·
 Client ──► /portal ──► email → one-time link → their applications, status, notes, filled application PDF
 ```
 
+### Admin → Settings
+Day-to-day settings live in the app, not in Vercel. They take effect immediately:
+- **Admins:** who can sign in to /admin. Removing someone signs them out at once, and you can't remove yourself. Addresses in `STAFF_EMAILS` (Vercel) are always admins, as a way back in.
+- **Notifications:** who gets an email for every new application.
+- **Email sender:** the From and Reply-To addresses. The domain must be verified in Resend. **Send me a test email** checks the setup.
+- **Carrier email:** pre-filled on the carrier draft.
+- **GoHighLevel pipeline:** the applications pipeline and stage, the lead pipeline and stage, and status → stage moves. All are picked from dropdowns that GHL fills.
+
+Anything left blank falls back to its Vercel variable. Secrets stay in Vercel: `RESEND_API_KEY`, `GHL_API_TOKEN`, `ANTHROPIC_API_KEY`, `SESSION_SECRET` and the database URL.
+
 ### What GoHighLevel receives
 - **Contact fields:** first and last name, email, phone, website, mailing address, company.
 - **Tags:** `form:sports-facility-application` and `app-status:<status>`. The status tag is swapped on every change, so a "Contact Tag Added" workflow can text or email the client.

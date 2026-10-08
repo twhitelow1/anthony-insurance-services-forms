@@ -1,23 +1,25 @@
 import "server-only";
 import type { Mail } from "./index";
 import { subjectFor } from "./index";
+import { getSettings } from "@/lib/settings";
 
 /**
- * Resend (resend.com) transactional email.
- * MAIL_FROM must use a domain verified in Resend, e.g.
- * "Anthony Insurance Services <applications@anthonyinsuranceservices.com>".
+ * Resend (resend.com) transactional email. The sender and reply-to come from
+ * Admin → Settings (else MAIL_FROM / MAIL_REPLY_TO); the sender's domain must
+ * be verified in Resend.
  */
 const BASE = () => (process.env.RESEND_BASE_URL ?? "https://api.resend.com").replace(/\/$/, "");
 
-export const resendConfigured = () => !!(process.env.RESEND_API_KEY && process.env.MAIL_FROM);
+export const resendConfigured = () => !!process.env.RESEND_API_KEY;
 
 export async function sendViaResend(mail: Mail) {
-  const replyTo = mail.replyTo ?? process.env.MAIL_REPLY_TO;
+  const { mailFrom, mailReplyTo } = await getSettings();
+  const replyTo = mail.replyTo ?? (mailReplyTo || undefined);
   const res = await fetch(`${BASE()}/emails`, {
     method: "POST",
     headers: { Authorization: `Bearer ${process.env.RESEND_API_KEY}`, "Content-Type": "application/json" },
     body: JSON.stringify({
-      from: process.env.MAIL_FROM,
+      from: mailFrom,
       to: [mail.to].flat(),
       subject: subjectFor(mail),
       html: mail.html,

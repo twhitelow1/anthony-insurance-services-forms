@@ -36,6 +36,13 @@
       "when": 1791275929731,
       "tag": "0004_applicants_ghl",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1791434348083,
+      "tag": "0005_app_settings",
+      "breakpoints": true
     }
   ]
 }

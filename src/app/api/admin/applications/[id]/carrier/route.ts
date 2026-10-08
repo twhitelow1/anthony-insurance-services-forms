@@ -1,4 +1,5 @@
 import type { NextRequest } from "next/server";
+import { getSettings } from "@/lib/settings";
 import { getForm } from "@/forms";
 import { getSession } from "@/lib/auth/session";
 import { addEvent, getApplication } from "@/lib/applications/repo";
@@ -35,7 +36,7 @@ export async function GET(req: NextRequest, ctx: RouteContext<"/api/admin/applic
 
   const effective = typeof app.values.requested_effective_date === "string" ? app.values.requested_effective_date : null;
   const eml = buildEml({
-    to: (process.env.CARRIER_EMAIL ?? "").split(",").map((e) => e.trim()).filter(Boolean),
+    to: (await getSettings()).carrierEmails,
     subject: subjectFor({ subject: `New application: ${app.businessName ?? app.applicantName} (${app.reference})`, encrypt: true }),
     html: emailLayout({
       heading: `New application: ${app.businessName ?? app.applicantName}`,

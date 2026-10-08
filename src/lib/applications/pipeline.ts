@@ -2,6 +2,7 @@ import "server-only";
 import type { Application } from "@/lib/db/schema";
 import type { FormDefinition } from "@/lib/forms/types";
 import { ghlConfig } from "@/lib/ghl/client";
+import { getSettings } from "@/lib/settings";
 import { syncNewApplication, syncStatus } from "@/lib/ghl/sync";
 import { emailLayout, sendMail } from "@/lib/mail";
 import { aiClient } from "@/lib/ai/client";
@@ -113,15 +114,11 @@ export async function pushToGhl(form: FormDefinition, app: Application) {
   }
 }
 
-/** NOTIFY_EMAILS: comma-separated staff addresses told about every new application. */
-export const staffNotifyList = () =>
-  (process.env.NOTIFY_EMAILS ?? "")
-    .split(",")
-    .map((e) => e.trim())
-    .filter(Boolean);
+/** Staff told about every new application (Admin → Settings, else NOTIFY_EMAILS). */
+export const staffNotifyList = async () => (await getSettings()).notifyEmails;
 
 async function notifyStaff(form: FormDefinition, app: Application) {
-  const to = staffNotifyList();
+  const to = await staffNotifyList();
   if (!to.length) return;
   try {
     const pdf = await mainDocument(app.id);

@@ -22,6 +22,7 @@ import {
   upsertContact,
 } from "./client";
 import { applicantPath } from "@/lib/applications/links";
+import { getSettings } from "@/lib/settings";
 
 /**
  * GHL holds the contact (plus an opportunity), not the application. These
@@ -36,32 +37,28 @@ export const PORTAL_FIELDS = {
 } as const;
 
 /**
- * Opportunity pipeline. GHL_PIPELINE_ID + GHL_PIPELINE_STAGE_ID (the stage new
- * applications land in) turn opportunities on: every application gets its own
- * opportunity there. GHL_STAGE_IDS optionally maps portal statuses to stages,
- * e.g. {"in_review":"<stage>","quoted":"<stage>"}, so a status change moves the
- * opportunity.
+ * Opportunity pipeline, set in Admin → Settings (else GHL_PIPELINE_ID and
+ * friends in Vercel). The pipeline + the stage new applications land in turn
+ * opportunities on: every application gets its own opportunity there. The
+ * status → stage map optionally moves the opportunity when the status changes.
  *
- * GHL_LEAD_PIPELINE_ID (optional, plus GHL_LEAD_STAGE_ID to narrow it to one
- * stage) is where leads wait before applying. When an application lands, the
+ * The lead pipeline (optional, plus a lead stage to narrow it to one stage)
+ * is where leads wait before applying. When an application lands, the
  * lead's open opportunity there is moved into the applications pipeline and
  * becomes that application's opportunity, so the lead leaves the lead pipeline.
  *
  * Each value may be GHL's ID or the pipeline/stage name as shown in GHL (see resolvePipeline).
  */
-export function pipelineConfig() {
-  const pipelineId = process.env.GHL_PIPELINE_ID;
-  const initialStage = process.env.GHL_PIPELINE_STAGE_ID;
-  if (!pipelineId || !initialStage) return null;
-  let stages: Partial<Record<ApplicationStatus, string>> = {};
-  try {
-    stages = JSON.parse(process.env.GHL_STAGE_IDS || "{}");
-  } catch {
-    console.warn("[ghl] GHL_STAGE_IDS is not valid JSON — ignoring");
-  }
-  const leadPipeline = process.env.GHL_LEAD_PIPELINE_ID?.trim() || null;
-  const leadStage = process.env.GHL_LEAD_STAGE_ID?.trim() || null;
-  return { pipelineId, initialStage, stages, leadPipeline, leadStage };
+export async function pipelineConfig() {
+  const s = await getSettings();
+  if (!s.ghlPipeline || !s.ghlPipelineStage) return null;
+  return {
+    pipelineId: s.ghlPipeline,
+    initialStage: s.ghlPipelineStage,
+    stages: s.ghlStageMap,
+    leadPipeline: s.ghlLeadPipeline || null,
+    leadStage: s.ghlLeadStage || null,
+  };
 }
 
 /** True when `value` names `item` by ID or by name (ignoring case, spaces and punctuation). */
@@ -83,7 +80,7 @@ const cachedPipelines = () => {
  * looked up in the location's pipelines. Throws a readable error if one isn't found.
  */
 export async function resolvePipeline() {
-  const cfg = pipelineConfig();
+  const cfg = await pipelineConfig();
   if (!cfg) return null;
   const pipelines = await cachedPipelines();
   const findPipeline = (value: string, setting: string) => {
