@@ -327,14 +327,14 @@ export async function listApplicants({ q, limit = 100 }: { q?: string; limit?: n
   }));
 }
 
-/** The applicant's saved GHL link, if any. */
+/** The applicant's saved Lead Alchemist link, if any. */
 export async function getApplicant(email: string): Promise<Applicant | undefined> {
   const db = await getDb();
   const [row] = await db.select().from(schema.applicants).where(eq(schema.applicants.email, normalizeEmail(email))).limit(1);
   return row;
 }
 
-/** Save which GHL contact belongs to this email (null unlinks). */
+/** Save which Lead Alchemist contact belongs to this email (null unlinks). */
 export async function linkApplicantGhl(email: string, contactId: string | null) {
   const db = await getDb();
   const now = new Date();
@@ -345,7 +345,7 @@ export async function linkApplicantGhl(email: string, contactId: string | null) 
     .onConflictDoUpdate({ target: schema.applicants.email, set });
 }
 
-/** Applicant emails with no GHL contact saved yet (for "Link all to GHL"). */
+/** Applicant emails with no Lead Alchemist contact saved yet (for "Link all to Lead Alchemist"). */
 export async function unlinkedApplicantEmails(limit = 50): Promise<string[]> {
   const db = await getDb();
   const rows = await db

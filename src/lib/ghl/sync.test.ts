@@ -10,7 +10,7 @@ afterEach(() => {
   vi.unstubAllEnvs();
 });
 
-/** Fake GHL API: records requests, answers the endpoints sync uses. */
+/** Fake Lead Alchemist API: records requests, answers the endpoints sync uses. */
 function fakeGhl(
   existingOpportunities: { id: string; status?: string; pipelineId?: string; pipelineStageId?: string }[] = [],
   { goneContacts = [] as string[] } = {},
@@ -80,7 +80,7 @@ describe("documents", () => {
   });
 });
 
-describe("GHL sync with pipeline", () => {
+describe("Lead Alchemist sync with pipeline", () => {
   it("writes the PDF link and opens an opportunity in the configured stage", async () => {
     vi.stubEnv("GHL_PIPELINE_ID", "pipe1");
     vi.stubEnv("GHL_PIPELINE_STAGE_ID", "stage-new");
@@ -144,7 +144,7 @@ describe("GHL sync with pipeline", () => {
     expect(await syncNewApplication(form, await newApp())).toMatchObject({ opportunityId: "opp1", movedFromLead: false });
   });
 
-  it("updates the saved GHL contact by ID instead of matching on email", async () => {
+  it("updates the saved Lead Alchemist contact by ID instead of matching on email", async () => {
     const calls = fakeGhl();
     const res = await syncNewApplication(form, await newApp(), undefined, "saved-contact");
     expect(res).toMatchObject({ contactId: "saved-contact", matchedBy: "saved_id" });
@@ -156,14 +156,14 @@ describe("GHL sync with pipeline", () => {
     expect(calls.some((c) => c.path === "/contacts/saved-contact/notes")).toBe(true);
   });
 
-  it("falls back to the email match when the saved contact was deleted in GHL", async () => {
+  it("falls back to the email match when the saved contact was deleted in Lead Alchemist", async () => {
     const calls = fakeGhl([], { goneContacts: ["deleted"] });
     const res = await syncNewApplication(form, await newApp(), undefined, "deleted");
     expect(res).toMatchObject({ contactId: "c1", matchedBy: "email" });
     expect(calls.some((c) => c.path === "/contacts/upsert")).toBe(true);
   });
 
-  it("accepts pipeline and stage names as shown in GHL, not just IDs", async () => {
+  it("accepts pipeline and stage names as shown in Lead Alchemist, not just IDs", async () => {
     vi.stubEnv("GHL_PIPELINE_ID", "applications");
     vi.stubEnv("GHL_PIPELINE_STAGE_ID", "Application Submitted");
     const calls = fakeGhl();

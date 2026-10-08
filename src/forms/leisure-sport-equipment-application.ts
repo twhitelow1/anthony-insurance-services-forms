@@ -3,11 +3,11 @@ import type { FormDefinition } from "@/lib/forms/types";
 
 /**
  * Leisure & Sport Equipment (inland marine / equipment floater) application.
- * Transcribed from the Lead Alchemist (GHL) form BQxQ2q2nDqbqUQrKOX9U
+ * Transcribed from the Lead Alchemist form BQxQ2q2nDqbqUQrKOX9U
  * (linked from https://anthonyinsuranceservices.com/equipment/).
  *
  * Answers are stored in the app's database. Only fields with `ghl.standard`
- * are copied to the GoHighLevel contact.
+ * are copied to the Lead Alchemist contact.
  */
 
 const SHORT_TERM =

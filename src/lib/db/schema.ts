@@ -6,7 +6,7 @@ import type { ApplicationStatus } from "@/lib/applications/status";
 import type { AiReview } from "@/lib/ai/review";
 
 /**
- * The application itself lives here — GHL only gets the contact plus a link back.
+ * The application itself lives here — Lead Alchemist only gets the contact plus a link back.
  */
 export const applications = pgTable(
   "applications",
@@ -112,9 +112,9 @@ export const applicationDocuments = pgTable(
 );
 
 /**
- * One row per applicant email, linking them to their GoHighLevel contact so
- * every application from the same email lands on the same GHL contact, even
- * if staff later change details in GHL. (Each application has its own opportunity.)
+ * One row per applicant email, linking them to their Lead Alchemist contact so
+ * every application from the same email lands on the same Lead Alchemist contact, even
+ * if staff later change details in Lead Alchemist. (Each application has its own opportunity.)
  */
 export const applicants = pgTable("applicants", {
   email: text("email").primaryKey(), // lower-cased, same as applications.applicant_email

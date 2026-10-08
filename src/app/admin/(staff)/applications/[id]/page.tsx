@@ -130,7 +130,7 @@ export default async function AdminApplication({ params, searchParams }: PagePro
               <a className="btn-link font-medium" href={`/applications/${app.id}/pdf`} target="_blank" rel="noopener">
                 Open current PDF
               </a>
-              <span className="block text-xs text-[var(--muted)]">This link always opens the newest version. It&apos;s the one saved in GHL.</span>
+              <span className="block text-xs text-[var(--muted)]">This link always opens the newest version. It&apos;s the one saved in Lead Alchemist.</span>
             </p>
             {docs.length ? (
               <ul className="space-y-2 text-sm">
@@ -183,7 +183,7 @@ export default async function AdminApplication({ params, searchParams }: PagePro
             <form action={deleteApplicationAction} className="mt-3 space-y-3">
               <input type="hidden" name="id" value={app.id} />
               <p className="text-sm text-[var(--muted)]">
-                This permanently deletes the application, its PDFs and its activity log. The GHL contact isn&apos;t touched.
+                This permanently deletes the application, its PDFs and its activity log. The Lead Alchemist contact isn&apos;t touched.
               </p>
               <label className="block text-sm" htmlFor="confirm">
                 Type <span className="font-mono font-semibold">{app.reference}</span> to confirm
@@ -195,7 +195,7 @@ export default async function AdminApplication({ params, searchParams }: PagePro
           </details>
 
           <div className="card !p-5">
-            <h2 className="mb-2 font-semibold">GoHighLevel</h2>
+            <h2 className="mb-2 font-semibold">Lead Alchemist</h2>
             {app.ghlContactId ? (
               <p className="text-sm">
                 Linked to contact <span className="font-mono">{app.ghlContactId}</span>
@@ -210,7 +210,7 @@ export default async function AdminApplication({ params, searchParams }: PagePro
             )}
             <form action={resyncGhlAction} className="mt-3">
               <input type="hidden" name="id" value={app.id} />
-              <button className="btn-secondary w-full">{app.ghlContactId ? "Re-sync contact" : "Sync to GoHighLevel"}</button>
+              <button className="btn-secondary w-full">{app.ghlContactId ? "Re-sync contact" : "Sync to Lead Alchemist"}</button>
             </form>
           </div>
 

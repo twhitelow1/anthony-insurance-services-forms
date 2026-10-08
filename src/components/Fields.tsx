@@ -101,7 +101,7 @@ export function FieldInput({
   field: InputField;
   value: FormValue;
   error?: string;
-  /** Effective options (after GHL sync + filtering) for choice fields. */
+  /** Effective options (after Lead Alchemist sync + filtering) for choice fields. */
   options?: Option[];
   onChange: (v: FormValue) => void;
 }) {

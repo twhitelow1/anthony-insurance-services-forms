@@ -16,7 +16,7 @@ const describe = (err: unknown) => (err instanceof Error ? err.message : String(
 
 /** Everything that happens after a submission is safely stored. Never throws. */
 export async function onApplicationSubmitted(form: FormDefinition, app: Application) {
-  // The PDF comes first so its link can go onto the GHL contact.
+  // The PDF comes first so its link can go onto the Lead Alchemist contact.
   await Promise.allSettled([
     makePdf(form, app).then(() => Promise.allSettled([pushToGhl(form, app), notifyStaff(form, app)])),
     sendConfirmation(form, app),
@@ -26,7 +26,7 @@ export async function onApplicationSubmitted(form: FormDefinition, app: Applicat
 
 /** Fill the carrier's application and create the answer summary, then store both. Never throws. */
 export async function makePdf(form: FormDefinition, app: Application) {
-  // One after the other: the carrier form first, so it's what the GHL link and portal show from the start.
+  // One after the other: the carrier form first, so it's what the Lead Alchemist link and portal show from the start.
   for (const task of [
     async () => {
       try {
@@ -85,7 +85,7 @@ export async function pushToGhl(form: FormDefinition, app: Application) {
   if (!ghlConfig()) return;
   try {
     const pdf = await mainDocument(app.id);
-    // Same email → same GHL contact: use the contact ID saved from earlier syncs.
+    // Same email → same Lead Alchemist contact: use the contact ID saved from earlier syncs.
     const saved = await getApplicant(app.applicantEmail);
     const r = await syncNewApplication(form, app, pdf ? applicationPdfUrl(app) : undefined, saved?.ghlContactId);
     await setGhlIds(app.id, { contactId: r.contactId, opportunityId: r.opportunityId });
@@ -95,21 +95,21 @@ export async function pushToGhl(form: FormDefinition, app: Application) {
       r.missingOpportunityFields?.length ? `opportunity fields: ${r.missingOpportunityFields.join(", ")}` : null,
     ].filter(Boolean);
     await addEvent(app.id, "ghl_synced", "system", {
-      message: `Synced to GoHighLevel: ${[
-        r.matchedBy === "saved_id" ? "matched the applicant's saved GHL contact" : "matched the GHL contact by email",
+      message: `Synced to Lead Alchemist: ${[
+        r.matchedBy === "saved_id" ? "matched the applicant's saved Lead Alchemist contact" : "matched the Lead Alchemist contact by email",
         r.opportunityId
           ? r.movedFromLead
             ? "moved the lead's opportunity from the lead pipeline into the applications pipeline"
             : "created this application's opportunity"
           : null,
-        missing.length ? `create these GHL custom fields to fill them in: ${missing.join("; ")}` : null,
+        missing.length ? `create these Lead Alchemist custom fields to fill them in: ${missing.join("; ")}` : null,
       ]
         .filter(Boolean)
         .join("; ")}`,
       data: { ...r },
     });
   } catch (err) {
-    console.error("[pipeline] GHL sync failed", app.reference, err);
+    console.error("[pipeline] Lead Alchemist sync failed", app.reference, err);
     await addEvent(app.id, "ghl_sync_failed", "system", { message: describe(err) }).catch(() => {});
   }
 }
@@ -164,14 +164,14 @@ async function sendConfirmation(form: FormDefinition, app: Application) {
   }
 }
 
-/** After a staff status change: mirror to GHL and (optionally) email the client. */
+/** After a staff status change: mirror to Lead Alchemist and (optionally) email the client. */
 export async function onStatusChanged(app: Application, previous: ApplicationStatus, opts: { note?: string; notifyClient: boolean }) {
   const { note, notifyClient } = opts;
   const tasks: Promise<unknown>[] = [];
   if (ghlConfig() && app.ghlContactId) {
     tasks.push(
       syncStatus(app, previous).catch(async (err) => {
-        console.error("[pipeline] GHL status sync failed", app.reference, err);
+        console.error("[pipeline] Lead Alchemist status sync failed", app.reference, err);
         await addEvent(app.id, "ghl_sync_failed", "system", { message: `Status sync: ${describe(err)}` });
       }),
     );

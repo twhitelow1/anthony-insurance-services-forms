@@ -4,12 +4,12 @@ import type { FormDefinition, FormValues } from "@/lib/forms/types";
 /**
  * Sports, Leisure & Entertainment Equipment Floater application
  * (cameras, production gear, musical equipment, sports equipment).
- * Transcribed from the Lead Alchemist (GHL) form QtRy9zJIG8EanS6C4xyo, with
+ * Transcribed from the Lead Alchemist form QtRy9zJIG8EanS6C4xyo, with
  * help text from the older website version at
  * https://anthonyinsuranceservices.com/forms/sports-leisure-entertainment-equipment-floater-application/.
  *
  * Answers are stored in the app's database. Only fields with `ghl.standard`
- * are copied to the GoHighLevel contact.
+ * are copied to the Lead Alchemist contact.
  */
 
 const SHORT_TERM =

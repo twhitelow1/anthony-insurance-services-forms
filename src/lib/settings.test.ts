@@ -54,7 +54,7 @@ describe("settings", () => {
     expect(await isStaffEmail("amy@anthonyinsuranceservices.com")).toBe(false);
   });
 
-  it("drives the GHL pipeline from saved settings", async () => {
+  it("drives the Lead Alchemist pipeline from saved settings", async () => {
     expect(await pipelineConfig()).toBeNull();
     await saveSettings(
       { ghlPipeline: "pipe1", ghlPipelineStage: "stage-new", ghlLeadPipeline: "Leads", ghlStageMap: { quoted: "stage-q" } },

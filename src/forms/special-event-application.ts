@@ -3,7 +3,7 @@ import type { Field, FormDefinition } from "@/lib/forms/types";
 
 /**
  * Special Event Insurance Application.
- * Transcribed from the Lead Alchemist (GHL) form ZyanGA4wMPk3RcUjFsW5
+ * Transcribed from the Lead Alchemist form ZyanGA4wMPk3RcUjFsW5
  * (older website version: anthonyinsuranceservices.com/forms/special-event-insurance-application/).
  */
 

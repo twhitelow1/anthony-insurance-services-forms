@@ -13,7 +13,7 @@ const appUrl = () => (process.env.APP_URL ?? "").replace(/\/$/, "");
 /** One specific stored version. */
 export const documentUrl = (doc: Pick<ApplicationDocument, "id">) => `${appUrl()}/documents/${doc.id}`;
 
-/** Always the application's current PDF — the link to store in GHL. */
+/** Always the application's current PDF — the link to store in Lead Alchemist. */
 export const applicationPdfUrl = (app: Pick<Application, "id">) => `${appUrl()}/applications/${app.id}/pdf`;
 
 const fileBase = (app: Application) =>

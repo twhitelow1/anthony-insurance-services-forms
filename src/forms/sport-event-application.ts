@@ -4,11 +4,11 @@ import type { Field, FormDefinition } from "@/lib/forms/types";
 /**
  * Sport Event Insurance Application — martial arts tournaments, sports teams/leagues
  * and sports events/tournaments.
- * Transcribed from the Lead Alchemist (GHL) form pkfFEJ14mVIBrytwX7g5
+ * Transcribed from the Lead Alchemist form pkfFEJ14mVIBrytwX7g5
  * (older website version: anthonyinsuranceservices.com/forms/sport-event-insurance-application/).
  *
  * Answers are stored in the app's database. Only fields with `ghl.standard`
- * are copied to the GoHighLevel contact.
+ * are copied to the Lead Alchemist contact.
  */
 
 function additionalInsured(n: 1 | 2): Field[] {

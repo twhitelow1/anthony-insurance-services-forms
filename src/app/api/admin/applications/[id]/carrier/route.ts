@@ -22,7 +22,7 @@ export async function GET(req: NextRequest, ctx: RouteContext<"/api/admin/applic
   const form = app && getForm(app.formSlug);
   if (!app || !form) return new Response("Not found", { status: 404 });
 
-  // The filled carrier application (what the GHL link and the client see); else the summary; else build one.
+  // The filled carrier application (what the Lead Alchemist link and the client see); else the summary; else build one.
   const stored = await mainDocument(app.id);
   const pdf = stored ? new Uint8Array(stored.content) : await buildApplicationPdf(form, app);
   const base = `${app.reference} ${app.businessName ?? app.applicantName}`.replace(/[^\w .&-]+/g, "").trim();

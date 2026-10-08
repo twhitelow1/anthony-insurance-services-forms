@@ -1,7 +1,7 @@
 import "server-only";
 
 /**
- * Minimal GoHighLevel (LeadConnector) API v2 client.
+ * Minimal Lead Alchemist (LeadConnector) API v2 client.
  * Auth: a sub-account (location) Private Integration token — contact endpoints are
  * location-scoped.
  * Docs: https://highlevel.stoplight.io/docs/integrations
@@ -61,7 +61,7 @@ async function ghlFetch<T>(path: string, init: RequestInit & { next?: { revalida
   } catch {
     /* non-JSON error body */
   }
-  if (!res.ok) throw new GhlError(`GHL ${init.method ?? "GET"} ${path} failed: ${res.status}`, res.status, body);
+  if (!res.ok) throw new GhlError(`Lead Alchemist ${init.method ?? "GET"} ${path} failed: ${res.status}`, res.status, body);
   return body as T;
 }
 
@@ -110,7 +110,7 @@ export interface GhlContact {
   companyName?: string | null;
 }
 
-/** The GHL contact with this email, if any (GHL's own duplicate lookup). */
+/** The Lead Alchemist contact with this email, if any (Lead Alchemist's own duplicate lookup). */
 export async function findContactByEmail(email: string): Promise<GhlContact | null> {
   const { locationId } = ghlConfig()!;
   const q = new URLSearchParams({ locationId, email });
@@ -129,7 +129,7 @@ export async function getContact(id: string): Promise<GhlContact | null> {
   }
 }
 
-/** Where staff open a contact in GHL. GHL_APP_URL overrides the host for a white-label domain. */
+/** Where staff open a contact in Lead Alchemist. GHL_APP_URL overrides the host for a white-label domain. */
 export function contactUrl(contactId: string) {
   const cfg = ghlConfig();
   const host = (process.env.GHL_APP_URL || "https://app.gohighlevel.com").replace(/\/$/, "");
@@ -206,7 +206,7 @@ export async function findOpenOpportunities(contactId: string, pipelineId: strin
 export interface GhlPipeline {
   id: string;
   name: string;
-  /** GHL can omit this for an empty pipeline. */
+  /** Lead Alchemist can omit this for an empty pipeline. */
   stages?: { id: string; name: string }[];
 }
 

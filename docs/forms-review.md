@@ -1,6 +1,6 @@
 # Forms review checklist
 
-These forms were rebuilt from the Lead Alchemist / GHL widgets, the old website forms and the carrier PDFs listed in
+These forms were rebuilt from the Lead Alchemist widgets, the old website forms and the carrier PDFs listed in
 "Master List of Applications.xlsx". Each one is at `/forms/<slug>`. The items below are things the source didn't show
 clearly. Please check them against the original and send corrections.
 

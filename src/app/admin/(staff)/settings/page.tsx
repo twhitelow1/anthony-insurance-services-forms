@@ -44,7 +44,7 @@ export default async function SettingsPage({ searchParams }: PageProps<"/admin/s
         ))}
       </optgroup>
     ));
-  // A saved value that GHL doesn't list (a name, or a deleted stage) still shows, so saving doesn't drop it.
+  // A saved value that Lead Alchemist doesn't list (a name, or a deleted stage) still shows, so saving doesn't drop it.
   const keep = (value: string | undefined, ids: string[]) =>
     value && !ids.includes(value) ? <option value={value}>{value} (saved)</option> : null;
   const pipelineIds = pipelines.map((p) => p.id);
@@ -107,11 +107,11 @@ export default async function SettingsPage({ searchParams }: PageProps<"/admin/s
         </section>
 
         <section className="card !p-5" aria-labelledby="ghl">
-          <h2 id="ghl" className="mb-1 font-semibold">GoHighLevel pipeline</h2>
+          <h2 id="ghl" className="mb-1 font-semibold">Lead Alchemist pipeline</h2>
           {!ghlConfig() ? (
-            <p className="text-sm text-[var(--muted)]">Connect GHL first: add GHL_API_TOKEN and GHL_LOCATION_ID in Vercel.</p>
+            <p className="text-sm text-[var(--muted)]">Connect Lead Alchemist first: add GHL_API_TOKEN and GHL_LOCATION_ID in Vercel.</p>
           ) : ghlError ? (
-            <p className="text-sm text-[var(--danger)]">GHL didn&apos;t return pipelines: {ghlError}. See GHL setup.</p>
+            <p className="text-sm text-[var(--danger)]">Lead Alchemist didn&apos;t return pipelines: {ghlError}. See Lead Alchemist setup.</p>
           ) : null}
           <p className="mb-3 text-sm text-[var(--muted)]">Every application becomes its own opportunity in this pipeline.</p>
           <div className="grid gap-4 sm:grid-cols-2">

@@ -5,13 +5,13 @@
  *  - the client-side wizard UI (rendering, conditional visibility, tooltips)
  *  - server-side validation (the API never trusts the browser)
  *  - the staff/client views of a stored application
- *  - which answers are copied onto the GoHighLevel contact
+ *  - which answers are copied onto the Lead Alchemist contact
  */
 
 export type FormValue = string | string[] | undefined;
 export type FormValues = Record<string, FormValue>;
 
-/** Standard (non-custom) GHL contact fields we can write to directly. */
+/** Standard (non-custom) Lead Alchemist contact fields we can write to directly. */
 export type GhlStandardField =
   | "firstName"
   | "lastName"
@@ -24,7 +24,7 @@ export type GhlStandardField =
   | "postalCode"
   | "companyName";
 
-/** Copy this answer onto a built-in GHL contact field. */
+/** Copy this answer onto a built-in Lead Alchemist contact field. */
 export type GhlMapping = { standard: GhlStandardField };
 
 export interface Option {
@@ -110,9 +110,9 @@ export interface FormDefinition {
   slug: string;
   title: string;
   subtitle?: string;
-  /** Tags applied to the GHL contact on submit — use these to trigger workflows. */
+  /** Tags applied to the Lead Alchemist contact on submit — use these to trigger workflows. */
   tags: string[];
-  /** Value for the GHL contact `source` field. */
+  /** Value for the Lead Alchemist contact `source` field. */
   source: string;
   sections: Section[];
   successMessage: string;

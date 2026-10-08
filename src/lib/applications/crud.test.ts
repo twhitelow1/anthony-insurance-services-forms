@@ -107,8 +107,8 @@ describe("OPEN_ACCESS testing switch", () => {
   });
 });
 
-describe("applicant ↔ GHL contact link", () => {
-  it("saves one GHL contact per email and shows it on the applicants list", async () => {
+describe("applicant ↔ Lead Alchemist contact link", () => {
+  it("saves one Lead Alchemist contact per email and shows it on the applicants list", async () => {
     const email = `ghl-${Date.now()}@example.com`;
     await createApplication(form, answers({ email }), {});
     await createApplication(form, answers({ email: email.toUpperCase() }), {});

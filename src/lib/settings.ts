@@ -21,12 +21,12 @@ export interface Settings {
   mailReplyTo: string;
   /** Pre-filled To: on carrier submission drafts. */
   carrierEmails: string[];
-  /** GHL pipeline / stage, by ID or name as shown in GHL. */
+  /** Lead Alchemist pipeline / stage, by ID or name as shown in Lead Alchemist. */
   ghlPipeline: string;
   ghlPipelineStage: string;
   ghlLeadPipeline: string;
   ghlLeadStage: string;
-  /** Portal status → GHL stage, moved on status changes. */
+  /** Portal status → Lead Alchemist stage, moved on status changes. */
   ghlStageMap: Partial<Record<ApplicationStatus, string>>;
 }
 

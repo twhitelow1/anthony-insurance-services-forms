@@ -20,13 +20,13 @@ export default async function Applicants({ searchParams }: PageProps<"/admin/app
       <h1 className="text-2xl font-semibold">Applicants</h1>
       <p className="mb-6 text-sm text-[var(--muted)]">
         One row per email address. Open one to see all of their applications and PDFs. Each applicant is linked to one
-        GoHighLevel contact by email.
+        Lead Alchemist contact by email.
       </p>
       {message && <p className="callout mb-4 text-sm" role="status">{message}</p>}
       {ghlConfig() && (
         <form action={linkAllGhlAction} className="mb-4">
-          <button className="btn-secondary" title="Find the GHL contact for every applicant that isn't linked yet">
-            Link unlinked applicants to GHL
+          <button className="btn-secondary" title="Find the Lead Alchemist contact for every applicant that isn't linked yet">
+            Link unlinked applicants to Lead Alchemist
           </button>
         </form>
       )}
@@ -43,7 +43,7 @@ export default async function Applicants({ searchParams }: PageProps<"/admin/app
               <th>Email</th>
               <th>Applications</th>
               <th>Last applied</th>
-              <th>GHL</th>
+              <th>Lead Alchemist</th>
             </tr>
           </thead>
           <tbody>

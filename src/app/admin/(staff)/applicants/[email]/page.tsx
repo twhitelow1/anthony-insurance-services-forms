@@ -38,7 +38,7 @@ export default async function Applicant({ params, searchParams }: PageProps<"/ad
         </form>
       </div>
       <section className="card mb-6 !p-4" aria-labelledby="ghl-heading">
-        <h2 id="ghl-heading" className="font-semibold">GoHighLevel contact</h2>
+        <h2 id="ghl-heading" className="font-semibold">Lead Alchemist contact</h2>
         {typeof ghlMessage === "string" && (
           <p className="callout my-2 text-sm" role="status">{ghlMessage}</p>
         )}
@@ -48,7 +48,7 @@ export default async function Applicant({ params, searchParams }: PageProps<"/ad
               Linked to <code className="text-xs">{ghlContactId}</code>. Every application from this email syncs to this contact,
               each as its own opportunity.
             </span>
-            {ghlHref && <a className="btn-link" href={ghlHref} target="_blank" rel="noopener">Open in GHL</a>}
+            {ghlHref && <a className="btn-link" href={ghlHref} target="_blank" rel="noopener">Open in Lead Alchemist</a>}
             <form action={unlinkGhlContactAction}>
               <input type="hidden" name="email" value={email} />
               <button className="btn-link text-sm">Unlink</button>
@@ -56,20 +56,20 @@ export default async function Applicant({ params, searchParams }: PageProps<"/ad
           </div>
         ) : (
           <p className="mt-1 text-sm text-[var(--muted)]">
-            Not linked yet. The next sync matches the GHL contact with this email, or link one now.
+            Not linked yet. The next sync matches the Lead Alchemist contact with this email, or link one now.
           </p>
         )}
         {ghlConfig() ? (
           <form action={linkGhlContactAction} className="mt-3 flex flex-wrap items-end gap-2">
             <input type="hidden" name="email" value={email} />
             <label className="grow text-sm">
-              <span className="mb-1 block text-[var(--muted)]">GHL contact ID or link (leave blank to find by email)</span>
+              <span className="mb-1 block text-[var(--muted)]">Lead Alchemist contact ID or link (leave blank to find by email)</span>
               <input name="contactId" className="input" placeholder="e.g. 3fG7hK2mN9pQ…" />
             </label>
-            <button className="btn-secondary">{ghlContactId ? "Re-link" : "Find in GHL"}</button>
+            <button className="btn-secondary">{ghlContactId ? "Re-link" : "Find in Lead Alchemist"}</button>
           </form>
         ) : (
-          <p className="mt-2 text-sm text-[var(--muted)]">GHL isn&apos;t connected (GHL_API_TOKEN / GHL_LOCATION_ID).</p>
+          <p className="mt-2 text-sm text-[var(--muted)]">Lead Alchemist isn&apos;t connected (GHL_API_TOKEN / GHL_LOCATION_ID).</p>
         )}
       </section>
       <div className="card overflow-x-auto !p-0">

@@ -69,7 +69,7 @@ describe.each(Object.values(forms).map((f) => [f.slug, f] as const))("form %s", 
     expect(ids.filter((id, i) => ids.indexOf(id) !== i)).toEqual([]);
   });
 
-  it("asks for the contact details the app and GHL rely on", () => {
+  it("asks for the contact details the app and Lead Alchemist rely on", () => {
     const byId = new Map(allFields(form).map((f) => [f.id, f]));
     for (const [id, ghl] of [
       ["first_name", "firstName"],
@@ -79,7 +79,7 @@ describe.each(Object.values(forms).map((f) => [f.slug, f] as const))("form %s", 
     ] as const) {
       const f = byId.get(id);
       expect(f, `${slug} needs a ${id} field`).toBeDefined();
-      expect(f && "ghl" in f ? f.ghl?.standard : undefined, `${slug}.${id} → GHL ${ghl}`).toBe(ghl);
+      expect(f && "ghl" in f ? f.ghl?.standard : undefined, `${slug}.${id} → Lead Alchemist ${ghl}`).toBe(ghl);
     }
     const sig = byId.get("signature");
     expect(sig?.type, `${slug} needs a required signature`).toBe("signature");

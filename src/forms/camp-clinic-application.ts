@@ -3,11 +3,11 @@ import type { Field, FormDefinition, FormValues } from "@/lib/forms/types";
 
 /**
  * Camp / Clinic Insurance Application.
- * Transcribed from the Lead Alchemist (GHL) form okKpbcPIEgUykRJQy2QE
+ * Transcribed from the Lead Alchemist form okKpbcPIEgUykRJQy2QE
  * (older website version: anthonyinsuranceservices.com/forms/camp-clinic-insurance-application/).
  *
  * Answers are stored in the app's database. Only fields with `ghl.standard`
- * are copied to the GoHighLevel contact.
+ * are copied to the Lead Alchemist contact.
  */
 
 const sessionCount = (v: FormValues) => Number(v.session_count ?? 0);
