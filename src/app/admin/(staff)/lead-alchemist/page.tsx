@@ -1,16 +1,16 @@
 import { requireStaff } from "@/lib/auth/session";
 import { GhlError, type GhlPipeline, ghlConfig, listPipelines } from "@/lib/ghl/client";
 import { pipelineConfig, resolvePipeline } from "@/lib/ghl/sync";
-import { STATUSES, STATUS_KEYS } from "@/lib/applications/status";
+import Link from "next/link";
 
-export const metadata = { title: "GHL pipelines | Anthony Insurance Services" };
-// Always ask GHL live; never serve a copy rendered at build time.
+export const metadata = { title: "Lead Alchemist pipelines | Anthony Insurance Services" };
+// Always ask Lead Alchemist live; never serve a copy rendered at build time.
 export const dynamic = "force-dynamic";
 
-/** Setup helper: shows the GHL pipeline and stage IDs to paste into Vercel. */
+/** Setup helper: shows the Lead Alchemist connection, its pipelines and stages, and what the settings resolve to. */
 export default async function GhlPipelinesPage() {
-  await requireStaff("/admin/ghl-pipelines");
-  const raw = pipelineConfig();
+  await requireStaff("/admin/lead-alchemist");
+  const raw = await pipelineConfig();
   const token = (process.env.GHL_API_TOKEN ?? "").trim();
 
   // Fetch first, render after: JSX built inside try/catch wouldn't have its render errors caught.
@@ -46,7 +46,7 @@ export default async function GhlPipelinesPage() {
     body = (
       <div className="space-y-2 rounded-lg bg-[var(--danger-bg)] p-3 text-sm text-[var(--danger)]" role="alert">
         <p>
-          GHL refused the request{errorStatus ? ` (${errorStatus})` : ""}: <strong>{errorMessage}</strong>
+          Lead Alchemist refused the request{errorStatus ? ` (${errorStatus})` : ""}: <strong>{errorMessage}</strong>
         </p>
         <p>
           {/authClass/i.test(errorMessage)
@@ -80,7 +80,7 @@ export default async function GhlPipelinesPage() {
                 {!p.stages?.length && (
                   <tr>
                     <td colSpan={2} className="text-[var(--muted)]">
-                      GHL returned no stages for this pipeline. Add stages in GHL under Opportunities → Pipelines.
+                      Lead Alchemist returned no stages for this pipeline. Add stages in Lead Alchemist under Opportunities → Pipelines.
                     </td>
                   </tr>
                 )}
@@ -99,36 +99,33 @@ export default async function GhlPipelinesPage() {
         ))}
       </div>
     ) : (
-      <p className="text-[var(--muted)]">No pipelines in this GHL sub-account yet. Create one under Opportunities → Pipelines.</p>
+      <p className="text-[var(--muted)]">No pipelines in this Lead Alchemist sub-account yet. Create one under Opportunities → Pipelines.</p>
     );
 }
 
   return (
     <div className="mx-auto max-w-3xl">
-      <h1 className="text-2xl font-semibold">GHL pipelines</h1>
+      <h1 className="text-2xl font-semibold">Lead Alchemist pipelines</h1>
       <p className="mb-6 text-sm text-[var(--muted)]">
-        Put the pipeline in <code>GHL_PIPELINE_ID</code> and the stage new applications should land in, into <code>GHL_PIPELINE_STAGE_ID</code>.
-        Either the ID below or the name exactly as GHL shows it works (e.g. <code>Application Submitted</code>). To move opportunities when the
-        status changes, set <code>GHL_STAGE_IDS</code> as JSON with these keys: {STATUS_KEYS.map((k) => `${k} (${STATUSES[k].label})`).join(", ")},
-        e.g. <code>{`{"quoted":"Quote Sent","bound":"Won"}`}</code>. To take leads out of your lead pipeline when they apply,
-        set <code>GHL_LEAD_PIPELINE_ID</code> (and optionally <code>GHL_LEAD_STAGE_ID</code>, e.g. the booked-call stage). To store the
-        reference, link and PDF on each opportunity, create opportunity custom fields named Application Reference, Application Status,
-        Application Link and Application PDF.
+        Choose the pipeline, stages and lead pipeline in{" "}
+        <Link className="btn-link" href="/admin/settings#ghl">Settings</Link>. This page shows the connection and every pipeline and stage
+        Lead Alchemist returns. To store the reference, link and PDF on each opportunity, create opportunity custom fields named Application
+        Reference, Application Status, Application Link and Application PDF.
       </p>
       <dl className="callout mb-6 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
         <dt className="font-medium">GHL_API_TOKEN</dt>
         <dd>{token ? `set (${token.startsWith("pit-") ? "Private Integration token" : "not a pit- token"}, ${token.length} characters)` : "missing"}</dd>
         <dt className="font-medium">GHL_LOCATION_ID</dt>
         <dd>{process.env.GHL_LOCATION_ID ? <code>{process.env.GHL_LOCATION_ID}</code> : "missing"}</dd>
-        <dt className="font-medium">GHL_PIPELINE_ID</dt>
-        <dd>{process.env.GHL_PIPELINE_ID ? <code>{process.env.GHL_PIPELINE_ID}</code> : "not set"}</dd>
-        <dt className="font-medium">GHL_PIPELINE_STAGE_ID</dt>
-        <dd>{process.env.GHL_PIPELINE_STAGE_ID ? <code>{process.env.GHL_PIPELINE_STAGE_ID}</code> : "not set"}</dd>
-        <dt className="font-medium">GHL_LEAD_PIPELINE_ID</dt>
-        <dd>{process.env.GHL_LEAD_PIPELINE_ID ? <code>{process.env.GHL_LEAD_PIPELINE_ID}</code> : "not set (leads aren't moved)"}</dd>
-        <dt className="font-medium">GHL_LEAD_STAGE_ID</dt>
-        <dd>{process.env.GHL_LEAD_STAGE_ID ? <code>{process.env.GHL_LEAD_STAGE_ID}</code> : "not set (any stage)"}</dd>
-        <dt className="font-medium">GHL answered</dt>
+        <dt className="font-medium">Pipeline</dt>
+        <dd>{raw?.pipelineId ? <code>{raw.pipelineId}</code> : "not set (no opportunities are created)"}</dd>
+        <dt className="font-medium">Stage for new applications</dt>
+        <dd>{raw?.initialStage ? <code>{raw.initialStage}</code> : "not set"}</dd>
+        <dt className="font-medium">Lead pipeline</dt>
+        <dd>{raw?.leadPipeline ? <code>{raw.leadPipeline}</code> : "not set (leads aren't moved)"}</dd>
+        <dt className="font-medium">Lead stage</dt>
+        <dd>{raw?.leadStage ? <code>{raw.leadStage}</code> : "not set (any stage)"}</dd>
+        <dt className="font-medium">Lead Alchemist answered</dt>
         <dd>{!ghlConfig() ? "not called" : errorStatus !== null ? "with an error (below)" : `${pipelines.length} pipeline${pipelines.length === 1 ? "" : "s"}`}</dd>
       </dl>
       {configured && (

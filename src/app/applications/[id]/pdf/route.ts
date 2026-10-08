@@ -6,7 +6,7 @@ import { pdfResponse } from "@/lib/applications/serve";
 
 /**
  * The application's current PDF (the filled carrier application, or the summary
- * if there's none). This link never changes, so it's the one stored in GHL: after
+ * if there's none). This link never changes, so it's the one stored in Lead Alchemist: after
  * an edit it opens the new version. Staff can open any; an applicant only theirs.
  */
 export async function GET(req: NextRequest, ctx: RouteContext<"/applications/[id]/pdf">) {

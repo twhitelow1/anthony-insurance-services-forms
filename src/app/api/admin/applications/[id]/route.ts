@@ -45,7 +45,7 @@ export async function PUT(req: NextRequest, ctx: RouteContext<"/api/admin/applic
 
   const result = await updateAnswers(form, id, values, `staff:${session.email}`);
   if (!result) return Response.json({ error: "Not found" }, { status: 404 });
-  // Rebuild the carrier application and summary. The GHL link always opens the newest.
+  // Rebuild the carrier application and summary. The Lead Alchemist link always opens the newest.
   if (result.changed.length) after(() => makePdf(form, result.app));
   return Response.json({ ok: true, reference: result.app.reference, changed: result.changed });
 }

@@ -3,7 +3,7 @@ import type { Field, FormDefinition, FormValues } from "@/lib/forms/types";
 
 /**
  * Group Vendor Liability — Show Setup Form (for show promoters & producers who cover their vendors).
- * Transcribed from the Lead Alchemist (GHL) form 4DPE8U76f8NuMA1dZV9M
+ * Transcribed from the Lead Alchemist form 4DPE8U76f8NuMA1dZV9M
  * (older website version: anthonyinsuranceservices.com/forms/group-vendor-liability/).
  */
 
@@ -50,7 +50,7 @@ export const groupVendorLiabilityApplication: FormDefinition = {
         text("first_name", "First Name", { required: true, width: "half", ghl: { standard: "firstName" } }),
         text("last_name", "Last Name", { required: true, width: "half", ghl: { standard: "lastName" } }),
         { type: "email", id: "email", label: "Email", required: true, width: "half", ghl: { standard: "email" } },
-        // Not on the source form; added so every application has a phone on the GHL contact.
+        // Not on the source form; added so every application has a phone on the Lead Alchemist contact.
         { type: "tel", id: "phone", label: "Phone", required: true, width: "half", ghl: { standard: "phone" } },
       ],
     },

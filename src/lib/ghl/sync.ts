@@ -22,10 +22,11 @@ import {
   upsertContact,
 } from "./client";
 import { applicantPath } from "@/lib/applications/links";
+import { getSettings } from "@/lib/settings";
 
 /**
- * GHL holds the contact (plus an opportunity), not the application. These
- * custom fields (create them in GHL as single-line text) point staff back to
+ * Lead Alchemist holds the contact (plus an opportunity), not the application. These
+ * custom fields (create them in Lead Alchemist as single-line text) point staff back to
  * the portal. Matching is by name and ignores case/spacing/punctuation.
  */
 export const PORTAL_FIELDS = {
@@ -36,32 +37,28 @@ export const PORTAL_FIELDS = {
 } as const;
 
 /**
- * Opportunity pipeline. GHL_PIPELINE_ID + GHL_PIPELINE_STAGE_ID (the stage new
- * applications land in) turn opportunities on: every application gets its own
- * opportunity there. GHL_STAGE_IDS optionally maps portal statuses to stages,
- * e.g. {"in_review":"<stage>","quoted":"<stage>"}, so a status change moves the
- * opportunity.
+ * Opportunity pipeline, set in Admin → Settings (else GHL_PIPELINE_ID and
+ * friends in Vercel). The pipeline + the stage new applications land in turn
+ * opportunities on: every application gets its own opportunity there. The
+ * status → stage map optionally moves the opportunity when the status changes.
  *
- * GHL_LEAD_PIPELINE_ID (optional, plus GHL_LEAD_STAGE_ID to narrow it to one
- * stage) is where leads wait before applying. When an application lands, the
+ * The lead pipeline (optional, plus a lead stage to narrow it to one stage)
+ * is where leads wait before applying. When an application lands, the
  * lead's open opportunity there is moved into the applications pipeline and
  * becomes that application's opportunity, so the lead leaves the lead pipeline.
  *
- * Each value may be GHL's ID or the pipeline/stage name as shown in GHL (see resolvePipeline).
+ * Each value may be Lead Alchemist's ID or the pipeline/stage name as shown in Lead Alchemist (see resolvePipeline).
  */
-export function pipelineConfig() {
-  const pipelineId = process.env.GHL_PIPELINE_ID;
-  const initialStage = process.env.GHL_PIPELINE_STAGE_ID;
-  if (!pipelineId || !initialStage) return null;
-  let stages: Partial<Record<ApplicationStatus, string>> = {};
-  try {
-    stages = JSON.parse(process.env.GHL_STAGE_IDS || "{}");
-  } catch {
-    console.warn("[ghl] GHL_STAGE_IDS is not valid JSON — ignoring");
-  }
-  const leadPipeline = process.env.GHL_LEAD_PIPELINE_ID?.trim() || null;
-  const leadStage = process.env.GHL_LEAD_STAGE_ID?.trim() || null;
-  return { pipelineId, initialStage, stages, leadPipeline, leadStage };
+export async function pipelineConfig() {
+  const s = await getSettings();
+  if (!s.ghlPipeline || !s.ghlPipelineStage) return null;
+  return {
+    pipelineId: s.ghlPipeline,
+    initialStage: s.ghlPipelineStage,
+    stages: s.ghlStageMap,
+    leadPipeline: s.ghlLeadPipeline || null,
+    leadStage: s.ghlLeadStage || null,
+  };
 }
 
 /** True when `value` names `item` by ID or by name (ignoring case, spaces and punctuation). */
@@ -78,12 +75,12 @@ const cachedPipelines = () => {
 };
 
 /**
- * The configured pipeline and stages as GHL IDs. Settings may hold IDs or the
- * names shown in GHL ("Applications" / "Application Submitted"); names are
+ * The configured pipeline and stages as Lead Alchemist IDs. Settings may hold IDs or the
+ * names shown in Lead Alchemist ("Applications" / "Application Submitted"); names are
  * looked up in the location's pipelines. Throws a readable error if one isn't found.
  */
 export async function resolvePipeline() {
-  const cfg = pipelineConfig();
+  const cfg = await pipelineConfig();
   if (!cfg) return null;
   const pipelines = await cachedPipelines();
   const findPipeline = (value: string, setting: string) => {
@@ -177,9 +174,9 @@ export function portalCustomFields(
 }
 
 /**
- * The applicant's GHL contact, created or updated. A contact ID saved from an
+ * The applicant's Lead Alchemist contact, created or updated. A contact ID saved from an
  * earlier sync wins, so later applications land on the same contact even if
- * staff edited it in GHL; otherwise GHL matches on email (upsert).
+ * staff edited it in Lead Alchemist; otherwise Lead Alchemist matches on email (upsert).
  */
 async function syncContact(
   form: FormDefinition,
@@ -191,14 +188,14 @@ async function syncContact(
   const tags = [...form.tags, statusTag(app.status)];
   if (savedId) {
     try {
-      // Email is left alone: it's what links them, and staff may have changed it in GHL on purpose.
+      // Email is left alone: it's what links them, and staff may have changed it in Lead Alchemist on purpose.
       const { email: _email, ...rest } = fields;
       void _email;
       await updateContact(savedId, { ...rest, customFields });
       await addTags(savedId, tags);
       return { contactId: savedId, matchedBy: "saved_id" };
     } catch (err) {
-      // Deleted or merged away in GHL → fall back to matching on email. Anything else is a real error.
+      // Deleted or merged away in Lead Alchemist → fall back to matching on email. Anything else is a real error.
       const gone = err instanceof GhlError && (err.status === 400 || err.status === 404) && !(await getContact(savedId));
       if (!gone) throw err;
     }
@@ -215,7 +212,7 @@ export async function syncNewApplication(
   form: FormDefinition,
   app: Application,
   pdfUrl?: string,
-  /** GHL contact ID saved for this applicant's email (applicants table), if any. */
+  /** Lead Alchemist contact ID saved for this applicant's email (applicants table), if any. */
   savedContactId?: string | null,
 ): Promise<{
   contactId: string;
@@ -284,7 +281,7 @@ export async function syncNewApplication(
   return { contactId, matchedBy, opportunityId, movedFromLead, missingFields, missingOpportunityFields };
 }
 
-/** Status changed in the portal → mirror it on the contact so GHL workflows can react. */
+/** Status changed in the portal → mirror it on the contact so Lead Alchemist workflows can react. */
 export async function syncStatus(app: Application, previous: ApplicationStatus) {
   if (!app.ghlContactId) return;
   const fields = await listCustomFields();

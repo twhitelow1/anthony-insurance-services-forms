@@ -7,7 +7,7 @@ import { pdfResponse } from "@/lib/applications/serve";
 /**
  * Serves one stored version of an application document. Staff can open any; an
  * applicant only their own. Signed-out visitors (e.g. staff clicking a link in
- * GHL) are sent to staff sign-in and brought back here afterwards.
+ * Lead Alchemist) are sent to staff sign-in and brought back here afterwards.
  */
 export async function GET(req: NextRequest, ctx: RouteContext<"/documents/[id]">) {
   const { id } = await ctx.params;

@@ -8,7 +8,7 @@ import type { FormDefinition } from "@/lib/forms/types";
  * share these questions under their own slug and title.
  *
  * Answers are stored in the app's database. Only fields with `ghl.standard`
- * are copied to the GoHighLevel contact.
+ * are copied to the Lead Alchemist contact.
  */
 
 const notSameAsMailing = is("mailing_same_as_physical", "No");

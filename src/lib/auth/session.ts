@@ -71,7 +71,12 @@ export async function getSession(): Promise<Session | null> {
   if (openAccess()) return OPEN_ACCESS_USER;
   const s = await verify<Session>((await cookies()).get(COOKIE)?.value, "ais:session");
   if (!s || (s.role !== "staff" && s.role !== "client") || typeof s.email !== "string") return null;
-  return s.role === "staff" ? { role: "staff", email: s.email, name: s.name } : { role: "client", email: s.email };
+  if (s.role === "staff") {
+    // Re-checked on every request, so removing an admin in Settings signs them out right away.
+    const { isStaffEmail } = await import("./staff");
+    return (await isStaffEmail(s.email)) ? { role: "staff", email: s.email, name: s.name } : null;
+  }
+  return { role: "client", email: s.email };
 }
 
 /** Use at the top of every staff page and staff server action. */

@@ -1,6 +1,6 @@
 # Anthony Insurance Services — Applications Portal
 
-Online insurance applications plus a portal around them. Clients apply and track their status without a password. Staff sign in with Microsoft 365 to search and manage every application. **GoHighLevel holds only the contact**, with a link back to the full application. Next.js on Vercel, Postgres (Neon).
+Online insurance applications plus a portal around them. Clients apply and track their status without a password. Staff sign in with Microsoft 365 to search and manage every application. **Lead Alchemist holds only the contact**, with a link back to the full application. Next.js on Vercel, Postgres (Neon).
 
 | Who | URL | Sign-in |
 | --- | --- | --- |
@@ -13,36 +13,46 @@ Online insurance applications plus a portal around them. Clients apply and track
 ```
 Applicant ──► form ──► POST /api/forms/<slug>/submit
                          1. validate on the server
-                         2. save to Postgres  ◄── system of record (nothing lost if GHL is down)
+                         2. save to Postgres  ◄── system of record (nothing lost if Lead Alchemist is down)
                          3. after response:
                             ├─ fill the carrier's own PDF application + make an answer summary; store both privately
-                            ├─ GHL: upsert contact + tags + 4 custom fields (incl. PDF link) + opportunity
+                            ├─ Lead Alchemist: upsert contact + tags + 4 custom fields (incl. PDF link) + opportunity
                             ├─ Resend: confirmation email to the applicant
                             └─ Claude: AI pre-review for staff (optional)
 
 Staff  ──► /admin (email sign-in link) ──► search · view · edit · delete · status · notes · PDF · Ask AI
                          /admin/applicants ──► every applicant by email, with all their applications
                          "Switch to user mode" ──► the client portal, as yourself or as any applicant
-                         status change ──► GHL field + tag + opportunity stage; optional client email
+                         status change ──► Lead Alchemist field + tag + opportunity stage; optional client email
                          "Prepare carrier email" ──► Outlook draft (.eml) with the filled carrier PDF + [encrypt] subject
 
 Client ──► /portal ──► email → one-time link → their applications, status, notes, filled application PDF
 ```
 
-### What GoHighLevel receives
+### Admin → Settings
+Day-to-day settings live in the app, not in Vercel. They take effect immediately:
+- **Admins:** who can sign in to /admin. Removing someone signs them out at once, and you can't remove yourself. Addresses in `STAFF_EMAILS` (Vercel) are always admins, as a way back in.
+- **Notifications:** who gets an email for every new application.
+- **Email sender:** the From and Reply-To addresses. The domain must be verified in Resend. **Send me a test email** checks the setup.
+- **Carrier email:** pre-filled on the carrier draft.
+- **Lead Alchemist pipeline:** the applications pipeline and stage, the lead pipeline and stage, and status → stage moves. All are picked from dropdowns that Lead Alchemist fills.
+
+Anything left blank falls back to its Vercel variable. Secrets stay in Vercel: `RESEND_API_KEY`, `GHL_API_TOKEN`, `ANTHROPIC_API_KEY`, `SESSION_SECRET` and the database URL.
+
+### What Lead Alchemist receives
 - **Contact fields:** first and last name, email, phone, website, mailing address, company.
 - **Tags:** `form:sports-facility-application` and `app-status:<status>`. The status tag is swapped on every change, so a "Contact Tag Added" workflow can text or email the client.
-- **Custom fields:** create these in GHL as single-line text. They're matched by name.
+- **Custom fields:** create these in Lead Alchemist as single-line text. They're matched by name.
   - `Application Reference`: e.g. `AIS-7K3Q-9XF2`
   - `Application Status`: e.g. "Information needed"
   - `Application Link`: opens that application in `/admin`. Staff click it from the contact.
   - `Application PDF`: `/applications/<id>/pdf`, which always opens the newest filled carrier application, including after an edit. Staff must be signed in; the PDF is never public.
-- **One contact per applicant email.** The first sync matches the GHL contact by email and saves its ID; every later application from that email updates that same contact by ID (its email in GHL is left alone). **Admin → Applicants** shows who's linked, opens the contact in GHL, and can link a contact by ID or link everyone by email. If the saved contact is deleted in GHL, the next sync falls back to the email match.
-- **One opportunity per application** in `GHL_PIPELINE_ID`, at stage `GHL_PIPELINE_STAGE_ID`. Both accept GHL's ID or the name as shown in GHL, e.g. `Applications` / `Application Submitted`. **Admin → GHL setup** confirms what they resolve to. The opportunity carries the application's reference, status, link and PDF in opportunity custom fields with the same four names (create them in GHL under the opportunity model). If `GHL_STAGE_IDS` maps statuses to stages, status changes move it. Bound marks it won, declined marks it lost, withdrawn marks it abandoned.
+- **One contact per applicant email.** The first sync matches the Lead Alchemist contact by email and saves its ID; every later application from that email updates that same contact by ID (its email in Lead Alchemist is left alone). **Admin → Applicants** shows who's linked, opens the contact in Lead Alchemist, and can link a contact by ID or link everyone by email. If the saved contact is deleted in Lead Alchemist, the next sync falls back to the email match.
+- **One opportunity per application** in `GHL_PIPELINE_ID`, at stage `GHL_PIPELINE_STAGE_ID`. Both accept Lead Alchemist's ID or the name as shown in Lead Alchemist, e.g. `Applications` / `Application Submitted`. **Admin → Lead Alchemist setup** confirms what they resolve to. The opportunity carries the application's reference, status, link and PDF in opportunity custom fields with the same four names (create them in Lead Alchemist under the opportunity model). If `GHL_STAGE_IDS` maps statuses to stages, status changes move it. Bound marks it won, declined marks it lost, withdrawn marks it abandoned.
 - **Leads leave the lead pipeline.** Set `GHL_LEAD_PIPELINE_ID` (and optionally `GHL_LEAD_STAGE_ID`, e.g. the booked-call stage). When someone applies, their open opportunity there is moved into the applications pipeline and becomes that application's opportunity. Later applications get new opportunities.
 - **One note** with the reference, the application link, the PDF link, and a link to every application from that email address.
 
-None of the application answers go to GHL.
+None of the application answers go to Lead Alchemist.
 
 ### Statuses
 Received → In review → Information needed → Submitted to carrier → Quote ready → Coverage bound / Declined / Withdrawn. The wording clients see is in `src/lib/applications/status.ts`.
@@ -52,10 +62,10 @@ Received → In review → Information needed → Submitted to carrier → Quote
 - **Edit answers:** the button on an application page opens the same form, already filled in, and you can jump to any section.
   - Saving runs the same checks as the public form.
   - The activity log records which questions changed.
-  - Both PDFs are rebuilt, and the GHL link opens the new version.
+  - Both PDFs are rebuilt, and the Lead Alchemist link opens the new version.
 - **Delete:** at the bottom of an application page. You type the reference to confirm.
   - It permanently removes the application, its PDFs and its log.
-  - The GHL contact is left as it is.
+  - The Lead Alchemist contact is left as it is.
 - **User mode:** "Switch to user mode" opens the client portal for your own email.
   - "View portal as this applicant" on an applicant's page shows exactly what they see.
   - "Switch to admin" takes you back.
@@ -93,7 +103,7 @@ Both features are optional. They turn on when `ANTHROPIC_API_KEY` is set.
 - **AI pre-review:** runs on every new submission (and on demand from the application page). It gives a 2–4 sentence summary, flags graded high / medium / low that each cite the answer they come from, missing or inconsistent answers, and follow-up questions for the applicant. High flags show as a badge in the application list. Staff only; clients never see it.
 - **Ask AI** (`/admin/assistant`): staff ask in plain English ("gymnastics gyms in Texas with trampolines"). Claude searches through two **read-only** tools (search and open by reference) and answers with linked reference numbers.
 - **Model:** `claude-opus-5-5` by default (`ANTHROPIC_MODEL` to change). Requests use `fallbacks: "default"`, so a declined request is retried on Anthropic's recommended fallback model.
-- **What gets sent to Anthropic:** the answers are sent to the Anthropic API; signatures and GHL data are not. Applicant text is treated as data, never as instructions.
+- **What gets sent to Anthropic:** the answers are sent to the Anthropic API; signatures and Lead Alchemist data are not. Applicant text is treated as data, never as instructions.
 
 ## Security
 - **Sign-in:** one-time links for staff and clients.
@@ -122,7 +132,7 @@ Delete the variable and redeploy to turn sign-in back on. Don't leave it on once
 The full step-by-step guide is the shared setup doc. In short:
 1. **Database:** Vercel → Storage → Neon Postgres. Migrations run on every deploy.
 2. **Resend:** create an account, add and verify the sending domain (DNS records), create an API key.
-3. **GHL:**
+3. **Lead Alchemist:**
    - Create the 4 custom fields and a sub-account Private Integration token with contacts, custom fields and opportunities scopes.
    - Optional: copy the pipeline ID and stage IDs.
 4. **Environment variables:** see `.env.example`, then redeploy.
@@ -142,8 +152,8 @@ npm run db:generate             # after changing src/lib/db/schema.ts
 
 ## Adding a form
 1. Copy `src/forms/sports-facility-application.ts` and edit the sections and fields. Keep the shared contact ids (`first_name`, `last_name`, `email`, `phone`, `legal_business_name`, `mailing_*`, `requested_effective_date`) and the final `signature` field.
-2. Register the new form in `src/forms/index.ts`. `src/forms/forms.test.ts` then checks it automatically: contact fields, GHL mappings, unique ids, and that a fully answered application validates, saves and builds its PDF.
-3. Fields with `ghl: { standard: "…" }` are copied onto the GHL contact.
+2. Register the new form in `src/forms/index.ts`. `src/forms/forms.test.ts` then checks it automatically: contact fields, Lead Alchemist mappings, unique ids, and that a fully answered application validates, saves and builds its PDF.
+3. Fields with `ghl: { standard: "…" }` are copied onto the Lead Alchemist contact.
 
 ## Embedding the form elsewhere
 

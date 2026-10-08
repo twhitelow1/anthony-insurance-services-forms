@@ -71,7 +71,7 @@ export async function POST(req: NextRequest, ctx: RouteContext<"/api/forms/[slug
     );
   }
 
-  // GHL sync + confirmation email run after the response; failures are logged
+  // Lead Alchemist sync + confirmation email run after the response; failures are logged
   // on the application's timeline and can be retried from the admin page.
   after(() => onApplicationSubmitted(form, app));
 

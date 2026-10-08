@@ -18,13 +18,13 @@ afterEach(() => {
 });
 
 describe("staff sign-in links", () => {
-  it("recognizes staff by domain, or by an explicit list when set", () => {
-    expect(isStaffEmail("Amy@AnthonyInsuranceServices.com")).toBe(true);
-    expect(isStaffEmail("amy@gmail.com")).toBe(false);
-    expect(isStaffEmail("amy@anthonyinsuranceservices.com.evil.com")).toBe(false);
+  it("recognizes staff by domain, or by an explicit list when set", async () => {
+    expect(await isStaffEmail("Amy@AnthonyInsuranceServices.com")).toBe(true);
+    expect(await isStaffEmail("amy@gmail.com")).toBe(false);
+    expect(await isStaffEmail("amy@anthonyinsuranceservices.com.evil.com")).toBe(false);
     vi.stubEnv("STAFF_EMAILS", "melanie@anthonyinsuranceservices.com");
-    expect(isStaffEmail("amy@anthonyinsuranceservices.com")).toBe(false);
-    expect(isStaffEmail("melanie@anthonyinsuranceservices.com")).toBe(true);
+    expect(await isStaffEmail("amy@anthonyinsuranceservices.com")).toBe(false);
+    expect(await isStaffEmail("melanie@anthonyinsuranceservices.com")).toBe(true);
   });
 
   it("emails only staff, and staff and client links are not interchangeable", async () => {

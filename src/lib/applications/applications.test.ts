@@ -51,7 +51,7 @@ describe("flatten", () => {
   });
 });
 
-describe("GHL contact-only sync", () => {
+describe("Lead Alchemist contact-only sync", () => {
   it("copies only standard contact fields", () => {
     expect(standardContactFields(form, answers())).toEqual({
       firstName: "Jane",
@@ -64,7 +64,7 @@ describe("GHL contact-only sync", () => {
     });
   });
 
-  it("fills the three portal fields that exist in GHL", () => {
+  it("fills the three portal fields that exist in Lead Alchemist", () => {
     const ghl = [
       { id: "f1", name: "Application Status", fieldKey: "contact.application_status", dataType: "TEXT" },
       { id: "f2", name: "application link", fieldKey: "contact.app_link", dataType: "TEXT" },

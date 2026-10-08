@@ -16,14 +16,14 @@ import type { Field, FormDefinition, FormValues } from "@/lib/forms/types";
 
 /**
  * Sports & Recreation Facility — General Liability / Accident & Health application.
- * Transcribed from the original GHL form 2rfgPVPlD4jV4cvjczTY, which is the
+ * Transcribed from the original Lead Alchemist form 2rfgPVPlD4jV4cvjczTY, which is the
  * carrier's SFIC-STL-APP-001 (04/2026) application. Gymnastics (DSI form
  * XMURWOwptJyzSHt4WA3d, "PH app" PDF) and boxing gyms (MASI, same widget with
  * ?insurance_type=Boxing) apply on the same form, so they share these questions
  * and the carrier PDF mapping, under their own slug, title and tags.
  *
  * Answers are stored in the app's database. Only fields with `ghl.standard`
- * are copied to the GoHighLevel contact.
+ * are copied to the Lead Alchemist contact.
  */
 
 const locationCount = (v: FormValues) => Number(v.location_count ?? 0);
