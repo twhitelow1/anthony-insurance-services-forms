@@ -3,6 +3,7 @@ import { getDb } from "@/lib/db";
 import { databaseUrl, describeDbError } from "@/lib/db/url";
 import { openAccess } from "@/lib/auth/session";
 import { mailConfigured } from "@/lib/mail";
+import { getSettings } from "@/lib/settings";
 import { ghlConfig } from "@/lib/ghl/client";
 import { access } from "node:fs/promises";
 import { desc } from "drizzle-orm";
@@ -65,7 +66,7 @@ async function checkStoredPdfs() {
 
 /** Public setup checklist: which settings are present (never their values) and whether the database works. */
 export default async function Status() {
-  const [db, template, pdfs] = await Promise.all([checkDatabase(), checkPdfTemplate(), checkStoredPdfs()]);
+  const [db, template, pdfs, settings] = await Promise.all([checkDatabase(), checkPdfTemplate(), checkStoredPdfs(), getSettings()]);
   const rows: { name: string; ok: boolean; detail: string; required?: boolean }[] = [
     { name: "Database", required: true, ...db },
     { name: "Carrier PDF template", required: true, ...template },
@@ -87,7 +88,11 @@ export default async function Status() {
       ok: !!process.env.APP_URL,
       detail: process.env.APP_URL ? `APP_URL = ${process.env.APP_URL}` : "APP_URL not set. Links in emails and Lead Alchemist need it.",
     },
-    { name: "Email", ok: mailConfigured(), detail: mailConfigured() ? "Email sending is set up." : "Not set up yet (RESEND_API_KEY and MAIL_FROM)." },
+    {
+      name: "Email",
+      ok: mailConfigured(),
+      detail: mailConfigured() ? `Email sending is set up. Sender: ${settings.mailFrom}` : "Not set up yet (RESEND_API_KEY in Vercel).",
+    },
     { name: "Lead Alchemist", ok: !!ghlConfig(), detail: ghlConfig() ? "Lead Alchemist token and location are set." : "Not set up yet (GHL_API_TOKEN and GHL_LOCATION_ID)." },
     { name: "Claude AI review", ok: !!process.env.ANTHROPIC_API_KEY, detail: process.env.ANTHROPIC_API_KEY ? "Set up." : "Optional. Not set up (ANTHROPIC_API_KEY)." },
   ];
