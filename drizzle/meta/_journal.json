@@ -43,6 +43,20 @@
       "when": 1791434348083,
       "tag": "0005_app_settings",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1791613296713,
+      "tag": "0006_drafts",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1791613502967,
+      "tag": "0007_library_files",
+      "breakpoints": true
     }
   ]
 }

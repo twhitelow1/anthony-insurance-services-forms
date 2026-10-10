@@ -1,7 +1,7 @@
 # Feature backlog
 
 Status key: ✅ built · 🟡 partly built · ⬜ not started.
-"Decided" records the answers Todd gave on 2026-10-10. Anything still unknown is listed in
+"Decided" records the answers Todd gave on 2026-10-10. Last updated 2026-10-10 (typed signature, save progress, document library and branded embeds shipped). Anything still unknown is listed in
 [decisions-and-questions.md](decisions-and-questions.md).
 
 | # | Feature | Status |
@@ -13,13 +13,13 @@ Status key: ✅ built · 🟡 partly built · ⬜ not started.
 | 5 | Compliance popups with sample-document attachments | ⬜ |
 | 6 | Hired & non-owned auto tooltip | 🟡 aerial forms only |
 | 7 | Testing mode for required fields | ⬜ |
-| 8 | Click-to-type signature | ⬜ |
+| 8 | Click-to-type signature | ✅ draw or type, switchable |
 | 9 | Conditional carrier routing based on answers | ⬜ |
-| 10 | Embeddable, branded forms for the websites | 🟡 `?embed=1` only |
+| 10 | Embeddable, branded forms for the websites | ✅ |
 | 11 | Salesforce sync, including PDFs on account records | ⬜ |
 | 12 | Ask AI for querying application data | ✅ |
 | 13 | Carrier-submission portal with multiple carriers | 🟡 Outlook draft only |
-| 14 | Automated follow-up and reactivation for unconverted leads | ⬜ |
+| 14 | Automated follow-up and reactivation for unconverted leads | 🟡 app-started trigger ready; workflows still to build in Lead Alchemist |
 | 15 | AI agents: follow-up, renewals, review, workflows, commissions | 🟡 AI review only |
 
 New ideas raised while answering the questions (A to G) are at the bottom.
@@ -76,10 +76,12 @@ The aerial forms explain it. Sports Facility, Gymnastics and Boxing Gym ask "Add
 - Test submissions **do go to Lead Alchemist**. They're tagged `test` so they're easy to filter and delete there.
 - Test applications are labeled TEST in the admin.
 
-## ⬜ 8. Click-to-type signature
-**Decided:** works like DocuSign. The applicant can **type their name**, and it's rendered in a script font as the signature. Drawing stays available.
+## ✅ 8. Click-to-type signature
+**Built (2026-10-10):** the signature field has **Draw** and **Type** tabs, and the applicant can switch between them like DocuSign.
+- **Type:** enter your name and pick one of three script styles. It's saved as the same signature image as a drawn one, so PDFs and storage work the same.
+- **Audit record:** the IP address and browser are already kept with each application.
 
-The PDF shows the signature plus a line: "Signed electronically by [name] on [date and time]". The audit record (time, IP address, browser) is kept with the application.
+**Still to do:** add a "Signed electronically by [name] on [date and time]" line under the signature on the PDF.
 
 ## ⬜ 9. Conditional carrier routing
 Example: an Aerial Yoga Studio with height over 10 ft can only go to two specific carriers; 10 ft or under can go to three.
@@ -91,8 +93,21 @@ Example: an Aerial Yoga Studio with height over 10 ft can only go to two specifi
 
 **Prerequisite:** questions used in rules must be number or choice fields, not free text. For example, aerial height becomes a number.
 
-## 🟡 10. Embeddable, branded forms
-Today `/forms/<form>?embed=1` hides the page header and can be put in an iframe.
+## ✅ 10. Embeddable, branded forms
+**Built (2026-10-10):**
+- **Admin → Forms** lists every form with its **embed code** and a **Copy** button, plus a branded preview and the direct link.
+- **Branding:** the embedded form takes the site's colors and font (Raleway).
+  - **AIS:** orange.
+  - **DSI:** purple and navy, with orange buttons.
+  - **MASI:** dark charcoal with a red accent.
+
+  Each form defaults to its own site (dance, fitness and aerial → DSI; martial arts and boxing → MASI; everything else → AIS), and `data-ais-brand` overrides it.
+- **Self-sizing:** the iframe resizes itself and scrolls the page to the form on each step. Several forms can share a page.
+- **Security:** only the three agency websites can frame the forms, and the admin, portal and PDFs can't be framed at all.
+
+**To confirm:**
+- MASI's exact brand colors: the site's theme colors couldn't be read, so MASI uses its dark section color plus a red accent.
+- The AIS logo file, which is only needed for the standalone branded page.
 
 **Decided**
 - These **replace the Lead Alchemist widgets** on the websites. Submissions still sync to Lead Alchemist.
@@ -149,8 +164,13 @@ On each form, an **AI assistant** takes plain-English instructions. For example:
 
 Every change is versioned, so it can be undone, and old applications keep the questions they were answered with.
 
-### B. Custom waivers and documents assigned to policies
-A document library in Settings: upload a waiver or sample document, then assign it to forms or policies. Used by #5 popups and emails.
+### B. ✅ Document library, assigned to forms
+**Built (2026-10-10):** **Admin → Documents** lets staff upload PDF, Word, PNG or JPG files (up to 4 MB), each with a title and a note for applicants, and pick which forms each document belongs to.
+- **On the form:** assigned documents appear at the top under "Documents for this application".
+- **In email:** they're linked in the applicant's confirmation email.
+- **Access:** files are public by link, so upload only material meant for applicants.
+
+**Next:** the compliance popups (#5) will use this library ("No waiver?" shows and emails the assigned sample waiver). Assigning to *policies*, not just forms, can come with the carrier registry (C).
 
 ### C. Carrier registry
 A list of carriers managed in the admin, each with:
@@ -169,9 +189,12 @@ Today the app pushes changes to Lead Alchemist. Two-way means:
 
 This needs a Lead Alchemist webhook pointed at the app, and a stage ↔ status map in Settings.
 
-### E. Save progress and "Started" status
-- Save the application to the server as the applicant goes, so it can be resumed from any device.
-- Mark it **Started / Unfinished** so Lead Alchemist can follow up (#14).
+### E. ✅ Save progress and "Started" status
+**Built (2026-10-10):**
+- **Saved as they go:** each section is saved on the server. The signature is never saved until they submit.
+- **Lead Alchemist trigger:** once the applicant gives an email, their contact is created or updated and tagged **`app-started`** and **`app-started:<form>`**. Both tags come off when they submit. This is the trigger for the "unfinished application" follow-up workflow (#14).
+- **Save & finish later:** emails a private link that reopens the application on any device.
+- **Admin → Unfinished** lists everyone who started but hasn't submitted: section reached, last saved, whether they asked for a resume link, and whether they're tagged in Lead Alchemist. Staff can delete test or duplicate entries.
 
 ### F. Carrier replies into the app
 Part of #13: carrier replies and quotes are attached to the application automatically.

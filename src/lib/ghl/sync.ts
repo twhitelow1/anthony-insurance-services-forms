@@ -180,12 +180,12 @@ export function portalCustomFields(
  */
 async function syncContact(
   form: FormDefinition,
-  app: Application,
+  values: FormValues,
+  tags: string[],
   customFields: { id: string; field_value: string }[],
   savedId?: string | null,
 ): Promise<{ contactId: string; matchedBy: "saved_id" | "email" }> {
-  const fields = standardContactFields(form, app.values);
-  const tags = [...form.tags, statusTag(app.status)];
+  const fields = standardContactFields(form, values);
   if (savedId) {
     try {
       // Email is left alone: it's what links them, and staff may have changed it in Lead Alchemist on purpose.
@@ -202,6 +202,17 @@ async function syncContact(
   }
   const { contact } = await upsertContact({ ...fields, source: form.source, tags, customFields });
   return { contactId: contact.id, matchedBy: "email" };
+}
+
+/** Tags that mark an unfinished application, for Lead Alchemist follow-up workflows. */
+export const startedTags = (form: FormDefinition) => ["app-started", `app-started:${form.slug}`];
+
+/**
+ * An applicant started a form and gave their email: create/update their contact
+ * and tag it "app-started" so Lead Alchemist can follow up if they don't finish.
+ */
+export async function syncStartedApplication(form: FormDefinition, values: FormValues, savedContactId?: string | null) {
+  return syncContact(form, values, [...form.tags, ...startedTags(form)], [], savedContactId);
 }
 
 /**
@@ -227,7 +238,9 @@ export async function syncNewApplication(
   const custom = portalCustomFields(app, fields, pdfUrl);
   const missingFields = Object.values(PORTAL_FIELDS).filter((n) => !findField(fields, n));
 
-  const { contactId, matchedBy } = await syncContact(form, app, custom, savedContactId);
+  const { contactId, matchedBy } = await syncContact(form, app.values, [...form.tags, statusTag(app.status)], custom, savedContactId);
+  // They finished: stop the "started but not submitted" follow-ups.
+  await removeTags(contactId, startedTags(form)).catch((err) => console.warn("[ghl] couldn't remove started tags", err));
 
   await addContactNote(
     contactId,

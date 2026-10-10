@@ -3,6 +3,7 @@ import { getForm } from "@/forms";
 import { pruneValues, validateForm } from "@/lib/forms/validate";
 import type { FormValues } from "@/lib/forms/types";
 import { createApplication } from "@/lib/applications/repo";
+import { decodeRef, markDraftSubmitted } from "@/lib/applications/drafts";
 import { onApplicationSubmitted } from "@/lib/applications/pipeline";
 import { receiptPath } from "@/lib/applications/receipt";
 import { openAccess } from "@/lib/auth/session";
@@ -43,7 +44,7 @@ export async function POST(req: NextRequest, ctx: RouteContext<"/api/forms/[slug
   const raw = await req.text();
   if (raw.length > MAX_BODY_BYTES) return Response.json({ error: "Submission too large" }, { status: 413 });
 
-  let body: { values?: unknown; website_hp?: string };
+  let body: { values?: unknown; website_hp?: string; draft?: unknown };
   try {
     body = JSON.parse(raw);
   } catch {
@@ -70,6 +71,10 @@ export async function POST(req: NextRequest, ctx: RouteContext<"/api/forms/[slug
       { status: 500 },
     );
   }
+
+  // The saved progress for this application stops counting as unfinished.
+  const draftRef = decodeRef(body.draft);
+  if (draftRef) await markDraftSubmitted(draftRef, app.id).catch((err) => console.error("[submit] couldn't close the draft", err));
 
   // Lead Alchemist sync + confirmation email run after the response; failures are logged
   // on the application's timeline and can be retried from the admin page.

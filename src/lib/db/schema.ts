@@ -124,6 +124,53 @@ export const applicants = pgTable("applicants", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+/**
+ * Unfinished applications ("Started"): progress saved on the server so the
+ * applicant can resume on any device, and Lead Alchemist can follow up. The
+ * signature is never stored here. Resume links carry a token; only its hash is kept.
+ */
+export const drafts = pgTable(
+  "drafts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tokenHash: text("token_hash").notNull(),
+    formSlug: text("form_slug").notNull(),
+    email: text("email"), // lower-cased, once the applicant has typed a valid one
+    name: text("name"),
+    businessName: text("business_name"),
+    values: jsonb("values").$type<FormValues>().notNull(),
+    step: integer("step").notNull().default(0),
+    /** "started" until submitted. */
+    status: text("status").$type<"started" | "submitted">().notNull().default("started"),
+    applicationId: uuid("application_id").references(() => applications.id, { onDelete: "set null" }),
+    ghlContactId: text("ghl_contact_id"),
+    resumeEmailedAt: timestamp("resume_emailed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("drafts_status_idx").on(t.status, t.updatedAt), index("drafts_email_idx").on(t.email)],
+);
+
+/**
+ * Document library (Admin → Documents): sample waivers, risk-management guides
+ * and other files staff upload once and assign to forms. Assigned documents are
+ * offered to applicants on the form and linked in their confirmation email.
+ */
+export const libraryFiles = pgTable("library_files", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  title: text("title").notNull(),
+  description: text("description"),
+  filename: text("filename").notNull(),
+  contentType: text("content_type").notNull(),
+  content: bytea("content").notNull(),
+  size: integer("size").notNull(),
+  /** Form slugs this document is assigned to. */
+  formSlugs: jsonb("form_slugs").$type<string[]>().notNull().default([]),
+  updatedBy: text("updated_by"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 /** Settings staff edit in Admin → Settings (see src/lib/settings.ts). One row per setting. */
 export const appSettings = pgTable("app_settings", {
   key: text("key").primaryKey(),
@@ -148,3 +195,5 @@ export type Application = typeof applications.$inferSelect;
 export type ApplicationEvent = typeof applicationEvents.$inferSelect;
 export type ApplicationDocument = typeof applicationDocuments.$inferSelect;
 export type Applicant = typeof applicants.$inferSelect;
+export type Draft = typeof drafts.$inferSelect;
+export type LibraryFile = typeof libraryFiles.$inferSelect;

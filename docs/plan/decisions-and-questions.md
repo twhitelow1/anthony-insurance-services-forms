@@ -21,6 +21,10 @@
 | 2026-10-10 | Follow-up sequences and follow-up agents **live in Lead Alchemist**. Agents start in approval mode. |
 | 2026-10-10 | Salesforce is used by Anthony Insurance. Sync accounts, contacts and PDFs. The goal is to bridge the app, Lead Alchemist and Salesforce. |
 | 2026-10-10 | "Started" (an unfinished application) and "Quoted but not bound" are **separate follow-up tracks**. |
+| 2026-10-10 | Signatures: applicants can **switch between drawing and typing**, like DocuSign. |
+| 2026-10-10 | Unfinished applications tag the Lead Alchemist contact **`app-started`** and **`app-started:<form>`**; the tags come off on submit. |
+| 2026-10-10 | Library documents are **public by link** (meant for applicants) and assigned per form. |
+| 2026-10-10 | Embedded forms default to their own website's branding; only the three agency domains may frame them. |
 
 ## Open questions
 
@@ -31,7 +35,9 @@
 | 3 | **Hired & non-owned auto wording.** Proposal: reuse the aerial forms' text. | Anthony or Caitlyn | #6 |
 | 4 | **Carrier list:** name, contact, products and states, how each accepts submissions, and their application PDFs | Anthony | C, #13, #9 |
 | 5 | **Compliance sign-off** on the carrier magic-link design (48-hour links, access log) | Anthony / compliance | #13 |
-| 6 | **Brand assets** for AIS, DSI and MASI: logos and colors | Todd / Anthony | #10 |
+| 6 | **Brand assets:** confirm MASI's brand colors (current: charcoal #262e37 with a red accent), and send the AIS logo file (PNG or SVG) | Todd / Anthony | #10 polish |
+| 6b | **Lead Alchemist workflow** for unfinished applications: build it on the tag `app-started` (days 1, 3, 7, 30) | Todd | #14 |
+| 6c | **Swap the website widgets** for the embed codes from Admin → Forms | Todd / web team | #10 rollout |
 | 7 | **Lead Alchemist stage ↔ app status map** for the two-way sync | Todd | D |
 | 8 | **Salesforce:** admin contact for the API connection, and which system wins when a record changes in two places | Anthony | #11 |
 | 9 | **Commission and revenue data:** where policies and premiums live today (agency system, QuickBooks, spreadsheets), and the commission rates | Anthony | #15 |

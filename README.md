@@ -156,11 +156,23 @@ npm run db:generate             # after changing src/lib/db/schema.ts
 3. Fields with `ghl: { standard: "…" }` are copied onto the Lead Alchemist contact.
 
 ## Embedding the form elsewhere
+**Admin → Forms** has every form's embed code with a copy button.
 
 ```html
-<div data-ais-form="sports-facility-application"></div>
+<div data-ais-form="sports-facility-application" data-ais-brand="ais"></div>
 <script src="https://<APP_URL>/embed.js" async></script>
 ```
+- **`data-ais-brand`** (`ais`, `dsi` or `masi`) gives the form that website's colors and font. Without it, a form uses its own site's look. The brand settings are in `src/lib/brands.ts`.
+- **Who can embed:** forms can be framed only by anthonyinsuranceservices.com, dancestudioinsurance.com and martialartsschoolinsurance.com, set by `EMBED_ORIGINS` and the headers in `next.config.ts`. The admin, portal and PDFs refuse to load in any frame.
+- **Sizing and redirect:** the iframe resizes itself. Add `data-ais-redirect="https://…/thank-you"` to send applicants to a thank-you page after they submit.
+
+## Saved progress, documents and signatures
+- **Saved progress:** each section is saved on the server as the applicant goes (in the `drafts` table; the signature is never saved there).
+  - Once they give an email, their Lead Alchemist contact is tagged `app-started` and `app-started:<form>`. The tags come off when they submit, so a Lead Alchemist workflow can follow up on unfinished applications.
+  - **Save & finish later** emails a private resume link.
+  - **Admin → Unfinished** lists everyone who hasn't submitted.
+- **Documents:** in **Admin → Documents**, upload sample waivers and similar files and assign them to forms. Applicants see them on the form, and they're linked in the confirmation email. Files are public by link, so upload only what's meant for applicants.
+- **Signatures:** applicants can **draw** or **type** their name and pick a script style, like DocuSign. Either way the signature is saved as the same image.
 
 ## Roadmap
 - ~~Fill the carrier's own fillable PDF.~~ Done (see Carrier PDF). Swap in the updated version when it arrives.

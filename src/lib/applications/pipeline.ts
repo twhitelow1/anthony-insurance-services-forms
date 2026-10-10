@@ -1,15 +1,17 @@
 import "server-only";
-import type { Application } from "@/lib/db/schema";
+import type { Application, Draft } from "@/lib/db/schema";
 import type { FormDefinition } from "@/lib/forms/types";
 import { ghlConfig } from "@/lib/ghl/client";
 import { getSettings } from "@/lib/settings";
-import { syncNewApplication, syncStatus } from "@/lib/ghl/sync";
+import { syncNewApplication, syncStartedApplication, syncStatus } from "@/lib/ghl/sync";
+import { setDraftGhlContact } from "./drafts";
 import { emailLayout, sendMail } from "@/lib/mail";
 import { aiClient } from "@/lib/ai/client";
 import { reviewApplication } from "@/lib/ai/review";
 import { applicationPdfUrl, createApplicationPdf, createCarrierPdf, mainDocument } from "./documents";
 import { addEvent, getApplicant, linkApplicantGhl, saveAiReview, setGhlIds } from "./repo";
 import { STATUSES, type ApplicationStatus } from "./status";
+import { libraryForForm, libraryUrl } from "@/lib/library";
 
 const appUrl = () => (process.env.APP_URL ?? "http://localhost:3000").replace(/\/$/, "");
 const describe = (err: unknown) => (err instanceof Error ? err.message : String(err));
@@ -145,6 +147,8 @@ async function notifyStaff(form: FormDefinition, app: Application) {
 
 async function sendConfirmation(form: FormDefinition, app: Application) {
   try {
+    // Documents assigned to this form in Admin → Documents (sample waiver etc.).
+    const docs = await libraryForForm(form.slug).catch(() => []);
     await sendMail({
       to: app.applicantEmail,
       subject: `We received your application (${app.reference})`,
@@ -153,6 +157,7 @@ async function sendConfirmation(form: FormDefinition, app: Application) {
         paragraphs: [
           `We've received your ${form.title} for ${app.businessName ?? app.applicantName}. Your reference number is ${app.reference}.`,
           "You can check its status any time — sign in with this email address and we'll send you a one-time link. No password needed.",
+          ...docs.map((d) => `${d.title}${d.description ? ` (${d.description})` : ""}: ${libraryUrl(d)}`),
         ],
         button: { label: "Check application status", url: `${appUrl()}/portal/login` },
       }),
@@ -191,4 +196,17 @@ export async function onStatusChanged(app: Application, previous: ApplicationSta
     }),
   );
   await Promise.allSettled(tasks);
+}
+
+/** An applicant started a form and gave an email: tell Lead Alchemist ("app-started"). Never throws. */
+export async function syncDraftStarted(form: FormDefinition, draft: Draft) {
+  if (!ghlConfig() || !draft.email) return;
+  try {
+    const saved = await getApplicant(draft.email);
+    const { contactId } = await syncStartedApplication(form, draft.values, saved?.ghlContactId);
+    await setDraftGhlContact(draft.id, contactId);
+    await linkApplicantGhl(draft.email, contactId);
+  } catch (err) {
+    console.error("[pipeline] Lead Alchemist sync for a started application failed", draft.id, err);
+  }
 }

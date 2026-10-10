@@ -36,6 +36,9 @@ export function FormWizard({ slug, edit }: { slug: string; edit?: EditMode }) {
   const [status, setStatus] = useState<Status>({ kind: "idle" });
   const [hp, setHp] = useState("");
   const [restored, setRestored] = useState(false);
+  // Server-side saved progress: "<id>.<token>" (kept with the local draft).
+  const draftRef = useRef<string | null>(null);
+  const [later, setLater] = useState<{ state: "idle" | "sending" | "sent" | "error"; message?: string }>({ state: "idle" });
   const topRef = useRef<HTMLDivElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
 
@@ -44,12 +47,29 @@ export function FormWizard({ slug, edit }: { slug: string; edit?: EditMode }) {
   /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     if (edit) return;
+    const resume = new URLSearchParams(window.location.search).get("resume");
+    if (resume) {
+      // A "finish later" link: load the saved answers from the server.
+      fetch(`/api/forms/${slug}/draft?resume=${encodeURIComponent(resume)}`)
+        .then((r) => r.json().then((d) => ({ ok: r.ok, d })))
+        .then(({ ok, d }) => {
+          if (!ok) return setLater({ state: "error", message: d.error ?? "That link didn't work." });
+          draftRef.current = resume;
+          setValuesState(d.values ?? {});
+          setStep(Math.min(Number(d.step) || 0, form.sections.length - 1));
+          setRestored(true);
+          window.history.replaceState(null, "", window.location.pathname + window.location.search.replace(/[?&]resume=[^&]*/, "").replace(/^&/, "?"));
+        })
+        .catch(() => setLater({ state: "error", message: "Couldn't load your saved application. Check your connection." }));
+      return;
+    }
     try {
       const raw = localStorage.getItem(draftKey(slug));
       if (raw) {
-        const draft = JSON.parse(raw) as { values: FormValues; step: number };
+        const draft = JSON.parse(raw) as { values: FormValues; step: number; ref?: string };
         setValuesState(draft.values ?? {});
         setStep(Math.min(draft.step ?? 0, form.sections.length - 1));
+        draftRef.current = draft.ref ?? null;
         setRestored(true);
       }
     } catch {
@@ -64,7 +84,7 @@ export function FormWizard({ slug, edit }: { slug: string; edit?: EditMode }) {
       try {
         const { signature: _omit, ...rest } = values;
         void _omit;
-        localStorage.setItem(draftKey(slug), JSON.stringify({ values: rest, step }));
+        localStorage.setItem(draftKey(slug), JSON.stringify({ values: rest, step, ref: draftRef.current }));
       } catch {
         /* storage unavailable */
       }
@@ -76,7 +96,13 @@ export function FormWizard({ slug, edit }: { slug: string; edit?: EditMode }) {
   useEffect(() => {
     const el = rootRef.current;
     if (!el) return;
-    const ro = new ResizeObserver(() => postToParent({ type: "height", height: document.documentElement.scrollHeight }));
+    // Measure the page content, not the document: inside an iframe the document is never
+    // shorter than the frame, so it could grow but never shrink back.
+    const report = () => {
+      const main = el.closest("main") ?? el;
+      postToParent({ type: "height", height: Math.ceil(main.getBoundingClientRect().bottom + window.scrollY) });
+    };
+    const ro = new ResizeObserver(report);
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
@@ -112,10 +138,47 @@ export function FormWizard({ slug, edit }: { slug: string; edit?: EditMode }) {
 
   const validateCurrent = () => validateSection(section, values);
 
+  /** Save progress on the server (so it can be resumed anywhere and followed up). Best effort. */
+  const saveProgress = async (atStep: number): Promise<string | null> => {
+    if (edit) return null;
+    try {
+      const { signature: _omit, ...rest } = values;
+      void _omit;
+      const res = await fetch(`/api/forms/${slug}/draft`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ref: draftRef.current, values: pruneValues(form, rest), step: atStep, website_hp: hp }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && typeof data.ref === "string") draftRef.current = data.ref;
+      return draftRef.current;
+    } catch {
+      return draftRef.current;
+    }
+  };
+
+  const finishLater = async () => {
+    setLater({ state: "sending" });
+    const ref = await saveProgress(step);
+    if (!ref) return setLater({ state: "error", message: "Couldn't save right now. Your progress is still saved on this device." });
+    try {
+      const res = await fetch(`/api/forms/${slug}/draft/email`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ref }),
+      });
+      const data = await res.json().catch(() => ({}));
+      setLater(res.ok ? { state: "sent", message: `We emailed a link to ${data.email}. Use it to finish on any device.` } : { state: "error", message: data.error });
+    } catch {
+      setLater({ state: "error", message: "Network error. Your progress is still saved on this device." });
+    }
+  };
+
   const next = () => {
     const errs = validateCurrent();
     setErrors(errs);
     if (Object.keys(errs).length) return focusFirstError(errs);
+    void saveProgress(step + 1);
     setStep((s) => s + 1);
     scrollTop();
   };
@@ -136,7 +199,7 @@ export function FormWizard({ slug, edit }: { slug: string; edit?: EditMode }) {
       const res = await fetch(edit?.saveUrl ?? `/api/forms/${slug}/submit`, {
         method: edit ? "PUT" : "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ values: pruneValues(form, values), website_hp: hp }),
+        body: JSON.stringify({ values: pruneValues(form, values), website_hp: hp, draft: edit ? undefined : draftRef.current }),
       });
       const data = await res.json().catch(() => ({}));
       if (res.ok && edit) {
@@ -265,6 +328,7 @@ export function FormWizard({ slug, edit }: { slug: string; edit?: EditMode }) {
               setValuesState({});
               setStep(0);
               setRestored(false);
+              draftRef.current = null;
               try {
                 localStorage.removeItem(draftKey(slug));
               } catch {}
@@ -342,11 +406,25 @@ export function FormWizard({ slug, edit }: { slug: string; edit?: EditMode }) {
               : "Continue"}
           </button>
         </div>
-        <p className="mt-4 text-center text-xs text-[var(--muted)]">
-          {edit
-            ? "Changes are saved when you press Save changes on the last step. The PDFs are rebuilt afterwards."
-            : "Your progress is saved on this device automatically."}
-        </p>
+        {edit ? (
+          <p className="mt-4 text-center text-xs text-[var(--muted)]">
+            Changes are saved when you press Save changes on the last step. The PDFs are rebuilt afterwards.
+          </p>
+        ) : (
+          <div className="mt-4 text-center text-xs text-[var(--muted)]">
+            <p>
+              Your progress is saved as you go.{" "}
+              <button type="button" className="btn-link text-xs" onClick={finishLater} disabled={later.state === "sending"}>
+                {later.state === "sending" ? "Sending…" : "Save & finish later"}
+              </button>
+            </p>
+            {later.message && (
+              <p className={`mt-2 ${later.state === "error" ? "text-[var(--danger)]" : "text-[var(--success)]"}`} role="status">
+                {later.message}
+              </p>
+            )}
+          </div>
+        )}
       </form>
     </div>
   );

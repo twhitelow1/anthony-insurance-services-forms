@@ -196,8 +196,8 @@ select.input {
   font-weight: 600;
   transition: background 0.15s, border-color 0.15s, opacity 0.15s;
 }
-.btn-primary { background: var(--brand); color: white; }
-.btn-primary:hover { background: #0c1c36; }
+.btn-primary { background: var(--button, var(--brand)); color: white; }
+.btn-primary:hover { background: var(--button-hover, #0c1c36); }
 .btn-primary:disabled { opacity: 0.6; cursor: progress; }
 .btn-secondary { background: var(--surface); color: var(--brand); border: 1px solid var(--border); }
 .btn-secondary:hover { border-color: var(--brand); }

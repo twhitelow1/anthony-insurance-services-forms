@@ -37,6 +37,15 @@ Staff work in the **admin**:
 
 Applicants have a **portal** where they sign in by email link and see their applications, statuses and PDFs.
 
+Applicants can also:
+- **sign by drawing or typing**, like DocuSign;
+- have **their progress saved** as they go, and use **Save & finish later** to resume on any device.
+
+Staff also have:
+- **Unfinished:** applications started but not submitted. These contacts are tagged `app-started` in Lead Alchemist.
+- **Forms:** the copyable, branded embed code for each website.
+- **Documents:** sample waivers and other files, assigned to forms.
+
 **16 application forms** are live, covering every form on the Master List of Applications.
 
 ## Links
