@@ -139,11 +139,11 @@ Today staff can download an Outlook draft to the carrier with the filled PDF att
 - **Bring carrier replies and quotes back into the app** if possible. It is: each submission gets its own reply address, so replies and attachments land on the application. A carrier upload box on the portal page is another option.
 - Built privacy-first: no applicant data in the email body, encrypted transport, access log. This follows GLBA and state insurance data-security expectations; to be confirmed by compliance.
 
-## ⬜ 14. Follow-up and reactivation for unconverted leads
+## 🟡 14. Follow-up and reactivation for unconverted leads
 **Decided**
 - **Runs in Lead Alchemist workflows.** This app supplies the triggers: tags, stages and statuses.
 - Two separate tracks:
-  - **Unfinished applications:** started but never submitted. Needs a new **"Started" status**: the app saves progress to the server and tells Lead Alchemist; see feature E.
+  - **Unfinished applications:** started but never submitted. **Trigger built (E):** these contacts are tagged `app-started` in Lead Alchemist. The workflow itself is still to be built there.
   - **Quoted but not bound:** its own sequence.
 - Timing: follow-ups on **days 1, 3, 7 and 30**, plus **renewal reminders 60 and 30 days** before expiration.
 
