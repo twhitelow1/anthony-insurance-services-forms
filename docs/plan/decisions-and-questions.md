@@ -31,6 +31,7 @@
 | 2026-10-16 | **Testing mode is staff only**, enforced on the server, and off by default. This replaces the "special link" decision. |
 | 2026-10-16 | **Applicant emails are branded by the application's own site** (AIS, DSI or MASI). Gymnastics counts as DSI. The Microsoft 365 email path stays switched off. |
 | 2026-10-16 | **LARP:** no payment at application time (the carrier doesn't publish rates). An agent quotes after submission. |
+| 2026-10-16 | **The Fitness form fills the carrier's own PDF** (CTF 2/28/2023), like SFIC. The premium calculator, card details and agent signature are left for Acrobat, the agency and the agent. |
 
 ## Open questions
 
@@ -52,5 +53,6 @@
 | 9 | **Commission and revenue data:** where policies and premiums live today (agency system, QuickBooks, spreadsheets), and the commission rates | Anthony | #15 |
 | 10 | **Aerial forms' General Aggregate Limit options:** currently $1M–$5M, taken from the fitness PDF | Caitlyn | — |
 | 11 | **Dropdown options** not visible in the original widgets: "How did you hear about us?", event type and level, and others (see `docs/forms-review.md`) | Caitlyn | — |
-| 12 | **Fillable carrier PDFs** for Fitness & Cross-Training, LARP 2026, Martial Arts Instructor and MMA Events, so they fill like SFIC | Anthony | — |
+| 12 | **Fillable carrier PDFs** for LARP 2026, Martial Arts Instructor and MMA Events, so they fill like SFIC. Fitness is done (2026-10-16). | Anthony | — |
+| 12b | **Fitness premium on the carrier PDF:** its premium boxes show $0.00 until someone edits a field in Acrobat. Leave them for the agent, or have the app work the premium out from the PDF's own rate table? | Todd | — |
 | 13 | Should the **MMA / Boxing / Kickboxing / Wrestling Events** PDF become a web form? | Anthony | — |

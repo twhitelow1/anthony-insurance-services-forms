@@ -78,7 +78,13 @@ Set `NOTIFY_EMAILS` (comma-separated) and those staff get an email for every new
 Every application gets a PDF in Anthony Insurance's format. It has a branded header, an applicant summary, numbered sections, Yes/No checkboxes, schedules as tables and the signature block. For forms without a carrier PDF, this is the one sent to the carrier.
 
 ## Carrier PDF
-Each submission fills in the carrier's own fillable application (`carrier-forms/sfic-stl-app-001.pdf`, SFIC-STL-APP-001 04/2026).
+Each submission fills in the carrier's own fillable application:
+- **Sports Facility, Gymnastics and Boxing Gym:** `carrier-forms/sfic-stl-app-001.pdf` (SFIC-STL-APP-001 04/2026), mapped in `src/lib/pdf/carrier/sports-facility.ts`.
+- **Fitness Class & Cross Training:** `carrier-forms/dsi-ctf-fitness-2023.pdf` (FORM: CTF REV 2/28/2023), mapped in `src/lib/pdf/carrier/fitness.ts`.
+  - Its Yes/No questions are radio buttons, and six on page 2 are named one row off from their question. The mapping follows where each button sits, and a test checks the rows are in page order.
+  - The premium calculator, payment and card boxes are left as they are. The PDF works out the premium itself in Acrobat, and the agency collects payment details.
+
+The rest of this section describes the SFIC form.
 - **What goes on it:** every web form answer is copied onto the matching box or field. The applicant's drawn signature and the date go on the signature line.
 - **Addendum page:** answers that don't fit go on an extra last page, as the form's instructions allow. That covers:
   - text too long for its box
@@ -91,12 +97,12 @@ Each submission fills in the carrier's own fillable application (`carrier-forms/
 - **Corporation:** the PDF's Form of Business has no Corporation box, so that answer goes on the addendum.
 - **Still editable:** the fields stay fillable, so staff can correct anything before sending.
 - **Answer summary:** a summary PDF of the answers is also created for reference.
-- **Mapping:** lives in `src/lib/pdf/carrier/sports-facility.ts`. The PDF's field names are generic (`Yes_20`), so each one sits next to its question.
+- **Mapping:** lives in `src/lib/pdf/carrier/sports-facility.ts` (`fitness.ts` for the fitness form). The PDF's field names are generic (`Yes_20`), so each one sits next to its question.
 - **New version from the carrier:**
   1. Replace the file in `carrier-forms/`.
   2. Update the field names in the mapping.
   3. Run `npm test`. A test fails on any field name the new PDF doesn't have.
-  4. To look at a filled sample, run `CARRIER_PDF_OUT=/tmp/filled.pdf npx vitest run src/lib/pdf/carrier`.
+  4. To look at a filled sample, run `CARRIER_PDF_OUT=/tmp/filled.pdf npx vitest run src/lib/pdf/carrier/carrier` (or `…/carrier/fitness`).
 
 ## AI features (Claude)
 Both features are optional. They turn on when `ANTHROPIC_API_KEY` is set.

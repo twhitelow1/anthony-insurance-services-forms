@@ -20,6 +20,7 @@ Applicants fill in an online application. The app then:
 1. Saves the application.
 2. Builds the PDF:
    - **Sports Facility, Gymnastics and Boxing Gym** fill the carrier's own SFIC-STL-APP-001 form.
+   - **Fitness Class & Cross Training** fills the carrier's own fitness application (CTF 2/28/2023).
    - **All other forms** get a clean, carrier-ready "Anthony Insurance format" PDF.
 3. Emails the applicant a confirmation branded for their site (AIS, Dance Studio Insurance or Martial Arts School Insurance), and emails staff an alert.
 4. Runs an AI pre-review for the agent.

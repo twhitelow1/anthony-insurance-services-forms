@@ -7,6 +7,10 @@ export interface CarrierFill {
   text: Map<string, { value: string; label: string }>;
   /** AcroForm checkbox names to tick. */
   checked: Set<string>;
+  /** AcroForm radio group name → the export value of the button to select. */
+  radios: Map<string, string>;
+  /** AcroForm dropdown name → the option to select, as the dropdown shows it. */
+  dropdowns: Map<string, { value: string; label: string }>;
   /** Printed on the addendum page ("Attach additional pages if needed"). */
   addendum: { label: string; value: string }[];
 }
@@ -21,14 +25,19 @@ export interface CarrierFormSpec {
   template: string;
   /** Signature image box and date position, in PDF points from the bottom-left of the page (0-based page). */
   signature: { page: number; x: number; y: number; width: number; height: number };
-  date: { page: number; x: number; y: number };
+  /** The template's own (empty) signature field over that box, made see-through so the signature shows. */
+  signatureField?: string;
+  /** Where the submission date is drawn. Omit when the mapping fills the template's own date field. */
+  date?: { page: number; x: number; y: number };
   /**
    * Questions the applicant never saw (hidden by an earlier answer, e.g. the
    * trampoline follow-ups after "No trampolines") would otherwise print blank.
    * After mapping, each Yes/No pair with neither box ticked gets "No" and each
-   * empty text box gets "N/A", except the fields listed here.
+   * empty text box gets "N/A", except the fields listed here. Omit when the
+   * mapping fills those defaults itself (e.g. a template whose premium and card
+   * boxes must stay empty).
    */
-  blanks: { yesNoPair: RegExp; keepBlank: RegExp[] };
+  blanks?: { yesNoPair: RegExp; keepBlank: RegExp[] };
   /** `formSlug` is the web form answered, for the few differences between forms that share this PDF. */
   map(values: FormValues, fill: Filler, formSlug: string): void;
 }
@@ -39,12 +48,20 @@ const str = (v: FormValues[string]) => (typeof v === "string" ? v.trim() : "");
 export class Filler implements CarrierFill {
   text = new Map<string, { value: string; label: string }>();
   checked = new Set<string>();
+  radios = new Map<string, string>();
+  dropdowns = new Map<string, { value: string; label: string }>();
   addendum: { label: string; value: string }[] = [];
 
   constructor(private readonly values: FormValues) {}
 
   get(id: string): string {
     return str(this.values[id]);
+  }
+
+  /** A multiple-choice answer (checkboxes). */
+  list(id: string): string[] {
+    const v = this.values[id];
+    return Array.isArray(v) ? v : [];
   }
 
   /** Text field. Empty values are skipped. */
@@ -60,6 +77,23 @@ export class Filler implements CarrierFill {
 
   check(field: string | undefined) {
     if (field) this.checked.add(field);
+  }
+
+  /** Select the radio button whose export value is `value` (e.g. "Choice1"). */
+  radio(group: string, value: string | undefined) {
+    if (value) this.radios.set(group, value);
+  }
+
+  /** A Yes/No answer as a radio group: `yes` / `no` are the buttons' export values. */
+  yesNoRadio(id: string, group: string, yes: string, no: string) {
+    const v = this.get(id);
+    this.radio(group, v === "Yes" ? yes : v === "No" ? no : undefined);
+  }
+
+  /** Dropdown option, as the dropdown shows it. Empty values are skipped. */
+  dropdown(field: string, value: string | undefined, label: string) {
+    const v = (value ?? "").trim();
+    if (v) this.dropdowns.set(field, { value: v, label });
   }
 
   yesNo(id: string, yes: string, no: string) {

@@ -1,7 +1,7 @@
 # Feature backlog
 
 Status key: ✅ built · 🟡 partly built · ⬜ not started.
-"Decided" records the answers Todd gave on 2026-10-10. Last updated 2026-10-16 (Oct 9 call with Caitlyn: gymnastics limits and rules, staff testing mode, branded emails, LARP changes). Anything still unknown is listed in
+"Decided" records the answers Todd gave on 2026-10-10. Last updated 2026-10-16 (Oct 9 call with Caitlyn: gymnastics limits and rules, staff testing mode, branded emails, LARP changes; the fitness form fills its carrier PDF). Anything still unknown is listed in
 [decisions-and-questions.md](decisions-and-questions.md).
 
 | # | Feature | Status |
@@ -194,6 +194,21 @@ Today staff can download an Outlook draft to the carrier with the filled PDF att
 **LARP:**
 - The total participants is now worked out from the youth and adult counts.
 - The payment step is replaced by a note that an agent will send a quote after submission.
+
+## Fitness form fills the carrier PDF (built 2026-10-16)
+The **Fitness Class & Cross Training** application now fills the carrier's own PDF (FORM: CTF REV 2/28/2023, the
+dancestudioinsurance.com "Fitness and Cross Training Facilities" application), the same way Sports Facility fills SFIC.
+- **On the PDF:** every answer goes on its box: Yes/No buttons, sports trained, limits and optional coverages,
+  additional insureds with their endorsements, how they'll pay, and the signature and date.
+- **Addendum page:** anything with no box goes on an extra last page, e.g. the number of independent contractors.
+- **Left as they are:**
+  - **Premium boxes:** the PDF works out the premium itself in Acrobat. Until someone edits a field there, the premium
+    boxes show $0.00.
+  - **Card and bank details:** the agency collects them.
+  - **Licensed agent signature:** the agent signs.
+- **Carrier PDF quirk:** six Yes/No buttons on page 2 are named one row off from their questions. The app follows where
+  each button sits on the page, and a test checks this.
+- The web form's questions already matched this PDF, so they're unchanged.
 
 ## New ideas raised (2026-10-10)
 
