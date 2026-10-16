@@ -5,6 +5,7 @@ import { FormWizard } from "@/components/FormWizard";
 import { type LibraryItem, libraryForForm, libraryPath } from "@/lib/library";
 import { BRANDS, brandCss, defaultBrand, isBrand } from "@/lib/brands";
 import { raleway } from "@/lib/fonts/brand";
+import { getSession } from "@/lib/auth/session";
 
 export function generateStaticParams() {
   return Object.keys(forms).map((slug) => ({ slug }));
@@ -29,6 +30,9 @@ export default async function FormPage({ params, searchParams }: PageProps<"/for
     console.error("[form] couldn't load documents", err);
     return [];
   });
+
+  // Staff get the testing-mode switch (the submit API checks the session again).
+  const canTest = (await getSession().catch(() => null))?.role === "staff";
 
   return (
     <main className={`mx-auto w-full max-w-3xl px-4 ${embedded ? "py-4" : "py-10 sm:py-14"} ${brand ? raleway.className : ""}`}>
@@ -60,7 +64,7 @@ export default async function FormPage({ params, searchParams }: PageProps<"/for
           </ul>
         </aside>
       )}
-      <FormWizard slug={slug} />
+      <FormWizard slug={slug} canTest={canTest} />
     </main>
   );
 }

@@ -6,7 +6,7 @@ import { createApplication } from "@/lib/applications/repo";
 import { decodeRef, markDraftSubmitted } from "@/lib/applications/drafts";
 import { onApplicationSubmitted } from "@/lib/applications/pipeline";
 import { receiptPath } from "@/lib/applications/receipt";
-import { openAccess } from "@/lib/auth/session";
+import { getSession, openAccess } from "@/lib/auth/session";
 import { describeDbError } from "@/lib/db/url";
 
 export const maxDuration = 60;
@@ -44,7 +44,7 @@ export async function POST(req: NextRequest, ctx: RouteContext<"/api/forms/[slug
   const raw = await req.text();
   if (raw.length > MAX_BODY_BYTES) return Response.json({ error: "Submission too large" }, { status: 413 });
 
-  let body: { values?: unknown; website_hp?: string; draft?: unknown };
+  let body: { values?: unknown; website_hp?: string; draft?: unknown; testMode?: unknown };
   try {
     body = JSON.parse(raw);
   } catch {
@@ -54,14 +54,18 @@ export async function POST(req: NextRequest, ctx: RouteContext<"/api/forms/[slug
   // Honeypot: real users never see this field. Pretend success so bots move on.
   if (body.website_hp) return Response.json({ ok: true, reference: "AIS-0000-0000" });
 
+  // Testing mode skips required fields, for signed-in staff only: the browser's
+  // say-so is never enough, so a public applicant can't turn it on.
+  const testing = body.testMode === true && (await getSession().catch(() => null))?.role === "staff";
+
   const values = pruneValues(form, sanitize(body.values));
-  const errors = validateForm(form, values);
+  const errors = validateForm(form, values, { skipRequired: testing });
   if (Object.keys(errors).length) return Response.json({ error: "Validation failed", errors }, { status: 422 });
 
   let app;
   try {
     // The database is the system of record — once this succeeds, nothing is lost.
-    app = await createApplication(form, values, { ip, userAgent: req.headers.get("user-agent") ?? undefined });
+    app = await createApplication(form, values, { ip, userAgent: req.headers.get("user-agent") ?? undefined, isTest: testing });
   } catch (err) {
     console.error("[submit] could not save application", err);
     // In testing mode, say why, so setup problems are visible (see /status).

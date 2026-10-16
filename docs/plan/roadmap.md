@@ -3,21 +3,24 @@
 A proposed build order, grouped so each phase ships something usable. Feature numbers match
 [backlog.md](backlog.md); letters are the new ideas at the bottom of that file. Reorder freely.
 
+## Shipped 2026-10-16 (Oct 9 call with Caitlyn)
+Gymnastics limits, auto-declines, compliance popups with sample documents, 12 ft silks limit, hired & non-owned auto tooltip · Staff testing mode (#7) · Branded applicant emails · One-"$" currency formatting · LARP auto total and no payment step
+
 ## Shipped 2026-10-10
 Typed or drawn signature (#8) · Save progress + "Started" status (E) · Document library (B) · Branded embeds (#10)
 
 ## Phase 1: Quick wins and polish (days)
 | Item | Why now |
 |---|---|
-| #6 Hired & non-owned auto tooltip on every form that asks | Small, visible, removes confusion |
-| #7 Testing mode via special link (tests go to Lead Alchemist tagged `test`) | Lets Anthony and Caitlyn test freely |
+| #6 Hired & non-owned auto tooltip on Sports Facility and Boxing Gym too (gymnastics done) | Caitlyn's final wording |
+| ~~#7 Testing mode~~ | ✅ shipped (staff only) |
 | #8 follow-up: "Signed electronically by …" line on the PDF | Small |
 
 ## Phase 2: Rules on the forms (1–2 weeks)
 | Item | Needs |
 |---|---|
-| #4 Required answers that stop the application, with declined attempts saved and tagged in Lead Alchemist | Caitlyn's master list |
-| #5 Compliance popups that show and email the sample document | The documents to upload |
+| #4 More decline rules (gymnastics done); save declined attempts and tag them in Lead Alchemist | Caitlyn's master list |
+| #5 Compliance popups on more forms (gymnastics done), managed in the admin | The real documents |
 | ~~B Document library~~ | ✅ shipped |
 | ~~E Save progress and "Started" status~~ | ✅ shipped |
 
@@ -54,4 +57,7 @@ Typed or drawn signature (#8) · Save progress + "Started" status (E) · Documen
 | #15 Commission and revenue tracking | To learn where policy and premium data lives |
 
 ## Already done
-#1 Admin portal, #2 Lead Alchemist links, #3 Magic-link sign-in and portal, #12 Ask AI, #8 Typed/drawn signature, #10 Branded embeds, B Document library, E Save progress + Started status.
+#1 Admin portal, #2 Lead Alchemist links, #3 Magic-link sign-in and portal, #12 Ask AI, #8 Typed/drawn signature, #10 Branded embeds, B Document library, E Save progress + Started status, #7 Testing mode.
+
+## Later (from the Oct 9 call; don't block)
+Conditional carrier routing (e.g. aerial height over or under 10 ft), iframe embeds matched to the DSI site, Salesforce sync, extending Ask AI, and multi-carrier submission with checkboxes. These map to #9, #10, #11, #12 and #13.

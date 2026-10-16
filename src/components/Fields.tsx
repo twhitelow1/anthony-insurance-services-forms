@@ -84,6 +84,7 @@ const formatPhone = (raw: string) => {
   return `(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}`;
 };
 
+/** As the applicant types: digits, commas and up to two decimals (the "$" is drawn beside the box). */
 const formatMoney = (raw: string) => {
   const cleaned = raw.replace(/[^\d.]/g, "");
   const [int, dec] = cleaned.split(".");
@@ -116,6 +117,15 @@ export function FieldInput({
   };
   const str = typeof value === "string" ? value : "";
 
+  if (field.compute) {
+    // Worked out from earlier answers (e.g. a total): shown, not typed.
+    return (
+      <Shell field={{ ...field, required: false }} error={error}>
+        <input {...common} type="text" readOnly aria-readonly="true" value={str} placeholder="Calculated from your earlier answers" className={`${common.className} bg-[var(--track)]`} />
+      </Shell>
+    );
+  }
+
   switch (field.type) {
     case "textarea":
       return (
@@ -147,7 +157,8 @@ export function FieldInput({
               className={`${common.className} pl-7`}
               type="text"
               inputMode="decimal"
-              value={str}
+              // Saved answers may already carry a "$" (older or staff-edited); the box shows its own.
+              value={str.replace(/^\$\s*/, "")}
               placeholder="0"
               onChange={(e) => onChange(formatMoney(e.target.value))}
             />

@@ -13,6 +13,14 @@ import {
   yesNo,
 } from "@/lib/forms/helpers";
 import type { Field, FormDefinition, FormValues } from "@/lib/forms/types";
+import {
+  COMPLIANCE_DOCS,
+  COMPLIANCE_TITLE,
+  DECLINE_TITLE,
+  declineMessage,
+  HNOA_TOOLTIP,
+  SILKS_MAX_HEIGHT_FT,
+} from "./config";
 
 /**
  * Sports & Recreation Facility — General Liability / Accident & Health application.
@@ -24,6 +32,9 @@ import type { Field, FormDefinition, FormValues } from "@/lib/forms/types";
  *
  * Answers are stored in the app's database. Only fields with `ghl.standard`
  * are copied to the Lead Alchemist contact.
+ *
+ * Gymnastics has its own limits and underwriting rules (Oct 9 call with Caitlyn),
+ * switched on with `gymnastics: true` so Sports Facility and Boxing Gym don't change.
  */
 
 const locationCount = (v: FormValues) => Number(v.location_count ?? 0);
@@ -57,9 +68,25 @@ const AGE_COLUMNS = [
 
 const hasAerial = (v: FormValues) => Array.isArray(v.aerial_offerings) && v.aerial_offerings.length > 0;
 
-type Variant = Pick<FormDefinition, "slug" | "title" | "subtitle" | "source"> & { tag: string };
+type Variant = Pick<FormDefinition, "slug" | "title" | "subtitle" | "source" | "brand"> & {
+  tag: string;
+  /** Gymnastics-only limits, auto-declines, compliance popups and aerial rules. */
+  gymnastics?: boolean;
+};
 
-const sportsFacilityForm = ({ tag, ...meta }: Variant): FormDefinition => ({
+/** Gymnastics: answers we can't write, and policies that must be in place first. */
+const GYMNASTICS_DECLINES = {
+  players_compensated: declineMessage("players are paid to participate"),
+  residential_property: declineMessage("activities take place on a residential property"),
+};
+const complianceNotice = (policy: string, document: string) => ({
+  when: "No",
+  title: COMPLIANCE_TITLE,
+  message: `A ${policy} must be implemented before coverage can start. We've emailed you a sample policy with your confirmation to help you get started.`,
+  documents: [document],
+});
+
+const sportsFacilityForm = ({ tag, gymnastics = false, ...meta }: Variant): FormDefinition => ({
   ...meta,
   tags: [`form:${meta.slug}`, tag],
   successMessage:
@@ -235,18 +262,41 @@ const sportsFacilityForm = ({ tag, ...meta }: Variant): FormDefinition => ({
         yesNo("occurrence_contract_requirement", "If higher than $1M occurrence, is it a contract requirement?", {
           showIf: (v) => parseMoney(v.occurrence_limit as string) > 1_000_000,
         }),
-        text("products_completed_ops_limit", "Products & Completed Operations Limit", {
-          width: "half",
-        }),
-        text("general_aggregate_limit", "General Aggregate Limit", { width: "half" }),
-        text("damage_to_premises_limit", "Damage to Premises Rented Limit", {
-          width: "half",
-        }),
+        // Gymnastics: products & completed operations is always $1M, so it isn't asked
+        // (the carrier PDF ticks $1M), and the other limits are the carrier's own choices.
+        ...(gymnastics
+          ? ([
+              {
+                type: "select",
+                id: "general_aggregate_limit",
+                label: "General Aggregate Limit",
+                options: opts("$3,000,000", "$4,000,000", "$5,000,000"),
+                required: true,
+                width: "half",
+              },
+              {
+                type: "select",
+                id: "damage_to_premises_limit",
+                label: "Damage to Premises Rented Limit",
+                options: opts("$300,000", "$500,000", "$1,000,000"),
+                required: true,
+                width: "half",
+              },
+            ] satisfies Field[])
+          : [
+              text("products_completed_ops_limit", "Products & Completed Operations Limit", {
+                width: "half",
+              }),
+              text("general_aggregate_limit", "General Aggregate Limit", { width: "half" }),
+              text("damage_to_premises_limit", "Damage to Premises Rented Limit", {
+                width: "half",
+              }),
+            ]),
         {
           type: "select",
           id: "medical_payment_max",
           label: "Medical Payment Max",
-          options: opts("$1,000", "$5,000", "$10,000"),
+          options: gymnastics ? opts("$5,000", "$10,000") : opts("$1,000", "$5,000", "$10,000"),
           required: true,
           width: "half",
         },
@@ -254,13 +304,20 @@ const sportsFacilityForm = ({ tag, ...meta }: Variant): FormDefinition => ({
           type: "select",
           id: "sexual_abuse_limit",
           label: "Sexual Abuse Liability Max Limit",
-          options: opts("$100,000 / $300,000", "$250,000 / $500,000", "$500,000 / $1,000,000", "$1,000,000 / $1,000,000"),
+          // No N/A: abuse coverage is required for facilities with youth participants.
+          options: opts(
+            "$100,000 / $300,000",
+            "$250,000 / $500,000",
+            "$500,000 / $1,000,000",
+            "$1,000,000 / $1,000,000",
+            ...(gymnastics ? ["$1,000,000 / $2,000,000"] : []),
+          ),
           required: true,
           width: "half",
         },
 
         { type: "content", id: "auto_heading", variant: "subheading", title: "Hired & Non-Owned Auto" },
-        yesNo("hnoa", "Add $1M Hired or Non-Owned Auto?"),
+        yesNo("hnoa", "Add $1M Hired or Non-Owned Auto?", gymnastics ? { tooltip: HNOA_TOOLTIP } : {}),
         yesNo("commercial_auto_in_force", "Does the insured have a commercial auto policy in force?", { showIf: isYes("hnoa") }),
         yesNo("verify_personal_auto", "Do you verify that personal auto insurance is in place?", { showIf: isYes("hnoa") }),
         yesNo("review_mvrs", "Do you obtain and review motor vehicle reports?", {
@@ -360,18 +417,26 @@ const sportsFacilityForm = ({ tag, ...meta }: Variant): FormDefinition => ({
       id: "underwriting",
       title: "Underwriting Questions",
       fields: [
-        yesNo("players_compensated", "Are any players compensated/paid to participate?"),
+        yesNo("players_compensated", "Are any players compensated/paid to participate?", {
+          decline: gymnastics ? { when: "Yes", title: DECLINE_TITLE, message: GYMNASTICS_DECLINES.players_compensated } : undefined,
+        }),
         yesNo("school_sanctioned", "Is the organization sanctioned by a school?"),
-        yesNo("residential_property", "Do any activities take place on a residential property?"),
+        yesNo("residential_property", "Do any activities take place on a residential property?", {
+          decline: gymnastics ? { when: "Yes", title: DECLINE_TITLE, message: GYMNASTICS_DECLINES.residential_property } : undefined,
+        }),
         yesNo("adult_participants_defined", "Does the Risk Management policy define and maintain who 'Adult Participants' are?"),
         yesNo("cardiac_policy", "Is a Cardiac Arrest policy actively used and updated (AED access, CPR certification)?"),
         yesNo("severe_weather_policy", "Is a severe weather policy utilized and regularly updated?"),
         yesNo("heat_index_policy", "Is there a heat index policy with protocols for high temperature/humidity?"),
         yesNo("pool_activities", "Do any activities take place at a pool the applicant owns, operates, leases, or manages?"),
         yesNo("facilities_safety_policy", "Does the organization have a facilities safety policy for potential hazards?"),
-        yesNo("concussion_policy", "Is a Concussion & Return-to-Play policy actively enforced and current?"),
+        yesNo("concussion_policy", "Is a Concussion & Return-to-Play policy actively enforced and current?", {
+          notice: gymnastics ? complianceNotice("Concussion & Return-to-Play policy", COMPLIANCE_DOCS.concussion) : undefined,
+        }),
         yesNo("disciplinary_policy", "Is a Disciplinary and Appeals policy utilized and periodically reviewed?"),
-        yesNo("background_checks_policy", "Is there a background checks policy with defined disqualifying criteria?"),
+        yesNo("background_checks_policy", "Is there a background checks policy with defined disqualifying criteria?", {
+          notice: gymnastics ? complianceNotice("background checks policy", COMPLIANCE_DOCS.backgroundChecks) : undefined,
+        }),
         yesNo("abuse_training_policy", "Is there an education & training policy including abuse prevention for minors?"),
         yesNo("sexual_abuse_incident", "Has the applicant ever had an incident with allegation of sexual abuse?"),
         yesNo("abuse_prevention_standards", "Does the organization enforce written standards for sexual abuse/molestation prevention?"),
@@ -462,18 +527,32 @@ const sportsFacilityForm = ({ tag, ...meta }: Variant): FormDefinition => ({
         num("ropes_count", "Number of Ropes", { required: true, width: "half", showIf: includes("aerial_offerings", "Ropes") }),
         num("ropes_height", "Ropes Height (ft)", { required: true, width: "half", showIf: includes("aerial_offerings", "Ropes") }),
         num("silks_count", "Number of Aerial Silks", { required: true, width: "half", showIf: includes("aerial_offerings", "Aerial Silks") }),
-        num("silks_height", "Aerial Silks Height (ft)", { required: true, width: "half", showIf: includes("aerial_offerings", "Aerial Silks") }),
+        num("silks_height", "Aerial Silks Height (ft)", {
+          required: true,
+          width: "half",
+          showIf: includes("aerial_offerings", "Aerial Silks"),
+          ...(gymnastics && {
+            max: SILKS_MAX_HEIGHT_FT,
+            hint: `Maximum ${SILKS_MAX_HEIGHT_FT} ft.`,
+            maxMessage: `Aerial silks must be rigged at ${SILKS_MAX_HEIGHT_FT} ft or lower for this program. Please call our office to discuss higher rigging.`,
+          }),
+        }),
         num("trapezes_count", "Number of Trapezes", { required: true, width: "half", showIf: includes("aerial_offerings", "Trapezes") }),
         num("trapezes_height", "Trapezes Height (ft)", { required: true, width: "half", showIf: includes("aerial_offerings", "Trapezes") }),
         yesNo("aerial_certified_rigger", "Were the zipline/ropes/silks/trapezes installed by a certified rigger/engineer?", { showIf: hasAerial }),
         yesNo("aerial_inspected", "Are zipline/ropes/silks/trapezes professionally inspected at least annually?", { showIf: hasAerial }),
-        {
-          type: "textarea",
-          id: "aerial_instructor_quals",
-          label: "Zipline/ropes/silks/trapezes instructor qualifications/experience",
-          required: true,
-          showIf: hasAerial,
-        },
+        // Not asked on gymnastics (Oct 9 call). Old gymnastics answers stay in the database.
+        ...(gymnastics
+          ? []
+          : [
+              {
+                type: "textarea",
+                id: "aerial_instructor_quals",
+                label: "Zipline/ropes/silks/trapezes instructor qualifications/experience",
+                required: true,
+                showIf: hasAerial,
+              } satisfies Field,
+            ]),
         yesNo("aerial_padding", "Is the padding at least 12 inches of depth?", { showIf: hasAerial }),
         yesNo("aerial_temp_structures", "Are temporary structures built for zipline/ropes/silks/trapezes outside the facility?", { showIf: hasAerial }),
         yesNo("aerial_self_made", "Any self-constructed/self-made zipline/ropes/silks/trapezes in the facility?", { showIf: hasAerial }),
@@ -562,6 +641,9 @@ export const gymnasticsApplication = sportsFacilityForm({
   subtitle: "General Liability and Accident & Health coverage for gymnastics teams, leagues and facilities",
   tag: "sports",
   source: "Anthony Insurance Forms — Gymnastics Facility Application",
+  // Applied for on dancestudioinsurance.com, so its embed and emails are DSI-branded.
+  brand: "dsi",
+  gymnastics: true,
 });
 
 export const boxingGymApplication = sportsFacilityForm({

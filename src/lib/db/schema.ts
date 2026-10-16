@@ -35,6 +35,8 @@ export const applications = pgTable(
 
     ghlContactId: text("ghl_contact_id"),
     ghlOpportunityId: text("ghl_opportunity_id"),
+    /** Submitted by staff in testing mode (required fields skipped). Labeled TEST; tagged `test` in Lead Alchemist. */
+    isTest: boolean("is_test").notNull().default(false),
     submittedIp: text("submitted_ip"),
     submittedUserAgent: text("submitted_user_agent"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

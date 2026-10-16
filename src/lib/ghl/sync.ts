@@ -238,7 +238,14 @@ export async function syncNewApplication(
   const custom = portalCustomFields(app, fields, pdfUrl);
   const missingFields = Object.values(PORTAL_FIELDS).filter((n) => !findField(fields, n));
 
-  const { contactId, matchedBy } = await syncContact(form, app.values, [...form.tags, statusTag(app.status)], custom, savedContactId);
+  const { contactId, matchedBy } = await syncContact(
+    form,
+    app.values,
+    // Testing-mode submissions are tagged so they're easy to find and delete in Lead Alchemist.
+    [...form.tags, statusTag(app.status), ...(app.isTest ? ["test"] : [])],
+    custom,
+    savedContactId,
+  );
   // They finished: stop the "started but not submitted" follow-ups.
   await removeTags(contactId, startedTags(form)).catch((err) => console.warn("[ghl] couldn't remove started tags", err));
 

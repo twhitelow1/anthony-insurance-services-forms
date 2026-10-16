@@ -12,6 +12,9 @@ import { applicationPdfUrl, createApplicationPdf, createCarrierPdf, mainDocument
 import { addEvent, getApplicant, linkApplicantGhl, saveAiReview, setGhlIds } from "./repo";
 import { STATUSES, type ApplicationStatus } from "./status";
 import { libraryForForm, libraryUrl } from "@/lib/library";
+import { getForm } from "@/forms";
+import { complianceAttachments } from "@/lib/compliance";
+import { confirmationEmail, statusEmail } from "@/lib/mail/templates";
 
 const appUrl = () => (process.env.APP_URL ?? "http://localhost:3000").replace(/\/$/, "");
 const describe = (err: unknown) => (err instanceof Error ? err.message : String(err));
@@ -127,7 +130,7 @@ async function notifyStaff(form: FormDefinition, app: Application) {
     const effective = typeof app.values.requested_effective_date === "string" ? app.values.requested_effective_date : null;
     await sendMail({
       to,
-      subject: `New ${form.title}: ${app.businessName ?? app.applicantName} (${app.reference})`,
+      subject: `${app.isTest ? "[TEST] " : ""}New ${form.title}: ${app.businessName ?? app.applicantName} (${app.reference})`,
       html: emailLayout({
         heading: `New application: ${app.businessName ?? app.applicantName}`,
         paragraphs: [
@@ -149,20 +152,19 @@ async function sendConfirmation(form: FormDefinition, app: Application) {
   try {
     // Documents assigned to this form in Admin → Documents (sample waiver etc.).
     const docs = await libraryForForm(form.slug).catch(() => []);
-    await sendMail({
-      to: app.applicantEmail,
-      subject: `We received your application (${app.reference})`,
-      html: emailLayout({
-        heading: "Thanks — your application is in",
-        paragraphs: [
-          `We've received your ${form.title} for ${app.businessName ?? app.applicantName}. Your reference number is ${app.reference}.`,
-          "You can check its status any time — sign in with this email address and we'll send you a one-time link. No password needed.",
-          ...docs.map((d) => `${d.title}${d.description ? ` (${d.description})` : ""}: ${libraryUrl(d)}`),
-        ],
-        button: { label: "Check application status", url: `${appUrl()}/portal/login` },
-      }),
+    // Compliance popups the applicant saw (e.g. no concussion policy): attach the sample documents.
+    const { notices, attachments } = await complianceAttachments(form, app.values);
+    const email = confirmationEmail({
+      form,
+      app,
+      appUrl: appUrl(),
+      documents: docs.map((d) => ({ title: d.title, description: d.description, url: libraryUrl(d) })),
+      notices,
     });
-    await addEvent(app.id, "email_sent", "system", { message: "Confirmation email sent to applicant" });
+    await sendMail({ to: app.applicantEmail, ...email, attachments });
+    await addEvent(app.id, "email_sent", "system", {
+      message: `Confirmation email sent to applicant${attachments.length ? ` with ${attachments.map((a) => a.name).join(", ")}` : ""}`,
+    });
   } catch (err) {
     console.error("[pipeline] confirmation email failed", app.reference, err);
     await addEvent(app.id, "email_failed", "system", { message: describe(err) }).catch(() => {});
@@ -184,12 +186,7 @@ export async function onStatusChanged(app: Application, previous: ApplicationSta
   if (notifyClient) tasks.push(
     sendMail({
       to: app.applicantEmail,
-      subject: `Application ${app.reference}: ${STATUSES[app.status].label}`,
-      html: emailLayout({
-        heading: `Status update: ${STATUSES[app.status].label}`,
-        paragraphs: [STATUSES[app.status].description, ...(note?.trim() ? [`Note from your agent: ${note.trim()}`] : [])],
-        button: { label: "View your application", url: `${appUrl()}/portal/login` },
-      }),
+      ...statusEmail({ form: getForm(app.formSlug), app, status: STATUSES[app.status], note, appUrl: appUrl() }),
     }).catch(async (err) => {
       console.error("[pipeline] status email failed", app.reference, err);
       await addEvent(app.id, "email_failed", "system", { message: `Status email: ${describe(err)}` });

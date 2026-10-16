@@ -1,7 +1,7 @@
 # Feature backlog
 
 Status key: ✅ built · 🟡 partly built · ⬜ not started.
-"Decided" records the answers Todd gave on 2026-10-10. Last updated 2026-10-10 (typed signature, save progress, document library and branded embeds shipped). Anything still unknown is listed in
+"Decided" records the answers Todd gave on 2026-10-10. Last updated 2026-10-16 (Oct 9 call with Caitlyn: gymnastics limits and rules, staff testing mode, branded emails, LARP changes). Anything still unknown is listed in
 [decisions-and-questions.md](decisions-and-questions.md).
 
 | # | Feature | Status |
@@ -9,10 +9,10 @@ Status key: ✅ built · 🟡 partly built · ⬜ not started.
 | 1 | Admin portal: statuses, notes, PDF downloads | ✅ |
 | 2 | Lead Alchemist submission links on contact records | ✅ |
 | 3 | Magic-link sign-in for staff and applicants; applicant status portal | ✅ |
-| 4 | Auto-decline for certain answers | 🟡 warnings only |
-| 5 | Compliance popups with sample-document attachments | ⬜ |
-| 6 | Hired & non-owned auto tooltip | 🟡 aerial forms only |
-| 7 | Testing mode for required fields | ⬜ |
+| 4 | Auto-decline for certain answers | 🟡 gymnastics rules built |
+| 5 | Compliance popups with sample-document attachments | 🟡 gymnastics, placeholder documents |
+| 6 | Hired & non-owned auto tooltip | 🟡 aerial forms + gymnastics (placeholder wording) |
+| 7 | Testing mode for required fields | ✅ staff only |
 | 8 | Click-to-type signature | ✅ draw or type, switchable |
 | 9 | Conditional carrier routing based on answers | ⬜ |
 | 10 | Embeddable, branded forms for the websites | ✅ |
@@ -48,7 +48,11 @@ Built:
 - **Applicant portal:** shows their applications, a status timeline and PDFs.
 
 ## 🟡 4. Auto-decline answers
-Today ineligible situations are explained in tooltips and notices, but the applicant can still submit.
+**Built (2026-10-16), gymnastics:** answering **Yes** to "Are any players paid to participate?" or "Do any activities take place on a residential property?" shows a red "We can't offer coverage" popup next to the answer. The applicant can't continue or submit, and the server refuses it too.
+- It's a setting on the question (`decline` in the form definition), so more rules are a line each.
+- Other forms still only explain ineligible situations in tooltips and notices.
+
+**Still to do:** save declined attempts and send them to Lead Alchemist tagged `declined`, and let Caitlyn manage the rules in the admin.
 
 **Decided**
 - A disqualifying answer **stops** the application: the applicant can't continue.
@@ -56,8 +60,13 @@ Today ineligible situations are explained in tooltips and notices, but the appli
 - **Declined attempts are saved** and sent to Lead Alchemist tagged `declined`, so staff can follow up or offer another program.
 - **Caitlyn will provide the master list** of decline rules. She should be able to set them herself in the admin; see feature A.
 
-## ⬜ 5. Compliance popups with sample documents
+## 🟡 5. Compliance popups with sample documents
 For example: "No waiver?" shows a popup with the sample waiver.
+
+**Built (2026-10-16), gymnastics:** answering **No** to the concussion & return-to-play policy or the background-check policy shows "Required before coverage starts". The applicant can carry on. The matching sample policy is **attached to their confirmation email**.
+- The sample files are placeholders in `compliance-docs/` in the code. Replace them with the real documents, using the same file names. Which document goes with which answer is set in `src/forms/config.ts`.
+
+**Still to do:** manage the triggers and documents in the admin, using the document library (B).
 
 **Decided**
 - The popup **shows the document and also emails it** to the applicant.
@@ -66,15 +75,16 @@ For example: "No waiver?" shows a popup with the sample waiver.
 - **Caitlyn assigns the triggers** (which answer shows which document) in the admin.
 
 ## 🟡 6. Hired & non-owned auto tooltip
-The aerial forms explain it. Sports Facility, Gymnastics and Boxing Gym ask "Add $1M Hired or Non-Owned Auto?" with no explanation.
+The aerial forms explain it. **Gymnastics now does too (2026-10-16)**, using placeholder wording from the aerial forms, kept in one place (`HNOA_TOOLTIP` in `src/forms/config.ts`). Sports Facility and Boxing Gym still have no explanation.
 
-**Open:** wording. The default proposal is the aerial forms' text: covers rented, borrowed, hired and non-owned vehicles driven on business; not comp or collision; covers injury or damage to others. Anthony or Caitlyn to confirm.
+**Open:** Caitlyn is sending the final wording.
 
-## ⬜ 7. Testing mode
-**Decided**
-- Enabled by a **special test link**: anyone with the link can skip required fields.
-- Test submissions **do go to Lead Alchemist**. They're tagged `test` so they're easy to filter and delete there.
-- Test applications are labeled TEST in the admin.
+## ✅ 7. Testing mode
+**Built (2026-10-16), staff only** (changed from the earlier "special link" idea; see decisions):
+- Signed-in staff see a **"Testing mode: skip required fields"** switch at the top of every form. It's off by default.
+- Required fields stay marked with *; untick the switch to check them again. An email address is still needed.
+- **The server checks the staff sign-in**, so a public applicant can't turn it on.
+- Test submissions go to Lead Alchemist tagged **`test`**, are labeled **TEST** in the admin, and the staff alert subject starts with **[TEST]**.
 
 ## ✅ 8. Click-to-type signature
 **Built (2026-10-10):** the signature field has **Draw** and **Type** tabs, and the applicant can switch between them like DocuSign.
@@ -154,6 +164,36 @@ Today staff can download an Outlook draft to the carrier with the filled PDF att
 - Commission and revenue tracking: **unknown**. We need to know where policy and premium data lives today.
 
 ---
+
+## Changes from the Oct 9 call with Caitlyn (built 2026-10-16)
+
+**Gymnastics limits** (Sports Facility and Boxing Gym unchanged):
+- **Products & completed operations:** no longer asked; the carrier PDF always ticks $1M.
+- **General aggregate:** a choice of $3M, $4M or $5M.
+- **Damage to premises rented:** a choice of $300K, $500K or $1M.
+- **Medical payments:** $5,000 or $10,000.
+- **Sexual abuse:** adds $1M / $2M. There's no N/A, because abuse coverage is required for youth facilities.
+- **Personal & advertising injury:** printed on the carrier form as a fixed $1,000,000, so nothing to fill.
+- **$1.5M occurrence:** no form offered it. It only appeared in the PDF mapping, and has been removed there.
+
+**Gymnastics aerial:**
+- Aerial silks are capped at **12 ft**, with a clear message (`SILKS_MAX_HEIGHT_FT` in `src/forms/config.ts`).
+- The instructor-qualifications question is gone; old answers still show on the carrier PDF.
+
+**Every form:**
+- **Dollar amounts:** shown with exactly one "$" in the admin, portal, PDFs and AI review.
+- **Typed signature:** already built (#8).
+
+**Emails:** applicant emails use the application's own brand: name, logo, colors, site link, footer and sender name.
+- **DSI:** dance, fitness, aerial and gymnastics.
+- **MASI:** martial arts and boxing.
+- **AIS:** everything else.
+- Every email also has a plain-text version.
+- A test checks every form's emails for the right brand and no cross-brand leakage.
+
+**LARP:**
+- The total participants is now worked out from the youth and adult counts.
+- The payment step is replaced by a note that an agent will send a quote after submission.
 
 ## New ideas raised (2026-10-10)
 

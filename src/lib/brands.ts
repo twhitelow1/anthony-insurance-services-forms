@@ -69,10 +69,14 @@ export const BRANDS: Record<BrandId, Brand> = {
   },
 };
 
+/** Domain shown in links and footers, e.g. "dancestudioinsurance.com". */
+export const brandHost = (b: Brand) => new URL(b.site).host.replace(/^www\./, "");
+
 export const isBrand = (v: unknown): v is BrandId => typeof v === "string" && v in BRANDS;
 
 /** Which site a form belongs on by default. */
-export function defaultBrand(form: Pick<FormDefinition, "tags">): BrandId {
+export function defaultBrand(form: Pick<FormDefinition, "tags" | "brand">): BrandId {
+  if (form.brand) return form.brand;
   if (form.tags.includes("dance-fitness")) return "dsi";
   if (form.tags.includes("martial-arts")) return "masi";
   return "ais";

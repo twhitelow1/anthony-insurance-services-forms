@@ -99,7 +99,7 @@ export const larpEventApplication: FormDefinition = {
     {
       id: "accident_coverage",
       title: "Accident Coverage",
-      description: "Accident Coverage Premium Rate Calculator. Minimum Premium is Fully Earned Upon Policy Inception.",
+      description: "Minimum Premium is Fully Earned Upon Policy Inception.",
       fields: [
         num("youth_participants", "Number of Youth Participants", {
           required: true,
@@ -140,7 +140,7 @@ export const larpEventApplication: FormDefinition = {
       id: "gl_coverage",
       title: "General Liability Coverage",
       description:
-        "General Liability Coverage Premium Rate Calculator. Minimum Premium is Fully Earned Upon Policy Inception. Rates include $1,000,000 Per Occurrence / $1,000,000 Aggregate General Liability Policy.",
+        "Minimum Premium is Fully Earned Upon Policy Inception. Rates include $1,000,000 Per Occurrence / $1,000,000 Aggregate General Liability Policy.",
       fields: [
         {
           type: "radio",
@@ -149,7 +149,16 @@ export const larpEventApplication: FormDefinition = {
           options: opts("$1,000,000", "$2,000,000", "$3,000,000", "$4,000,000", "$5,000,000"),
           required: true,
         },
-        num("total_participants", "Total Number of Participants", { required: true, width: "half" }),
+        num("total_participants", "Total Number of Participants", {
+          width: "half",
+          hint: "Youth plus adult participants from the Accident Coverage step.",
+          // Worked out, not typed: no double entry, and it always matches the two counts.
+          compute: (v) => {
+            const counts = [v.youth_participants, v.adult_participants].map((x) => (typeof x === "string" && x.trim() ? Number(x) : NaN));
+            if (counts.every(Number.isNaN)) return undefined;
+            return String(counts.reduce((sum, n) => sum + (Number.isFinite(n) ? n : 0), 0));
+          },
+        }),
       ],
     },
     {
@@ -209,30 +218,17 @@ export const larpEventApplication: FormDefinition = {
       ],
     },
     {
-      id: "payment",
-      title: "Payment",
-      fields: [
-        {
-          type: "radio",
-          id: "payment_enclosed",
-          label: "Enclosed is:",
-          options: opts("my payment for the total premium", "20% of my total premium"),
-          required: true,
-          hint: "Total Amount Due includes the FLD Broker Fee.",
-        },
-        {
-          type: "radio",
-          id: "payment_method",
-          label: "Payment method:",
-          options: opts("Credit Card", "ACH"),
-          required: true,
-        },
-      ],
-    },
-    {
       id: "signature",
       title: "Acknowledgments and Signatures",
       fields: [
+        {
+          // The LARP carrier doesn't publish rates, so there's no premium to calculate or pay here.
+          type: "content",
+          id: "quote_note",
+          variant: "info",
+          title: "No payment today",
+          body: "After you submit, an Anthony Insurance Services agent will prepare your quote and send it to you. Payment is arranged once you accept the quote.",
+        },
         {
           type: "content",
           id: "excluded_activities",

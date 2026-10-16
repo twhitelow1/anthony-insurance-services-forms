@@ -1,5 +1,6 @@
 import { tableCellId, tableRowCountId } from "@/lib/forms/types";
 import { clampRows } from "@/lib/forms/validate";
+import { plainAmount } from "@/lib/forms/helpers";
 import type { CarrierFormSpec, Filler } from "./types";
 
 /**
@@ -104,7 +105,7 @@ export const sportsFacilityCarrierForm: CarrierFormSpec = {
     ],
   },
 
-  map(values, f) {
+  map(values, f, formSlug) {
     // ── Section 1: Applicant information
     const dba = /^(n\/?a|none|-)$/i.test(f.get("dba")) ? "" : f.get("dba");
     f.set("Applicant_Name:_1", [f.get("legal_business_name"), dba && `DBA ${dba}`].filter(Boolean).join(" "), "Applicant name");
@@ -149,11 +150,15 @@ export const sportsFacilityCarrierForm: CarrierFormSpec = {
     // Overnight events (Yes_92/No_93, nights_94) aren't asked on the web form; left blank.
 
     // ── Section 6: General liability limits
-    f.amount("occurrence_limit", "Each occurrence limit", [[1 * M, "$1M_95"], [1.5 * M, "$1.5M_96"], [2 * M, "$2M_97"], [3 * M, "$3M_98"], [4 * M, "$4M_99"], [5 * M, "$5M_100"]]);
+    // The PDF also has a $1.5M box ($1.5M_96); no web form offers it, so it's never ticked.
+    f.amount("occurrence_limit", "Each occurrence limit", [[1 * M, "$1M_95"], [2 * M, "$2M_97"], [3 * M, "$3M_98"], [4 * M, "$4M_99"], [5 * M, "$5M_100"]]);
     f.yesNo("occurrence_contract_requirement", "Yes_101", "No_102");
-    f.amount("products_completed_ops_limit", "Products & completed operations limit", [[1 * M, "$1M_103"], [2 * M, "$2M_104"]]);
+    // Gymnastics doesn't ask: products & completed operations is always $1M.
+    if (formSlug === "gymnastics-application") f.check("$1M_103");
+    else f.amount("products_completed_ops_limit", "Products & completed operations limit", [[1 * M, "$1M_103"], [2 * M, "$2M_104"]]);
     f.amount("general_aggregate_limit", "General aggregate limit", [[3 * M, "$3M_105"], [4 * M, "$4M_106"], [5 * M, "$5M_107"]]);
     f.amount("damage_to_premises_limit", "Damage to premises rented limit", [[300 * K, "$300K_108"], [500 * K, "$500K_109"], [1 * M, "$1M_110"]]);
+    // Personal & Advertising Injury is printed on the form as a fixed $1,000,000; there's no field to fill.
     f.amount("medical_payment_max", "Medical payments limit", [[5 * K, "$5K_111"], [10 * K, "$10K_112"], [15 * K, "$15K_113"], [25 * K, "$25K_114"]], "N_A_115");
     f.pair(
       "sexual_abuse_limit",
@@ -178,7 +183,7 @@ export const sportsFacilityCarrierForm: CarrierFormSpec = {
     f.yesNo("agree_going_forward", "Yes_131", "No_132");
     f.answer("#_Employees_that_may_driv_133", "employees_drive", "# Employees that may drive", hnoa ? undefined : "N/A");
     f.answer("#_Volunteers_that_may_dri_134", "volunteers_drive", "# Volunteers that may drive", hnoa ? undefined : "N/A");
-    f.set("Estimated_cost_to_lease_h_135", f.get("hired_vehicle_cost").replace(/^\$\s*/, "") || (hnoa ? "" : "N/A"), "Estimated cost to lease/hire vehicles");
+    f.set("Estimated_cost_to_lease_h_135", plainAmount(f.get("hired_vehicle_cost")) || (hnoa ? "" : "N/A"), "Estimated cost to lease/hire vehicles");
 
     // Professional liability: Yes/No, then a single limit that applies to both halves ($1M → $1M/$1M).
     const professional = [[1, "$1M_$1M_136"], [2, "$2M_$2M_137"], [3, "$3M_$3M_138"], [4, "$4M_$4M_139"], [5, "$5M_$5M_140"]] as const;
@@ -191,7 +196,7 @@ export const sportsFacilityCarrierForm: CarrierFormSpec = {
     f.yesNo("liquor_liability", "Yes_145", "No_146");
     f.set(
       "Liquor_Receipts:_$_147",
-      f.get("liquor_receipts").replace(/^\$\s*/, "") || (f.get("liquor_liability") === "No" ? "N/A" : ""),
+      plainAmount(f.get("liquor_receipts")) || (f.get("liquor_liability") === "No" ? "N/A" : ""),
       "Liquor receipts",
     );
     f.yesNo("location_aggregate", "Yes_148", "No_149");
@@ -226,7 +231,7 @@ export const sportsFacilityCarrierForm: CarrierFormSpec = {
     f.answer("Do_you_have_retail_sales?_217", "retail_sales", "Retail sales?");
     f.set(
       "Total_Retail_Receipts:_$_218",
-      f.get("retail_receipts").replace(/^\$\s*/, "") || (f.get("retail_sales") === "No" ? "N/A" : ""),
+      plainAmount(f.get("retail_receipts")) || (f.get("retail_sales") === "No" ? "N/A" : ""),
       "Total retail receipts",
     );
 

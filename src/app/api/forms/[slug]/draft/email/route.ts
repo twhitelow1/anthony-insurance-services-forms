@@ -1,7 +1,8 @@
 import type { NextRequest } from "next/server";
 import { getForm } from "@/forms";
 import { decodeRef, getDraft, markResumeEmailed, resumeUrl } from "@/lib/applications/drafts";
-import { emailLayout, sendMail } from "@/lib/mail";
+import { sendMail } from "@/lib/mail";
+import { resumeEmail } from "@/lib/mail/templates";
 
 /** "Save & finish later": email the applicant a private link back to their application. */
 export async function POST(req: NextRequest, ctx: RouteContext<"/api/forms/[slug]/draft/email">) {
@@ -19,18 +20,7 @@ export async function POST(req: NextRequest, ctx: RouteContext<"/api/forms/[slug
     return Response.json({ ok: true, email: draft.email }); // already sent a moment ago
   }
   try {
-    await sendMail({
-      to: draft.email,
-      subject: `Finish your ${form.title}`,
-      html: emailLayout({
-        heading: "Pick up where you left off",
-        paragraphs: [
-          `Your ${form.title}${draft.businessName ? ` for ${draft.businessName}` : ""} is saved.`,
-          "Use the button below to finish it on any device. Keep this email private: the link opens your saved answers.",
-        ],
-        button: { label: "Finish my application", url: resumeUrl(slug, ref) },
-      }),
-    });
+    await sendMail({ to: draft.email, ...resumeEmail({ form, businessName: draft.businessName, url: resumeUrl(slug, ref) }) });
   } catch (err) {
     console.error("[draft] resume email failed", err);
     return Response.json({ error: "We couldn't send the email right now. Your progress is still saved on this device." }, { status: 502 });

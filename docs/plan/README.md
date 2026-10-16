@@ -21,7 +21,7 @@ Applicants fill in an online application. The app then:
 2. Builds the PDF:
    - **Sports Facility, Gymnastics and Boxing Gym** fill the carrier's own SFIC-STL-APP-001 form.
    - **All other forms** get a clean, carrier-ready "Anthony Insurance format" PDF.
-3. Emails the applicant a confirmation, and emails staff an alert.
+3. Emails the applicant a confirmation branded for their site (AIS, Dance Studio Insurance or Martial Arts School Insurance), and emails staff an alert.
 4. Runs an AI pre-review for the agent.
 5. Syncs to **Lead Alchemist**:
    - creates or updates the contact, matched by the saved contact ID or by email;
@@ -42,6 +42,7 @@ Applicants can also:
 - have **their progress saved** as they go, and use **Save & finish later** to resume on any device.
 
 Staff also have:
+- **Testing mode:** signed-in staff can skip required fields on any form. Test submissions are labeled TEST and tagged `test` in Lead Alchemist.
 - **Unfinished:** applications started but not submitted. These contacts are tagged `app-started` in Lead Alchemist.
 - **Forms:** the copyable, branded embed code for each website.
 - **Documents:** sample waivers and other files, assigned to forms.

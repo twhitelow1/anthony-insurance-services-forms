@@ -29,7 +29,8 @@ export interface CarrierFormSpec {
    * empty text box gets "N/A", except the fields listed here.
    */
   blanks: { yesNoPair: RegExp; keepBlank: RegExp[] };
-  map(values: FormValues, fill: Filler): void;
+  /** `formSlug` is the web form answered, for the few differences between forms that share this PDF. */
+  map(values: FormValues, fill: Filler, formSlug: string): void;
 }
 
 const str = (v: FormValues[string]) => (typeof v === "string" ? v.trim() : "");

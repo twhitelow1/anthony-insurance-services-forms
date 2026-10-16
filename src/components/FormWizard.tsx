@@ -2,8 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import { getForm } from "@/forms";
-import { type FieldErrors, isVisible, pruneValues, validateSection } from "@/lib/forms/validate";
-import { type FormValues, type Option, isInputField } from "@/lib/forms/types";
+import { type FieldErrors, declined, isVisible, pruneValues, validateSection, visibleInputs } from "@/lib/forms/validate";
+import { type FormValue, type FormValues, type InputField, type Option, isInputField } from "@/lib/forms/types";
 import { Content, FieldInput, TableInput } from "./Fields";
 
 type Status =
@@ -28,7 +28,21 @@ function postToParent(msg: Record<string, unknown>) {
   }
 }
 
-export function FormWizard({ slug, edit }: { slug: string; edit?: EditMode }) {
+/** A decline or compliance popup, placed next to the answer that triggered it. */
+interface Popup {
+  tone: "decline" | "notice";
+  title: string;
+  message: string;
+  /** Viewport y just below the answer (inside an embed the iframe is page-height, so "centered" could be off-screen). */
+  top: number;
+  fieldId: string;
+}
+
+/**
+ * `canTest`: the viewer is signed-in staff, so the testing-mode switch is offered.
+ * The server checks the session again before honouring it.
+ */
+export function FormWizard({ slug, edit, canTest = false }: { slug: string; edit?: EditMode; canTest?: boolean }) {
   const form = getForm(slug)!;
   const [values, setValuesState] = useState<FormValues>(edit?.initial ?? {});
   const [step, setStep] = useState(0);
@@ -36,6 +50,8 @@ export function FormWizard({ slug, edit }: { slug: string; edit?: EditMode }) {
   const [status, setStatus] = useState<Status>({ kind: "idle" });
   const [hp, setHp] = useState("");
   const [restored, setRestored] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [popup, setPopup] = useState<Popup | null>(null);
   // Server-side saved progress: "<id>.<token>" (kept with the local draft).
   const draftRef = useRef<string | null>(null);
   const [later, setLater] = useState<{ state: "idle" | "sending" | "sent" | "error"; message?: string }>({ state: "idle" });
@@ -136,7 +152,25 @@ export function FormWizard({ slug, edit }: { slug: string; edit?: EditMode }) {
     });
   };
 
-  const validateCurrent = () => validateSection(section, values);
+  const validateCurrent = () => validateSection(section, values, { skipRequired: testing });
+
+  // An auto-decline answer on this step: the applicant can't go on.
+  const decline = visibleInputs(section, values)
+    .map((f) => declined(f, values))
+    .find(Boolean);
+
+  /** Show the decline or compliance popup when an answer triggers one. */
+  const answer = (f: InputField, v: FormValue) => {
+    setValues({ [f.id]: v });
+    const rule = "decline" in f && f.decline?.when === v ? f.decline : "notice" in f && f.notice?.when === v ? f.notice : undefined;
+    if (!rule) return;
+    const alert = { tone: rule === ("decline" in f && f.decline) ? ("decline" as const) : ("notice" as const), title: rule.title, message: rule.message };
+    if (alert.tone === "decline") setErrors((prev) => ({ ...prev, [f.id]: alert.message }));
+    const el = document.querySelector<HTMLElement>(`[name="${f.id}"]`)?.closest("fieldset") ?? document.getElementById(f.id);
+    // Just below the answer, so the question stays visible.
+    const top = el ? el.getBoundingClientRect().bottom + 8 : 80;
+    setPopup({ tone: alert.tone, title: alert.title, message: alert.message, top, fieldId: f.id });
+  };
 
   /** Save progress on the server (so it can be resumed anywhere and followed up). Best effort. */
   const saveProgress = async (atStep: number): Promise<string | null> => {
@@ -175,6 +209,7 @@ export function FormWizard({ slug, edit }: { slug: string; edit?: EditMode }) {
   };
 
   const next = () => {
+    if (decline) return;
     const errs = validateCurrent();
     setErrors(errs);
     if (Object.keys(errs).length) return focusFirstError(errs);
@@ -190,6 +225,7 @@ export function FormWizard({ slug, edit }: { slug: string; edit?: EditMode }) {
   };
 
   const submit = async () => {
+    if (decline) return;
     const errs = validateCurrent();
     setErrors(errs);
     if (Object.keys(errs).length) return focusFirstError(errs);
@@ -199,7 +235,12 @@ export function FormWizard({ slug, edit }: { slug: string; edit?: EditMode }) {
       const res = await fetch(edit?.saveUrl ?? `/api/forms/${slug}/submit`, {
         method: edit ? "PUT" : "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ values: pruneValues(form, values), website_hp: hp, draft: edit ? undefined : draftRef.current }),
+        body: JSON.stringify({
+          values: pruneValues(form, values),
+          website_hp: hp,
+          draft: edit ? undefined : draftRef.current,
+          testMode: canTest && testing ? true : undefined,
+        }),
       });
       const data = await res.json().catch(() => ({}));
       if (res.ok && edit) {
@@ -318,6 +359,20 @@ export function FormWizard({ slug, edit }: { slug: string; edit?: EditMode }) {
         </ol>
       </div>
 
+      {canTest && !edit && (
+        <div className={`callout mb-4 flex flex-wrap items-center justify-between gap-2 text-sm ${testing ? "callout-notice" : ""}`}>
+          <label className="flex items-center gap-2 font-medium">
+            <input type="checkbox" checked={testing} onChange={(e) => { setTesting(e.target.checked); setErrors({}); }} />
+            Testing mode (staff only): skip required fields
+          </label>
+          <span className="text-[var(--muted)]">
+            {testing
+              ? "Required fields are still marked * — untick to check them again. An email is still needed. The submission is labeled TEST."
+              : "You're signed in as staff."}
+          </span>
+        </div>
+      )}
+
       {restored && step > 0 && (
         <div className="callout mb-4 flex flex-wrap items-center justify-between gap-2 text-sm">
           <span>We restored your saved progress.</span>
@@ -370,16 +425,22 @@ export function FormWizard({ slug, edit }: { slug: string; edit?: EditMode }) {
               <FieldInput
                 key={f.id}
                 field={f}
-                value={values[f.id]}
+                value={f.compute ? f.compute(values) : values[f.id]}
                 error={errors[f.id]}
                 options={"options" in f ? effectiveOptions(f.options, f.filterOptions) : undefined}
-                onChange={(v) => setValues({ [f.id]: v })}
+                onChange={(v) => answer(f, v)}
               />
             );
           })}
         </div>
 
-        {Object.keys(errors).length > 0 && (
+        {decline && (
+          <div className="mt-6 rounded-lg border border-[var(--danger)] bg-[var(--danger-bg)] p-4 text-sm text-[var(--danger)]" role="alert">
+            <p className="font-semibold">{decline.title}</p>
+            <p className="mt-1">{decline.message}</p>
+          </div>
+        )}
+        {!decline && Object.keys(errors).length > 0 && (
           <p className="mt-6 text-sm font-medium text-[var(--danger)]" role="alert">
             Please complete the {Object.keys(errors).length === 1 ? "highlighted field" : `${Object.keys(errors).length} highlighted fields`} to continue.
           </p>
@@ -394,7 +455,7 @@ export function FormWizard({ slug, edit }: { slug: string; edit?: EditMode }) {
           <button type="button" className="btn-secondary" onClick={back} disabled={step === 0} style={{ visibility: step === 0 ? "hidden" : undefined }}>
             Back
           </button>
-          <button type="submit" className="btn-primary" disabled={status.kind === "submitting"}>
+          <button type="submit" className="btn-primary" disabled={status.kind === "submitting" || !!decline}>
             {isLast
               ? status.kind === "submitting"
                 ? edit
@@ -426,6 +487,44 @@ export function FormWizard({ slug, edit }: { slug: string; edit?: EditMode }) {
           </div>
         )}
       </form>
+      {popup && <AnswerPopup popup={popup} onClose={() => setPopup(null)} />}
+    </div>
+  );
+}
+
+function AnswerPopup({ popup, onClose }: { popup: Popup; onClose: () => void }) {
+  const btnRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    btnRef.current?.focus({ preventScroll: true });
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+  const danger = popup.tone === "decline";
+  // Next to the answer, kept on screen (a normal page) or at the answer (inside an embed's tall iframe).
+  const top = Math.max(16, Math.min(popup.top, window.innerHeight - 280));
+  return (
+    <div className="fixed inset-0 z-50 bg-black/40" onClick={onClose}>
+      <div
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby="answer-popup-title"
+        aria-describedby="answer-popup-body"
+        className={`absolute left-1/2 w-[min(28rem,calc(100%-2rem))] -translate-x-1/2 rounded-xl border-2 bg-[var(--surface)] p-5 shadow-xl ${danger ? "border-[var(--danger)]" : "border-[var(--accent)]"}`}
+        style={{ top }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h2 id="answer-popup-title" className={`text-lg font-semibold ${danger ? "text-[var(--danger)]" : "text-[var(--brand)]"}`}>
+          {danger && <span aria-hidden="true">⚠ </span>}
+          {popup.title}
+        </h2>
+        <p id="answer-popup-body" className="mt-2 text-sm">{popup.message}</p>
+        <div className="mt-4 flex justify-end">
+          <button ref={btnRef} type="button" className="btn-primary" onClick={onClose}>
+            {danger ? "Change my answer" : "OK, I understand"}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

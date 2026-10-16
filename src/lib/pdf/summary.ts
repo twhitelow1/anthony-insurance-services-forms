@@ -1,6 +1,7 @@
 import { PDFDocument, type PDFFont, type PDFPage, rgb, StandardFonts } from "pdf-lib";
 import { clampRows } from "@/lib/forms/validate";
 import { isVisible } from "@/lib/forms/validate";
+import { formatCurrency } from "@/lib/forms/helpers";
 import {
   type ChoiceField,
   type Field,
@@ -369,7 +370,7 @@ export async function buildApplicationPdf(form: FormDefinition, app: Application
         continue;
       }
       const shown =
-        f.type === "date" && value ? fmtDate(value) : f.type === "currency" && value && /^\d/.test(value) ? `$${Number(value).toLocaleString("en-US")}` : value;
+        f.type === "date" && value ? fmtDate(value) : f.type === "currency" ? formatCurrency(value) : value;
       const width = f.type === "textarea" || f.type === "checkboxes" ? "full" : (f.width ?? "full");
       pending.push({ label: f.label, value: shown, width });
     }

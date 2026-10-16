@@ -69,3 +69,11 @@ describe("settings", () => {
     });
   });
 });
+
+describe("new-application alerts", () => {
+  it("go to everyone on the Notifications list in Admin → Settings, e.g. Caitlyn", async () => {
+    vi.stubEnv("NOTIFY_EMAILS", "todd@dublowdigital.com");
+    await saveSettings({ notifyEmails: ["todd@dublowdigital.com", "caitlyn@anthonyinsuranceservices.com"] }, "staff:test");
+    expect(await staffNotifyList()).toEqual(["todd@dublowdigital.com", "caitlyn@anthonyinsuranceservices.com"]);
+  });
+});

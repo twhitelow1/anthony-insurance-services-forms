@@ -22,7 +22,7 @@ const nextConfig: NextConfig = {
     ];
   },
   outputFileTracingIncludes: {
-    "/**": ["./carrier-forms/*.pdf", "./drizzle/**/*"],
+    "/**": ["./carrier-forms/*.pdf", "./compliance-docs/*", "./drizzle/**/*"],
   },
 };
 
