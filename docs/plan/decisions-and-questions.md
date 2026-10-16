@@ -36,6 +36,7 @@
 | 2026-10-16 (call) | **"Prepare carrier email" should drop a draft, with the PDF attached, straight into Outlook Drafts.** Needs the Microsoft 365 connection; built after Aerial Instructor is live. |
 | 2026-10-16 | **Each application is its own record in Lead Alchemist.** Contact custom fields only show the latest application. Each application gets a contact note (details plus links) and its own opportunity in the applications pipeline, whose card carries that application's reference, status, link and PDF. The app creates those four opportunity fields itself if they're missing. |
 | 2026-10-16 | **Aerial Instructor takes waiver uploads** (up to 5 files: PDF, Word, JPG or PNG, 4 MB each). Optional: without one, a popup says a signed waiver is required before coverage starts but we can quote now. The same reminder goes in the confirmation email. Files show on the application in the admin. |
+| 2026-10-16 | **Aerial Yoga Studio and Aerial Dance Studio** also take waiver uploads (same "required before coverage starts" popup), and "Is alcohol served or is BYOB allowed on site?" is a Yes/No question. |
 | 2026-10-16 | **Applicants aren't pointed to the portal yet.** The confirmation and status emails and the "submitted" screen have no portal link. The portal still works; turn the links back on with `APPLICANT_PORTAL_LINKS` in `src/forms/config.ts`. |
 
 ## Open questions
