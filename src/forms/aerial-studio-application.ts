@@ -1,5 +1,6 @@
 import { is, isYes, money, num, opts, text, US_STATES, yesNo } from "@/lib/forms/helpers";
 import type { FormDefinition } from "@/lib/forms/types";
+import { WAIVER_MISSING } from "./config";
 
 /**
  * Aerial studio liability application. Transcribed from Lead Alchemist form
@@ -130,12 +131,12 @@ const aerialStudioForm = (meta: Variant): FormDefinition => ({
             "Each school or studio must implement a Release and Waiver of Liability and Indemnity Agreement for all students and staff members. Unintentional error on your part in securing Waiver and Release forms shall not void your coverage in the event of an occurrence to a student or staff member. However, your failure to maintain an adequate system to regularly secure Waiver and Release forms shall void your coverage in the event of an occurrence to a student or staff member.",
         }),
         {
-          // The source offers "Upload now" or "Email later"; this app doesn't take uploads yet.
-          type: "content",
-          id: "waiver_email",
-          variant: "info",
-          title: "Waiver",
-          body: "Please email a copy of the studio's waiver form to Melanie@AnthonyInsuranceServices.com after submitting the application.",
+          type: "file",
+          id: "waiver_files",
+          label: "Upload the studio's waiver",
+          hint: "You can also email it to Melanie@AnthonyInsuranceServices.com after you submit.",
+          maxFiles: 5,
+          missingNotice: WAIVER_MISSING,
         },
       ],
     },
@@ -185,7 +186,7 @@ const aerialStudioForm = (meta: Variant): FormDefinition => ({
           tooltip:
             "Gross receipts are the total amounts the studio received from all sources during its annual accounting period, without subtracting any costs or expense",
         }),
-        text("alcohol_on_site", "Is alcohol served or is BYOB allowed on site?"),
+        yesNo("alcohol_on_site", "Is alcohol served or is BYOB allowed on site?"),
         {
           type: "textarea",
           id: "loss_runs",
