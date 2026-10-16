@@ -22,9 +22,9 @@ const loadTemplate = (file: string) => {
 };
 
 /** Which answers go where. Exposed for tests and for checking a new template version. */
-export function mapAnswers(spec: CarrierFormSpec, values: Application["values"]) {
+export function mapAnswers(spec: CarrierFormSpec, values: Application["values"], formSlug = spec.formSlugs[0]) {
   const fill = new Filler(values);
-  spec.map(values, fill);
+  spec.map(values, fill, formSlug);
   return fill;
 }
 
@@ -41,7 +41,7 @@ export async function buildCarrierPdf(spec: CarrierFormSpec, app: Application) {
   const helv = await doc.embedFont(StandardFonts.Helvetica);
   const bold = await doc.embedFont(StandardFonts.HelveticaBold);
   const form = doc.getForm();
-  const fill = mapAnswers(spec, app.values);
+  const fill = mapAnswers(spec, app.values, app.formSlug);
   const addendum = [...fill.addendum];
   const unknownFields: string[] = [];
 

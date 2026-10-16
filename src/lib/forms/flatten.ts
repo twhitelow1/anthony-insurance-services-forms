@@ -1,4 +1,5 @@
 import { clampRows } from "./validate";
+import { formatCurrency } from "./helpers";
 import { type FormDefinition, type FormValues, isInputField, tableCellId, tableRowCountId } from "./types";
 
 export interface AnswerRow {
@@ -41,7 +42,8 @@ export function answerSections(form: FormDefinition, values: FormValues): Answer
           }
         }
       } else if (isInputField(field) && field.type !== "signature" && present(values[field.id])) {
-        rows.push({ group, label: field.label, value: show(values[field.id]) });
+        const value = show(values[field.id]);
+        rows.push({ group, label: field.label, value: field.type === "currency" ? formatCurrency(value) : value });
       }
     }
     if (rows.length) out.push({ title: section.title, rows });

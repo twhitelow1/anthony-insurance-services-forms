@@ -48,6 +48,18 @@ interface BaseField {
   /** Layout width on desktop. Defaults to "full". */
   width?: "full" | "half" | "third";
   ghl?: GhlMapping;
+  /**
+   * Read-only answer worked out from other answers (e.g. a total). The applicant
+   * sees it but can't type in it; it's recalculated on the server before saving.
+   */
+  compute?: (values: FormValues) => string | undefined;
+}
+
+/** A popup shown when the applicant picks `when`. */
+export interface AnswerAlert {
+  when: string;
+  title: string;
+  message: string;
 }
 
 export interface TextField extends BaseField {
@@ -58,6 +70,8 @@ export interface NumberField extends BaseField {
   type: "number" | "currency";
   min?: number;
   max?: number;
+  /** Shown instead of "Must be at most …" when the answer is over `max`. */
+  maxMessage?: string;
 }
 
 export interface ChoiceField extends BaseField {
@@ -65,6 +79,17 @@ export interface ChoiceField extends BaseField {
   options: Option[];
   /** Narrow the options based on other answers (e.g. only show existing locations). */
   filterOptions?: (options: Option[], values: FormValues) => Option[];
+  /**
+   * Auto-decline: this answer means we can't offer coverage. It shows a red popup
+   * and blocks continuing and submitting (checked on the server too).
+   */
+  decline?: AnswerAlert;
+  /**
+   * Compliance notice: this answer is allowed, but shows a popup (e.g. "must be in
+   * place before coverage starts"). `documents` are sample files from
+   * compliance-docs/ attached to the applicant's confirmation email.
+   */
+  notice?: AnswerAlert & { documents?: string[] };
 }
 
 export interface SignatureField extends BaseField {
@@ -116,6 +141,11 @@ export interface FormDefinition {
   source: string;
   sections: Section[];
   successMessage: string;
+  /**
+   * Which agency site the form belongs to ("ais" | "dsi" | "masi"): its embed and
+   * emails use that brand. Unset → worked out from the tags (see defaultBrand).
+   */
+  brand?: "ais" | "dsi" | "masi";
 }
 
 export const isInputField = (f: Field): f is InputField =>

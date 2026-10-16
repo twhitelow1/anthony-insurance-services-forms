@@ -15,6 +15,7 @@ import {
   unlinkedApplicantEmails,
 } from "@/lib/applications/repo";
 import { findContactByEmail, getContact, ghlConfig } from "@/lib/ghl/client";
+import { deleteDraft } from "@/lib/applications/drafts";
 import { makePdf, onStatusChanged, pushToGhl, runAiReview } from "@/lib/applications/pipeline";
 import { aiClient } from "@/lib/ai/client";
 import { type AssistantReply, type ChatTurn, askAssistant } from "@/lib/ai/assistant";
@@ -185,4 +186,12 @@ export async function linkAllGhlAction() {
     : `Linked ${linked} applicant${linked === 1 ? "" : "s"} to Lead Alchemist.${missing ? ` ${missing} have no Lead Alchemist contact yet.` : ""}`;
   revalidatePath("/admin/applicants");
   redirect(`/admin/applicants?ghl=${encodeURIComponent(msg)}`);
+}
+
+/** Remove an unfinished application (e.g. a duplicate or a test). */
+export async function deleteDraftAction(formData: FormData) {
+  await requireStaff();
+  const id = String(formData.get("id") ?? "");
+  if (/^[0-9a-f-]{36}$/.test(id)) await deleteDraft(id);
+  revalidatePath("/admin/unfinished");
 }

@@ -22,9 +22,18 @@ const isEmpty = (v: FormValues[string]) =>
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+export const REQUIRED_MESSAGE = "This field is required.";
+
+/** The decline popup for this field's current answer, if any. */
+export function declined(field: InputField, values: FormValues) {
+  return "decline" in field && field.decline && values[field.id] === field.decline.when ? field.decline : null;
+}
+
 export function validateField(field: InputField, values: FormValues): string | null {
   const value = values[field.id];
-  if (isEmpty(value)) return field.required ? "This field is required." : null;
+  if (isEmpty(value)) return field.required ? REQUIRED_MESSAGE : null;
+  const decline = declined(field, values);
+  if (decline) return decline.message;
   if (Array.isArray(value)) {
     if (field.type === "checkboxes") {
       const allowed = new Set(field.options.map((o) => o.value));
@@ -48,7 +57,7 @@ export function validateField(field: InputField, values: FormValues): string | n
       const n = Number(v.replace(/[$,]/g, ""));
       if (Number.isNaN(n)) return "Enter a number.";
       if (field.min !== undefined && n < field.min) return `Must be at least ${field.min}.`;
-      if (field.max !== undefined && n > field.max) return `Must be at most ${field.max}.`;
+      if (field.max !== undefined && n > field.max) return field.maxMessage ?? `Must be at most ${field.max}.`;
       return null;
     }
     case "select":
@@ -63,17 +72,30 @@ export function validateField(field: InputField, values: FormValues): string | n
   }
 }
 
-export function validateSection(section: Section, values: FormValues): FieldErrors {
+export interface ValidateOptions {
+  /**
+   * Staff testing mode: empty required fields pass, except these (an application
+   * can't be saved without an email). Wrong formats and declines still fail.
+   */
+  skipRequired?: boolean;
+}
+
+/** Still required in testing mode. */
+const ALWAYS_REQUIRED = new Set(["email"]);
+
+export function validateSection(section: Section, values: FormValues, opts: ValidateOptions = {}): FieldErrors {
   const errors: FieldErrors = {};
   for (const field of visibleInputs(section, values)) {
     const err = validateField(field, values);
-    if (err) errors[field.id] = err;
+    if (!err) continue;
+    if (opts.skipRequired && err === REQUIRED_MESSAGE && !ALWAYS_REQUIRED.has(field.id)) continue;
+    errors[field.id] = err;
   }
   return errors;
 }
 
-export function validateForm(form: FormDefinition, values: FormValues): FieldErrors {
-  return Object.assign({}, ...form.sections.map((s) => validateSection(s, values)));
+export function validateForm(form: FormDefinition, values: FormValues, opts: ValidateOptions = {}): FieldErrors {
+  return Object.assign({}, ...form.sections.map((s) => validateSection(s, values, opts)));
 }
 
 /**
@@ -94,6 +116,10 @@ export function pruneValues(form: FormDefinition, values: FormValues): FormValue
             if (typeof values[id] === "string") out[id] = values[id];
           }
         }
+      } else if (isInputField(field) && field.compute) {
+        // Worked out from other answers; whatever the browser sent is ignored.
+        const v = field.compute(values);
+        if (v !== undefined) out[field.id] = v;
       } else if (isInputField(field) && values[field.id] !== undefined) {
         out[field.id] = values[field.id];
       }
@@ -106,3 +132,10 @@ export const clampRows = (raw: FormValues[string], max: number) => {
   const n = Number(raw ?? 1);
   return Number.isFinite(n) ? Math.min(Math.max(Math.trunc(n), 1), max) : 1;
 };
+
+/** Compliance popups the submitted answers triggered (visible questions only), in form order. */
+export function triggeredNotices(form: FormDefinition, values: FormValues) {
+  return form.sections
+    .flatMap((s) => visibleInputs(s, values))
+    .flatMap((f) => ("notice" in f && f.notice && values[f.id] === f.notice.when ? [{ fieldId: f.id, ...f.notice }] : []));
+}

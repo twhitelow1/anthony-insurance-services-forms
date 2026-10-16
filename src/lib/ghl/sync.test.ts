@@ -3,7 +3,7 @@ import { sportsFacilityApplication as form } from "@/forms/sports-facility-appli
 import { createApplicationPdf, documentUrl, getDocument, latestDocument } from "@/lib/applications/documents";
 import { createApplication } from "@/lib/applications/repo";
 import { pruneValues } from "@/lib/forms/validate";
-import { syncNewApplication, syncStatus } from "./sync";
+import { syncNewApplication, syncStartedApplication, syncStatus } from "./sync";
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -208,5 +208,18 @@ describe("Lead Alchemist sync with pipeline", () => {
       pipelineStageId: "stage-bound",
       status: "won",
     });
+  });
+});
+
+describe("started (unfinished) applications", () => {
+  it("tags the contact app-started, and submitting removes those tags", async () => {
+    const calls = fakeGhl();
+    await syncStartedApplication(form, { email: "lead@example.com", first_name: "Lee" });
+    const upsert = calls.find((c) => c.path === "/contacts/upsert")!.body!;
+    expect(upsert.tags).toEqual(expect.arrayContaining(["app-started", "app-started:sports-facility-application"]));
+
+    await syncNewApplication(form, await newApp());
+    const removed = calls.find((c) => c.method === "DELETE" && c.path === "/contacts/c1/tags")!.body!;
+    expect(removed.tags).toEqual(["app-started", "app-started:sports-facility-application"]);
   });
 });

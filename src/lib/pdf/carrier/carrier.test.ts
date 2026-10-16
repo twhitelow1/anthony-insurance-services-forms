@@ -249,3 +249,44 @@ describe("forms that share the SFIC-STL-APP-001 carrier form", () => {
     expect(pdf.getForm().getTextField("Applicant_Name:_1").getText()).toBe("Flip Zone LLC DBA Flip Zone");
   });
 });
+
+describe("gymnastics on the carrier form", () => {
+  const gym = () =>
+    pruneValues(gymnasticsApplication, {
+      ...fullAnswers(),
+      general_aggregate_limit: "$4,000,000",
+      damage_to_premises_limit: "$500,000",
+      medical_payment_max: "$10,000",
+      sexual_abuse_limit: "$1,000,000 / $2,000,000",
+      products_completed_ops_limit: "$2,000,000", // not asked on gymnastics; dropped
+    });
+
+  it("ticks $1M products & completed operations without asking", () => {
+    const fill = mapAnswers(spec, gym(), gymnasticsApplication.slug);
+    expect(fill.checked).toContain("$1M_103");
+    expect(fill.checked).not.toContain("$2M_104");
+  });
+
+  it("maps the gymnastics limit choices to the PDF's boxes", () => {
+    const fill = mapAnswers(spec, gym(), gymnasticsApplication.slug);
+    for (const box of ["$4M_106", "$500K_109", "$10K_112", "$1M_$2M_121"]) expect(fill.checked).toContain(box);
+    expect(fill.addendum.map((a) => a.label)).not.toContain("Sexual abuse liability limit");
+  });
+
+  it("never ticks the $1.5M occurrence box", () => {
+    const fill = mapAnswers(spec, { ...gym(), occurrence_limit: "$1,500,000" }, gymnasticsApplication.slug);
+    expect(fill.checked).not.toContain("$1.5M_96");
+    expect(fill.addendum.map((a) => a.label)).toContain("Each occurrence limit");
+  });
+
+  it("still asks Sports Facility for products & completed operations", () => {
+    const fill = mapAnswers(spec, pruneValues(form, fullAnswers()), form.slug);
+    expect(fill.checked).toContain("$2M_104");
+  });
+
+  it("prints an old gymnastics submission's instructor qualifications without errors", async () => {
+    const app = await createApplication(gymnasticsApplication, { ...gym(), aerial_offerings: ["Ropes"], ropes_count: "2", ropes_height: "10" }, {});
+    const result = await buildCarrierPdf(spec, { ...app, values: { ...app.values, aerial_instructor_quals: "10 years" } });
+    expect(result.unknownFields).toEqual([]);
+  });
+});

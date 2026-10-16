@@ -69,6 +69,7 @@ export default async function AdminHome({ searchParams }: PageProps<"/admin">) {
                 <td>
                   <div className="flex flex-wrap gap-1">
                     <StatusBadge status={a.status} />
+                    {a.isTest && <span className="badge badge-danger" title="Submitted in staff testing mode">TEST</span>}
                     {a.aiHighFlags ? (
                       <span className="badge badge-danger" title="High-severity flags from the AI pre-review">
                         {a.aiHighFlags} high flag{a.aiHighFlags > 1 ? "s" : ""}

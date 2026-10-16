@@ -1,15 +1,20 @@
 import "server-only";
-import type { Application } from "@/lib/db/schema";
+import type { Application, Draft } from "@/lib/db/schema";
 import type { FormDefinition } from "@/lib/forms/types";
 import { ghlConfig } from "@/lib/ghl/client";
 import { getSettings } from "@/lib/settings";
-import { syncNewApplication, syncStatus } from "@/lib/ghl/sync";
+import { syncNewApplication, syncStartedApplication, syncStatus } from "@/lib/ghl/sync";
+import { setDraftGhlContact } from "./drafts";
 import { emailLayout, sendMail } from "@/lib/mail";
 import { aiClient } from "@/lib/ai/client";
 import { reviewApplication } from "@/lib/ai/review";
 import { applicationPdfUrl, createApplicationPdf, createCarrierPdf, mainDocument } from "./documents";
 import { addEvent, getApplicant, linkApplicantGhl, saveAiReview, setGhlIds } from "./repo";
 import { STATUSES, type ApplicationStatus } from "./status";
+import { libraryForForm, libraryUrl } from "@/lib/library";
+import { getForm } from "@/forms";
+import { complianceAttachments } from "@/lib/compliance";
+import { confirmationEmail, statusEmail } from "@/lib/mail/templates";
 
 const appUrl = () => (process.env.APP_URL ?? "http://localhost:3000").replace(/\/$/, "");
 const describe = (err: unknown) => (err instanceof Error ? err.message : String(err));
@@ -125,7 +130,7 @@ async function notifyStaff(form: FormDefinition, app: Application) {
     const effective = typeof app.values.requested_effective_date === "string" ? app.values.requested_effective_date : null;
     await sendMail({
       to,
-      subject: `New ${form.title}: ${app.businessName ?? app.applicantName} (${app.reference})`,
+      subject: `${app.isTest ? "[TEST] " : ""}New ${form.title}: ${app.businessName ?? app.applicantName} (${app.reference})`,
       html: emailLayout({
         heading: `New application: ${app.businessName ?? app.applicantName}`,
         paragraphs: [
@@ -145,19 +150,21 @@ async function notifyStaff(form: FormDefinition, app: Application) {
 
 async function sendConfirmation(form: FormDefinition, app: Application) {
   try {
-    await sendMail({
-      to: app.applicantEmail,
-      subject: `We received your application (${app.reference})`,
-      html: emailLayout({
-        heading: "Thanks — your application is in",
-        paragraphs: [
-          `We've received your ${form.title} for ${app.businessName ?? app.applicantName}. Your reference number is ${app.reference}.`,
-          "You can check its status any time — sign in with this email address and we'll send you a one-time link. No password needed.",
-        ],
-        button: { label: "Check application status", url: `${appUrl()}/portal/login` },
-      }),
+    // Documents assigned to this form in Admin → Documents (sample waiver etc.).
+    const docs = await libraryForForm(form.slug).catch(() => []);
+    // Compliance popups the applicant saw (e.g. no concussion policy): attach the sample documents.
+    const { notices, attachments } = await complianceAttachments(form, app.values);
+    const email = confirmationEmail({
+      form,
+      app,
+      appUrl: appUrl(),
+      documents: docs.map((d) => ({ title: d.title, description: d.description, url: libraryUrl(d) })),
+      notices,
     });
-    await addEvent(app.id, "email_sent", "system", { message: "Confirmation email sent to applicant" });
+    await sendMail({ to: app.applicantEmail, ...email, attachments });
+    await addEvent(app.id, "email_sent", "system", {
+      message: `Confirmation email sent to applicant${attachments.length ? ` with ${attachments.map((a) => a.name).join(", ")}` : ""}`,
+    });
   } catch (err) {
     console.error("[pipeline] confirmation email failed", app.reference, err);
     await addEvent(app.id, "email_failed", "system", { message: describe(err) }).catch(() => {});
@@ -179,16 +186,24 @@ export async function onStatusChanged(app: Application, previous: ApplicationSta
   if (notifyClient) tasks.push(
     sendMail({
       to: app.applicantEmail,
-      subject: `Application ${app.reference}: ${STATUSES[app.status].label}`,
-      html: emailLayout({
-        heading: `Status update: ${STATUSES[app.status].label}`,
-        paragraphs: [STATUSES[app.status].description, ...(note?.trim() ? [`Note from your agent: ${note.trim()}`] : [])],
-        button: { label: "View your application", url: `${appUrl()}/portal/login` },
-      }),
+      ...statusEmail({ form: getForm(app.formSlug), app, status: STATUSES[app.status], note, appUrl: appUrl() }),
     }).catch(async (err) => {
       console.error("[pipeline] status email failed", app.reference, err);
       await addEvent(app.id, "email_failed", "system", { message: `Status email: ${describe(err)}` });
     }),
   );
   await Promise.allSettled(tasks);
+}
+
+/** An applicant started a form and gave an email: tell Lead Alchemist ("app-started"). Never throws. */
+export async function syncDraftStarted(form: FormDefinition, draft: Draft) {
+  if (!ghlConfig() || !draft.email) return;
+  try {
+    const saved = await getApplicant(draft.email);
+    const { contactId } = await syncStartedApplication(form, draft.values, saved?.ghlContactId);
+    await setDraftGhlContact(draft.id, contactId);
+    await linkApplicantGhl(draft.email, contactId);
+  } catch (err) {
+    console.error("[pipeline] Lead Alchemist sync for a started application failed", draft.id, err);
+  }
 }

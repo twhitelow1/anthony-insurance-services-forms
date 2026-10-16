@@ -15,9 +15,12 @@ export default async function StaffLayout({ children }: LayoutProps<"/admin">) {
       <TopBar title="Applications admin" href="/admin" who={staff.email}>
         <nav className="flex flex-wrap items-center gap-4 font-medium">
           <Link href="/admin" className="hover:underline">Applications</Link>
+          <Link href="/admin/unfinished" className="hover:underline">Unfinished</Link>
           <Link href="/admin/applicants" className="hover:underline">Applicants</Link>
           <Link href="/admin/assistant" className="hover:underline">Ask AI</Link>
           <Link href="/admin/lead-alchemist" className="hover:underline">Lead Alchemist setup</Link>
+          <Link href="/admin/forms" className="hover:underline">Forms</Link>
+          <Link href="/admin/documents" className="hover:underline">Documents</Link>
           <Link href="/admin/settings" className="hover:underline">Settings</Link>
           <form action={userModeAction}>
             <button className="btn-link font-medium" title="See the client portal for your own email address">Switch to user mode</button>

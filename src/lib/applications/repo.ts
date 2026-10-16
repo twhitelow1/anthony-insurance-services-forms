@@ -41,7 +41,7 @@ function derived(form: FormDefinition, values: FormValues, reference: string) {
 export async function createApplication(
   form: FormDefinition,
   values: FormValues,
-  meta: { ip?: string; userAgent?: string },
+  meta: { ip?: string; userAgent?: string; isTest?: boolean },
 ): Promise<Application> {
   const db = await getDb();
 
@@ -56,6 +56,7 @@ export async function createApplication(
           ...derived(form, values, reference),
           submittedIp: meta.ip,
           submittedUserAgent: meta.userAgent,
+          isTest: meta.isTest ?? false,
         })
         .returning();
       await addEvent(app.id, "submitted", "client:" + app.applicantEmail, { clientVisible: true, message: "Application submitted" });
@@ -118,6 +119,7 @@ const listColumns = {
   createdAt: applications.createdAt,
   updatedAt: applications.updatedAt,
   aiHighFlags: applications.aiHighFlags,
+  isTest: applications.isTest,
 };
 export type ApplicationListItem = {
   [K in keyof typeof listColumns]: Application[K];

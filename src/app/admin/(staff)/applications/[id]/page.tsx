@@ -36,7 +36,10 @@ export default async function AdminApplication({ params, searchParams }: PagePro
       <Link href="/admin" className="btn-link">← All applications</Link>
       <div className="mb-6 mt-3 flex flex-wrap items-start justify-between gap-4">
         <div>
-          <p className="font-mono text-sm text-[var(--muted)]">{app.reference}</p>
+          <p className="font-mono text-sm text-[var(--muted)]">
+            {app.reference}
+            {app.isTest && <span className="badge badge-danger ml-2 font-sans" title="Submitted in staff testing mode">TEST</span>}
+          </p>
           <h1 className="text-2xl font-semibold">{app.businessName ?? app.applicantName}</h1>
           <p className="text-sm text-[var(--muted)]">
             {form?.title ?? app.formSlug} · submitted {fmtDate(app.createdAt)} · {app.applicantName} ·{" "}
