@@ -24,6 +24,7 @@ export type DocumentKind = "carrier_form" | "application_pdf";
 export const DOCUMENT_LABELS: Record<string, string> = {
   carrier_form: "Carrier application (filled)",
   application_pdf: "Application (Anthony Insurance format)",
+  applicant_upload: "Uploaded by the applicant",
 };
 
 async function saveDocument(app: Application, kind: DocumentKind, filename: string, data: Uint8Array) {
@@ -65,6 +66,7 @@ export async function listDocuments(applicationId: string) {
       id: applicationDocuments.id,
       kind: applicationDocuments.kind,
       filename: applicationDocuments.filename,
+      contentType: applicationDocuments.contentType,
       size: applicationDocuments.size,
       createdAt: applicationDocuments.createdAt,
     })

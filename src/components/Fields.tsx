@@ -13,6 +13,7 @@ import {
   tableRowCountId,
 } from "@/lib/forms/types";
 import { SignaturePad } from "./SignaturePad";
+import { FileUpload } from "./FileUpload";
 import { Tooltip } from "./Tooltip";
 
 const WIDTH = { full: "sm:col-span-6", half: "sm:col-span-3", third: "sm:col-span-2" } as const;
@@ -98,8 +99,11 @@ export function FieldInput({
   error,
   options,
   onChange,
+  formSlug,
 }: {
   field: InputField;
+  /** For file questions: the form the uploads belong to. */
+  formSlug?: string;
   value: FormValue;
   error?: string;
   /** Effective options (after Lead Alchemist sync + filtering) for choice fields. */
@@ -243,6 +247,20 @@ export function FieldInput({
         </Shell>
       );
     }
+    case "file":
+      return (
+        <Shell field={field} error={error}>
+          <FileUpload
+            id={field.id}
+            formSlug={formSlug ?? ""}
+            value={Array.isArray(value) ? value : []}
+            maxFiles={field.maxFiles ?? 5}
+            invalid={!!error}
+            describedBy={describedBy}
+            onChange={(refs) => onChange(refs.length ? refs : undefined)}
+          />
+        </Shell>
+      );
     case "signature":
       return (
         <Shell field={field} error={error}>

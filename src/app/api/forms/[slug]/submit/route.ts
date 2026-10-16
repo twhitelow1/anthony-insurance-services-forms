@@ -4,6 +4,7 @@ import { pruneValues, validateForm } from "@/lib/forms/validate";
 import type { FormValues } from "@/lib/forms/types";
 import { createApplication } from "@/lib/applications/repo";
 import { decodeRef, markDraftSubmitted } from "@/lib/applications/drafts";
+import { attachUploads } from "@/lib/applications/uploads";
 import { onApplicationSubmitted } from "@/lib/applications/pipeline";
 import { receiptPath } from "@/lib/applications/receipt";
 import { getSession, openAccess } from "@/lib/auth/session";
@@ -75,6 +76,9 @@ export async function POST(req: NextRequest, ctx: RouteContext<"/api/forms/[slug
       { status: 500 },
     );
   }
+
+  // Files the applicant attached (e.g. waivers) become the application's documents.
+  await attachUploads(form, app).catch((err) => console.error("[submit] couldn't attach uploads", app.reference, err));
 
   // The saved progress for this application stops counting as unfinished.
   const draftRef = decodeRef(body.draft);

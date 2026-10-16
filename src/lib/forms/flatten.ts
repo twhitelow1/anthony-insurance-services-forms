@@ -1,6 +1,10 @@
 import { clampRows } from "./validate";
 import { formatCurrency } from "./helpers";
-import { type FormDefinition, type FormValues, isInputField, tableCellId, tableRowCountId } from "./types";
+import { type FormDefinition, type FormValues, isInputField, parseUploadRef, tableCellId, tableRowCountId } from "./types";
+
+/** Uploaded files are stored as "<id>|<name>"; people see the names. */
+export const fileNames = (v: FormValues[string]) =>
+  (Array.isArray(v) ? v : []).map((ref) => parseUploadRef(ref)?.filename ?? ref).join(", ");
 
 export interface AnswerRow {
   label: string;
@@ -43,7 +47,11 @@ export function answerSections(form: FormDefinition, values: FormValues): Answer
         }
       } else if (isInputField(field) && field.type !== "signature" && present(values[field.id])) {
         const value = show(values[field.id]);
-        rows.push({ group, label: field.label, value: field.type === "currency" ? formatCurrency(value) : value });
+        rows.push({
+          group,
+          label: field.label,
+          value: field.type === "currency" ? formatCurrency(value) : field.type === "file" ? fileNames(values[field.id]) : value,
+        });
       }
     }
     if (rows.length) out.push({ title: section.title, rows });

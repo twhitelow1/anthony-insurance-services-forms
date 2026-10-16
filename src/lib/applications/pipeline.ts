@@ -15,6 +15,7 @@ import { libraryForForm, libraryUrl } from "@/lib/library";
 import { getForm } from "@/forms";
 import { complianceAttachments } from "@/lib/compliance";
 import { confirmationEmail, statusEmail } from "@/lib/mail/templates";
+import { missingUploads } from "@/lib/forms/validate";
 
 const appUrl = () => (process.env.APP_URL ?? "http://localhost:3000").replace(/\/$/, "");
 const describe = (err: unknown) => (err instanceof Error ? err.message : String(err));
@@ -153,7 +154,10 @@ async function sendConfirmation(form: FormDefinition, app: Application) {
     // Documents assigned to this form in Admin → Documents (sample waiver etc.).
     const docs = await libraryForForm(form.slug).catch(() => []);
     // Compliance popups the applicant saw (e.g. no concussion policy): attach the sample documents.
-    const { notices, attachments } = await complianceAttachments(form, app.values);
+    const compliance = await complianceAttachments(form, app.values);
+    const { attachments } = compliance;
+    // Plus uploads asked for but not given, e.g. "a signed waiver is required before coverage starts".
+    const notices = [...compliance.notices, ...missingUploads(form, app.values)];
     const email = confirmationEmail({
       form,
       app,

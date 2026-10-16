@@ -1,5 +1,6 @@
 import { includes, isYes, money, num, opts, text, US_STATES, yesNo } from "@/lib/forms/helpers";
 import type { Field, FormDefinition, FormValues } from "@/lib/forms/types";
+import { WAIVER_MISSING } from "./config";
 
 /**
  * Aerial Instructor — General Liability application.
@@ -91,11 +92,12 @@ export const aerialInstructorApplication: FormDefinition = {
           required: true,
         },
         {
-          type: "content",
-          id: "waiver_upload_notice",
-          variant: "info",
-          title: "Waiver Upload",
-          body: "Please send any waivers used. If you can work at multiple locations, and don't have your own individual waiver, please send each waiver. You can email them to melanie@anthonyinsuranceservices.com once the application is submitted.",
+          type: "file",
+          id: "waiver_files",
+          label: "Upload your waiver(s)",
+          hint: "If you work at multiple locations and don't have your own waiver, upload each location's waiver. You can also email them to melanie@anthonyinsuranceservices.com after you submit.",
+          maxFiles: 5,
+          missingNotice: WAIVER_MISSING,
         },
       ],
     },

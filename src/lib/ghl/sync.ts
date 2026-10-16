@@ -8,6 +8,7 @@ import {
   type UpsertContactInput,
   addContactNote,
   addTags,
+  createCustomField,
   createOpportunity,
   findOpenOpportunities,
   getContact,
@@ -156,6 +157,76 @@ export function standardContactFields(form: FormDefinition, values: FormValues):
   return out;
 }
 
+const str = (v: FormValues[string]) => (typeof v === "string" ? v.trim() : "");
+const usDate = (iso: string) => iso.replace(/^(\d{4})-(\d{2})-(\d{2})$/, "$2/$3/$1");
+
+/**
+ * The note added to the contact for each application. Contact custom fields only hold the
+ * latest application, so this note (and the application's own opportunity) is the per-application
+ * record in Lead Alchemist. Links only: the answers stay in the app.
+ */
+export function applicationNote(
+  form: Pick<FormDefinition, "title">,
+  app: Pick<Application, "id" | "reference" | "status" | "businessName" | "applicantName" | "applicantEmail" | "state" | "values" | "createdAt" | "isTest">,
+  pdfUrl?: string,
+) {
+  const effective = str(app.values.requested_effective_date);
+  const submitted = new Intl.DateTimeFormat("en-US", {
+    timeZone: process.env.APP_TIMEZONE ?? "America/Chicago",
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(new Date(app.createdAt));
+  return [
+    `📋 ${app.isTest ? "[TEST] " : ""}${form.title} — ${app.reference}`,
+    `Submitted: ${submitted}`,
+    `Status: ${STATUSES[app.status].label}`,
+    app.businessName ? `Business: ${app.businessName}` : null,
+    `Applicant: ${[app.applicantName, app.applicantEmail, str(app.values.phone)].filter(Boolean).join(" · ")}`,
+    app.state ? `State: ${app.state}` : null,
+    effective ? `Requested effective date: ${usDate(effective)}` : null,
+    "",
+    `Open the application: ${adminUrl(app)}`,
+    pdfUrl ? `Application PDF (staff sign-in required): ${pdfUrl}` : null,
+    `All applications from ${app.applicantEmail}: ${appBase()}${applicantPath(app.applicantEmail)}`,
+  ]
+    .filter((l) => l !== null)
+    .join("\n");
+}
+
+/**
+ * The opportunity custom fields that carry each application's reference, status, link and
+ * PDF on its card. Missing ones are created once (needs the "Edit Custom Fields" scope);
+ * anything still missing is reported so staff can add it by hand.
+ */
+let opportunityFieldsOnce: Promise<{ fields: GhlCustomField[]; missing: string[] }> | null = null;
+export const resetOpportunityFieldCache = () => (opportunityFieldsOnce = null);
+
+async function opportunityFields(): Promise<{ fields: GhlCustomField[]; missing: string[] }> {
+  const fields = await listCustomFields("opportunity").catch((err) => {
+    console.warn("[ghl] couldn't list opportunity custom fields", err);
+    return [] as GhlCustomField[];
+  });
+  const absent = Object.values(PORTAL_FIELDS).filter((n) => !findField(fields, n));
+  if (!absent.length) return { fields, missing: [] };
+  opportunityFieldsOnce ??= (async () => {
+    const created: GhlCustomField[] = [];
+    const missing: string[] = [];
+    for (const name of absent) {
+      try {
+        created.push(await createCustomField(name, "opportunity"));
+      } catch (err) {
+        console.warn(`[ghl] couldn't create the opportunity field "${name}"`, err);
+        missing.push(name);
+      }
+    }
+    return { fields: created, missing };
+  })();
+  const made = await opportunityFieldsOnce;
+  // A failed attempt is retried on a later submission (the token's scopes may have been fixed).
+  if (made.missing.length) opportunityFieldsOnce = null;
+  return { fields: [...fields, ...made.fields], missing: made.missing };
+}
+
 export function portalCustomFields(
   app: Pick<Application, "id" | "reference" | "status">,
   fields: GhlCustomField[],
@@ -275,18 +346,7 @@ export async function syncNewApplication(
   // They finished: stop the "started but not submitted" follow-ups.
   await removeTags(contactId, startedTags(form)).catch((err) => console.warn("[ghl] couldn't remove started tags", err));
 
-  await addContactNote(
-    contactId,
-    [
-      `📋 New ${form.title} — ${app.reference}`,
-      app.businessName ? `Business: ${app.businessName}` : null,
-      `Open the full application: ${adminUrl(app)}`,
-      pdfUrl ? `Application PDF (staff sign-in required): ${pdfUrl}` : null,
-      `All applications from ${app.applicantEmail}: ${appBase()}${applicantPath(app.applicantEmail)}`,
-    ]
-      .filter(Boolean)
-      .join("\n"),
-  );
+  await addContactNote(contactId, applicationNote(form, app, pdfUrl));
 
   let opportunityId: string | undefined;
   let movedFromLead = false;
@@ -294,11 +354,8 @@ export async function syncNewApplication(
   const pipe = await resolvePipeline();
   if (pipe && !app.ghlOpportunityId) {
     // Every application is its own opportunity, carrying its reference, link and PDF.
-    const oppFields = await listCustomFields("opportunity").catch((err) => {
-      console.warn("[ghl] couldn't list opportunity custom fields", err);
-      return [] as GhlCustomField[];
-    });
-    missingOpportunityFields = Object.values(PORTAL_FIELDS).filter((n) => !findField(oppFields, n));
+    const { fields: oppFields, missing } = await opportunityFields();
+    missingOpportunityFields = missing;
     const opp = {
       pipelineId: pipe.pipelineId,
       pipelineStageId: pipe.stages[app.status] ?? pipe.initialStage,

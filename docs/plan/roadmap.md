@@ -7,6 +7,8 @@ A proposed build order, grouped so each phase ships something usable. Feature nu
 | Item | Status |
 |---|---|
 | Aerial Instructor live on dancestudioinsurance.com, replacing the Gravity Form | Fixes done (aggregate dropdown, "$" spacing, alcohol follow-up, additional-insured Yes/No, DSI logo, no portal link). Waiting on Caitlyn's test. |
+| Aerial Instructor waiver upload, with the "required before coverage starts" popup | Built |
+| Lead Alchemist: a fuller note per application, and links on every opportunity card | Built |
 | Fitness Class / Health Club A on the DSI site | Next |
 | "Prepare carrier email" → draft in Outlook with the PDF attached | After Aerial Instructor; needs the Microsoft 365 app |
 | Retire the two equipment forms; "Email us" buttons; fix the yoga studio page's PDF link | Website work (Jordon / Todd) |
