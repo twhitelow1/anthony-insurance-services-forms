@@ -135,7 +135,7 @@ export default async function AdminApplication({ params, searchParams }: PagePro
               </a>
               <span className="block text-xs text-[var(--muted)]">This link always opens the newest version. It&apos;s the one saved in Lead Alchemist.</span>
             </p>
-            {docs.length ? (
+            {docs.some((d) => d.kind !== "applicant_upload") ? (
               <ul className="space-y-2 text-sm">
                 {["carrier_form", "application_pdf"].map((kind) => {
                   const versions = docs.filter((d) => d.kind === kind);
@@ -167,9 +167,26 @@ export default async function AdminApplication({ params, searchParams }: PagePro
             ) : (
               <p className="text-sm text-[var(--muted)]">No PDF yet.</p>
             )}
+            {docs.some((d) => d.kind === "applicant_upload") && (
+              <div className="text-sm">
+                <p className="font-medium">{DOCUMENT_LABELS.applicant_upload}</p>
+                <ul className="mt-1 space-y-1">
+                  {docs
+                    .filter((d) => d.kind === "applicant_upload")
+                    .map((d) => (
+                      <li key={d.id}>
+                        <a className="btn-link" href={`/documents/${d.id}`} target="_blank" rel="noopener">
+                          {d.filename}
+                        </a>{" "}
+                        <span className="text-xs text-[var(--muted)]">{Math.round(d.size / 1024)} KB</span>
+                      </li>
+                    ))}
+                </ul>
+              </div>
+            )}
             <form action={regeneratePdfAction}>
               <input type="hidden" name="id" value={app.id} />
-              <button className="btn-secondary w-full">{docs.length ? "Create PDFs again" : "Create PDFs"}</button>
+              <button className="btn-secondary w-full">{docs.some((d) => d.kind !== "applicant_upload") ? "Create PDFs again" : "Create PDFs"}</button>
             </form>
           </div>
 

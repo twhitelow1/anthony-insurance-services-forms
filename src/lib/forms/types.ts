@@ -96,6 +96,27 @@ export interface SignatureField extends BaseField {
   type: "signature";
 }
 
+/**
+ * File upload (e.g. waivers). Files go to the server as they're picked; the answer is a
+ * list of upload references, "<upload id>|<file name>", attached to the application on submit.
+ */
+export interface FileField extends BaseField {
+  type: "file";
+  /** Most files the applicant can attach. Defaults to 5. */
+  maxFiles?: number;
+  /**
+   * Shown in a popup when the applicant goes on without uploading (they can still go on),
+   * and repeated in their confirmation email.
+   */
+  missingNotice?: { title: string; message: string };
+}
+
+/** "<upload id>|<file name>" → its parts. */
+export function parseUploadRef(ref: string): { id: string; filename: string } | null {
+  const m = ref.match(/^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\|(.{1,200})$/);
+  return m ? { id: m[1], filename: m[2] } : null;
+}
+
 /** Static content block (headings, notices, instructions). Not an input. */
 export interface ContentBlock {
   type: "content";
@@ -121,7 +142,7 @@ export interface TableField {
   showIf?: Predicate;
 }
 
-export type InputField = TextField | NumberField | ChoiceField | SignatureField;
+export type InputField = TextField | NumberField | ChoiceField | SignatureField | FileField;
 export type Field = InputField | ContentBlock | TableField;
 
 export interface Section {

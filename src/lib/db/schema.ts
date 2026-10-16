@@ -173,6 +173,22 @@ export const libraryFiles = pgTable("library_files", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+/**
+ * Files an applicant attached while filling in a form (e.g. waivers), kept here until
+ * they submit; then they're copied onto the application as "applicant_upload" documents
+ * and removed from here. Unsubmitted ones can be cleared out after a while.
+ */
+export const uploads = pgTable("uploads", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  formSlug: text("form_slug").notNull(),
+  fieldId: text("field_id").notNull(),
+  filename: text("filename").notNull(),
+  contentType: text("content_type").notNull(),
+  content: bytea("content").notNull(),
+  size: integer("size").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 /** Settings staff edit in Admin → Settings (see src/lib/settings.ts). One row per setting. */
 export const appSettings = pgTable("app_settings", {
   key: text("key").primaryKey(),

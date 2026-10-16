@@ -2,6 +2,7 @@ import { PDFDocument, type PDFFont, type PDFPage, rgb, StandardFonts } from "pdf
 import { clampRows } from "@/lib/forms/validate";
 import { isVisible } from "@/lib/forms/validate";
 import { formatCurrency } from "@/lib/forms/helpers";
+import { fileNames } from "@/lib/forms/flatten";
 import {
   type ChoiceField,
   type Field,
@@ -363,7 +364,7 @@ export async function buildApplicationPdf(form: FormDefinition, app: Application
         continue;
       }
       if (f.type === "signature") continue;
-      const value = str(v[f.id]);
+      const value = f.type === "file" ? fileNames(v[f.id]) : str(v[f.id]);
       if ((f.type === "radio" || f.type === "select") && isYesNo(f)) {
         flush();
         w.yesNo(f.label, value);

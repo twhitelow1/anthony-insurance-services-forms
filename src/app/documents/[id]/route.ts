@@ -2,7 +2,7 @@ import { type NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth/session";
 import { getDocument } from "@/lib/applications/documents";
 import { getApplication } from "@/lib/applications/repo";
-import { pdfResponse } from "@/lib/applications/serve";
+import { pdfResponse, uploadResponse } from "@/lib/applications/serve";
 
 /**
  * Serves one stored version of an application document. Staff can open any; an
@@ -24,5 +24,7 @@ export async function GET(req: NextRequest, ctx: RouteContext<"/documents/[id]">
   if (!doc || !app || (session.role === "client" && session.email !== app.applicantEmail)) {
     return new Response("Not found", { status: 404 });
   }
-  return pdfResponse(doc.content, doc.filename, req.nextUrl.searchParams.get("download") === "1");
+  const download = req.nextUrl.searchParams.get("download") === "1";
+  if (doc.kind === "applicant_upload") return uploadResponse(doc.content, doc.filename, doc.contentType, download);
+  return pdfResponse(doc.content, doc.filename, download);
 }

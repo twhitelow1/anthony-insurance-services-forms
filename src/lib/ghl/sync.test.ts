@@ -3,9 +3,10 @@ import { sportsFacilityApplication as form } from "@/forms/sports-facility-appli
 import { createApplicationPdf, documentUrl, getDocument, latestDocument } from "@/lib/applications/documents";
 import { createApplication } from "@/lib/applications/repo";
 import { pruneValues } from "@/lib/forms/validate";
-import { syncNewApplication, syncStartedApplication, syncStatus } from "./sync";
+import { applicationNote, resetOpportunityFieldCache, syncNewApplication, syncStartedApplication, syncStatus } from "./sync";
 
 afterEach(() => {
+  resetOpportunityFieldCache();
   vi.restoreAllMocks();
   vi.unstubAllEnvs();
 });
@@ -13,7 +14,7 @@ afterEach(() => {
 /** Fake Lead Alchemist API: records requests, answers the endpoints sync uses. */
 function fakeGhl(
   existingOpportunities: { id: string; status?: string; pipelineId?: string; pipelineStageId?: string }[] = [],
-  { goneContacts = [] as string[], phoneTakenBy = null as string | null } = {},
+  { goneContacts = [] as string[], phoneTakenBy = null as string | null, noOpportunityFields = false } = {},
 ) {
   vi.stubEnv("GHL_API_TOKEN", "pit-test");
   vi.stubEnv("GHL_LOCATION_ID", "loc1");
@@ -22,6 +23,12 @@ function fakeGhl(
     const url = new URL(String(input));
     calls.push({ method: init?.method ?? "GET", path: url.pathname, body: init?.body ? JSON.parse(String(init.body)) : null });
     const json = (b: unknown) => new Response(JSON.stringify(b), { status: 200 });
+    if (url.pathname.endsWith("/customFields") && init?.method === "POST") {
+      const { name } = JSON.parse(String(init.body));
+      return json({ customField: { id: `new-${name}`, name, fieldKey: `opportunity.${name}`, dataType: "TEXT" } });
+    }
+    if (url.pathname.endsWith("/customFields") && noOpportunityFields && url.searchParams.get("model") === "opportunity")
+      return json({ customFields: [] });
     if (url.pathname.endsWith("/customFields"))
       return json({
         customFields: ["Application Reference", "Application Status", "Application Link", "Application PDF"].map((name, i) => ({
@@ -176,6 +183,46 @@ describe("Lead Alchemist sync with pipeline", () => {
     expect(puts[0].body!.phone).toBeTruthy();
     expect(puts[1].body!.phone).toBeUndefined();
     expect(puts[1].body!.firstName).toBe("Lee");
+  });
+
+  it("creates the opportunity fields when they're missing, so each card has its own links", async () => {
+    vi.stubEnv("GHL_PIPELINE_ID", "pipe1");
+    vi.stubEnv("GHL_PIPELINE_STAGE_ID", "stage-new");
+    const calls = fakeGhl([], { noOpportunityFields: true });
+    const app = await newApp();
+    const res = await syncNewApplication(form, app, "https://forms.example.com/applications/x/pdf");
+    expect(res.missingOpportunityFields).toEqual([]);
+    const created = calls.filter((c) => c.method === "POST" && c.path.endsWith("/customFields")).map((c) => c.body);
+    expect(created.map((b) => b!.name)).toEqual(["Application Reference", "Application Status", "Application Link", "Application PDF"]);
+    expect(created.every((b) => b!.model === "opportunity")).toBe(true);
+    const opp = calls.find((c) => c.path === "/opportunities/")!.body!;
+    expect(opp.customFields).toContainEqual({ id: "new-Application Link", field_value: `https://forms.example.com/admin/applications/${app.id}` });
+    expect(opp.customFields).toContainEqual({ id: "new-Application PDF", field_value: "https://forms.example.com/applications/x/pdf" });
+  });
+
+  it("adds a note per application with its details and links, not the answers", async () => {
+    const app = await createApplication(
+      form,
+      pruneValues(form, {
+        email: "lead@example.com",
+        first_name: "Lee",
+        last_name: "Ray",
+        phone: "(555) 010-2000",
+        legal_business_name: "Lee Gym",
+        mailing_state: "TX",
+        requested_effective_date: "2026-12-01",
+        business_description: "Secret details",
+      }),
+      {},
+    );
+    const note = applicationNote(form, app, "https://forms.example.com/applications/x/pdf");
+    expect(note).toContain(app.reference);
+    expect(note).toContain("Business: Lee Gym");
+    expect(note).toContain("Applicant: Lee Ray · lead@example.com · (555) 010-2000");
+    expect(note).toContain("Requested effective date: 12/01/2026");
+    expect(note).toContain(`Open the application: https://forms.example.com/admin/applications/${app.id}`);
+    expect(note).toContain("https://forms.example.com/applications/x/pdf");
+    expect(note).not.toContain("Secret details");
   });
 
   it("falls back to the email match when the saved contact was deleted in Lead Alchemist", async () => {

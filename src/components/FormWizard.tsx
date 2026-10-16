@@ -37,6 +37,8 @@ interface Popup {
   /** Viewport y just below the answer (inside an embed the iframe is page-height, so "centered" could be off-screen). */
   top: number;
   fieldId: string;
+  /** Instead of the single OK button: e.g. "Upload now" / "Continue without it". */
+  actions?: { label: string; primary?: boolean; run: () => void }[];
 }
 
 /**
@@ -53,6 +55,8 @@ export function FormWizard({ slug, edit, canTest = false }: { slug: string; edit
   const [restored, setRestored] = useState(false);
   const [testing, setTesting] = useState(false);
   const [popup, setPopup] = useState<Popup | null>(null);
+  // File questions the applicant chose to skip after the reminder ("we can quote now").
+  const skippedUploads = useRef(new Set<string>());
   // Server-side saved progress: "<id>.<token>" (kept with the local draft).
   const draftRef = useRef<string | null>(null);
   const [later, setLater] = useState<{ state: "idle" | "sending" | "sent" | "error"; message?: string }>({ state: "idle" });
@@ -209,11 +213,49 @@ export function FormWizard({ slug, edit, canTest = false }: { slug: string; edit
     }
   };
 
+  /**
+   * An upload that's asked for but not given (e.g. the waiver): remind them once with a
+   * popup, then let them go on. Returns true while the popup is showing.
+   */
+  const remindMissingUpload = (then: () => void) => {
+    const f = visibleInputs(section, values).find(
+      (x) => x.type === "file" && x.missingNotice && !(Array.isArray(values[x.id]) && values[x.id]!.length) && !skippedUploads.current.has(x.id),
+    );
+    if (!f || f.type !== "file" || !f.missingNotice) return false;
+    const el = document.getElementById(f.id)?.closest("label") ?? document.getElementById(f.id);
+    setPopup({
+      tone: "notice",
+      ...f.missingNotice,
+      top: el ? el.getBoundingClientRect().bottom + 8 : 80,
+      fieldId: f.id,
+      actions: [
+        {
+          label: "Upload now",
+          run: () => {
+            setPopup(null);
+            document.getElementById(f.id)?.closest("label")?.scrollIntoView({ behavior: "smooth", block: "center" });
+          },
+        },
+        {
+          label: "Continue without it",
+          primary: true,
+          run: () => {
+            skippedUploads.current.add(f.id);
+            setPopup(null);
+            then();
+          },
+        },
+      ],
+    });
+    return true;
+  };
+
   const next = () => {
     if (decline) return;
     const errs = validateCurrent();
     setErrors(errs);
     if (Object.keys(errs).length) return focusFirstError(errs);
+    if (remindMissingUpload(next)) return;
     void saveProgress(step + 1);
     setStep((s) => s + 1);
     scrollTop();
@@ -230,6 +272,7 @@ export function FormWizard({ slug, edit, canTest = false }: { slug: string; edit
     const errs = validateCurrent();
     setErrors(errs);
     if (Object.keys(errs).length) return focusFirstError(errs);
+    if (remindMissingUpload(() => void submit())) return;
 
     setStatus({ kind: "submitting" });
     try {
@@ -436,6 +479,7 @@ export function FormWizard({ slug, edit, canTest = false }: { slug: string; edit
                 error={errors[f.id]}
                 options={"options" in f ? effectiveOptions(f.options, f.filterOptions) : undefined}
                 onChange={(v) => answer(f, v)}
+                formSlug={slug}
               />
             );
           })}
@@ -526,10 +570,18 @@ function AnswerPopup({ popup, onClose }: { popup: Popup; onClose: () => void }) 
           {popup.title}
         </h2>
         <p id="answer-popup-body" className="mt-2 text-sm">{popup.message}</p>
-        <div className="mt-4 flex justify-end">
-          <button ref={btnRef} type="button" className="btn-primary" onClick={onClose}>
-            {danger ? "Change my answer" : "OK, I understand"}
-          </button>
+        <div className="mt-4 flex flex-wrap justify-end gap-2">
+          {popup.actions ? (
+            popup.actions.map((a) => (
+              <button key={a.label} ref={a.primary ? btnRef : undefined} type="button" className={a.primary ? "btn-primary" : "btn-secondary"} onClick={a.run}>
+                {a.label}
+              </button>
+            ))
+          ) : (
+            <button ref={btnRef} type="button" className="btn-primary" onClick={onClose}>
+              {danger ? "Change my answer" : "OK, I understand"}
+            </button>
+          )}
         </div>
       </div>
     </div>

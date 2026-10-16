@@ -5,6 +5,7 @@ import {
   type InputField,
   type Section,
   isInputField,
+  parseUploadRef,
   tableCellId,
   tableRowCountId,
 } from "./types";
@@ -38,6 +39,10 @@ export function validateField(field: InputField, values: FormValues): string | n
     if (field.type === "checkboxes") {
       const allowed = new Set(field.options.map((o) => o.value));
       if (value.some((v) => !allowed.has(v))) return "Invalid selection.";
+    }
+    if (field.type === "file") {
+      if (value.some((v) => !parseUploadRef(v))) return "One of the files didn't upload. Remove it and try again.";
+      if (value.length > (field.maxFiles ?? 5)) return `Attach at most ${field.maxFiles ?? 5} files.`;
     }
     return null;
   }
@@ -138,4 +143,15 @@ export function triggeredNotices(form: FormDefinition, values: FormValues) {
   return form.sections
     .flatMap((s) => visibleInputs(s, values))
     .flatMap((f) => ("notice" in f && f.notice && values[f.id] === f.notice.when ? [{ fieldId: f.id, ...f.notice }] : []));
+}
+
+/** File questions left empty that ask for a reminder (e.g. "a waiver is required before coverage starts"). */
+export function missingUploads(form: FormDefinition, values: FormValues) {
+  return form.sections
+    .flatMap((s) => visibleInputs(s, values))
+    .flatMap((f) => {
+      const v = values[f.id];
+      const empty = !(Array.isArray(v) && v.length);
+      return f.type === "file" && f.missingNotice && empty ? [{ fieldId: f.id, ...f.missingNotice }] : [];
+    });
 }

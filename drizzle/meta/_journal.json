@@ -64,6 +64,13 @@
       "when": 1792166733015,
       "tag": "0008_application_test_flag",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1792176606444,
+      "tag": "0009_applicant_uploads",
+      "breakpoints": true
     }
   ]
 }

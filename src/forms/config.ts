@@ -40,3 +40,10 @@ export const COMPLIANCE_DOCS = {
  * Set to true to add the "Check application status" links back.
  */
 export const APPLICANT_PORTAL_LINKS = false;
+
+/** Shown when an applicant goes on without uploading a waiver, and repeated in their confirmation email. */
+export const WAIVER_MISSING = {
+  title: "A signed waiver is required before coverage starts",
+  message:
+    "We can still quote your application without it. Please send your waiver before coverage can start: upload it here, or email it to melanie@anthonyinsuranceservices.com.",
+};

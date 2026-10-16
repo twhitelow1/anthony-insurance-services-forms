@@ -17,3 +17,10 @@ integrations or open questions:
    `4 - Decisions and Open Questions.md`.
 3. Call the CRM "Lead Alchemist" in everything user-facing (it's white-labelled GoHighLevel; code and
    env vars keep the `ghl`/`GHL_` names).
+
+# Always give Todd a preview link
+
+Whenever you push to a PR branch, include the Vercel preview link in your reply (and in the PR body), pointing at
+the page that changed. The branch preview for `claude/anthony-insurance-ghl-forms-fni0pj` is
+https://anthony-insurance-services-forms-git-claude-a-ec4b8f-twhitelow1.vercel.app — for other branches, take it from
+the Vercel bot's comment on the PR. Production is https://anthony-insurance-services-forms.vercel.app.

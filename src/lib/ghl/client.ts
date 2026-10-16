@@ -75,6 +75,18 @@ export async function listCustomFields(model: "contact" | "opportunity" = "conta
   return data.customFields ?? [];
 }
 
+/** Create a text custom field (needs the "Edit Custom Fields" scope on the token). */
+export async function createCustomField(name: string, model: "contact" | "opportunity"): Promise<GhlCustomField> {
+  const { locationId } = ghlConfig()!;
+  const data = await ghlFetch<{ customField: GhlCustomField }>(`/locations/${locationId}/customFields`, {
+    method: "POST",
+    body: JSON.stringify({ name, dataType: "TEXT", model }),
+    cache: "no-store",
+  });
+  if (!data?.customField?.id) throw new Error(`Lead Alchemist didn't return the new custom field "${name}"`);
+  return data.customField;
+}
+
 export interface UpsertContactInput {
   firstName?: string;
   lastName?: string;
