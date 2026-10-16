@@ -8,8 +8,7 @@ import { ghlConfig } from "@/lib/ghl/client";
 import { access } from "node:fs/promises";
 import { desc } from "drizzle-orm";
 import { schema } from "@/lib/db";
-import { carrierFormFor, templatePath } from "@/lib/pdf/carrier";
-import { sportsFacilityApplication } from "@/forms/sports-facility-application";
+import { CARRIER_FORMS, templatePath } from "@/lib/pdf/carrier";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Status | Anthony Insurance Services" };
@@ -28,14 +27,12 @@ async function checkDatabase() {
 }
 
 async function checkPdfTemplate() {
-  const spec = carrierFormFor(sportsFacilityApplication.slug);
-  if (!spec) return { ok: false, detail: "No carrier form is mapped for this form." };
-  try {
-    await access(templatePath(spec.template));
-    return { ok: true, detail: `Carrier PDF template ${spec.template} is on the server.` };
-  } catch {
-    return { ok: false, detail: `Carrier PDF template ${spec.template} is missing from the server bundle, so PDFs can't be created.` };
-  }
+  const files = CARRIER_FORMS.map((s) => s.template);
+  const missing: string[] = [];
+  for (const file of files) await access(templatePath(file)).catch(() => missing.push(file));
+  return missing.length
+    ? { ok: false, detail: `Carrier PDF template(s) ${missing.join(", ")} missing from the server bundle, so those PDFs can't be created.` }
+    : { ok: true, detail: `Carrier PDF templates ${files.join(", ")} are on the server.` };
 }
 
 async function checkStoredPdfs() {

@@ -9,6 +9,7 @@ import type { Field, FormDefinition, FormValues } from "@/lib/forms/types";
  *
  * The PDF's automated premium calculator fields (rate per participant, minimum premium, totals, broker fee)
  * are calculated by the agency and are not asked here. Card details are collected by the agency, not this form.
+ * Submissions fill that PDF: see src/lib/pdf/carrier/fitness.ts, which uses these field ids.
  */
 
 const RELATIONSHIPS = opts(

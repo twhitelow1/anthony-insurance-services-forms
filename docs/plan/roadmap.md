@@ -6,6 +6,9 @@ A proposed build order, grouped so each phase ships something usable. Feature nu
 ## Shipped 2026-10-16 (Oct 9 call with Caitlyn)
 Gymnastics limits, auto-declines, compliance popups with sample documents, 12 ft silks limit, hired & non-owned auto tooltip · Staff testing mode (#7) · Branded applicant emails · One-"$" currency formatting · LARP auto total and no payment step
 
+## Shipped 2026-10-16 (later)
+Fitness Class & Cross Training fills the carrier's own PDF (CTF 2/28/2023)
+
 ## Shipped 2026-10-10
 Typed or drawn signature (#8) · Save progress + "Started" status (E) · Document library (B) · Branded embeds (#10)
 
