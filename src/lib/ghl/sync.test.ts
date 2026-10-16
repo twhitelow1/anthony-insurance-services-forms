@@ -13,7 +13,7 @@ afterEach(() => {
 /** Fake Lead Alchemist API: records requests, answers the endpoints sync uses. */
 function fakeGhl(
   existingOpportunities: { id: string; status?: string; pipelineId?: string; pipelineStageId?: string }[] = [],
-  { goneContacts = [] as string[] } = {},
+  { goneContacts = [] as string[], phoneTakenBy = null as string | null } = {},
 ) {
   vi.stubEnv("GHL_API_TOKEN", "pit-test");
   vi.stubEnv("GHL_LOCATION_ID", "loc1");
@@ -34,6 +34,12 @@ function fakeGhl(
     if (url.pathname === "/contacts/upsert") return json({ new: true, contact: { id: "c1" } });
     const contact = url.pathname.match(/^\/contacts\/([^/]+)$/)?.[1];
     if (contact && goneContacts.includes(contact)) return new Response(JSON.stringify({ message: "Contact not found" }), { status: 400 });
+    // Lead Alchemist's answer when the phone already belongs to another contact.
+    if (contact && phoneTakenBy && init?.method === "PUT" && calls.at(-1)!.body?.phone)
+      return new Response(
+        JSON.stringify({ statusCode: 400, message: "This location does not allow duplicated contacts.", meta: { contactId: phoneTakenBy, matchingField: "phone" } }),
+        { status: 400 },
+      );
     if (url.pathname === "/opportunities/") return json({ opportunity: { id: "opp1" } });
     if (url.pathname === "/opportunities/search")
       return json({ opportunities: existingOpportunities.filter((o) => o.pipelineId === url.searchParams.get("pipeline_id")) });
@@ -154,6 +160,22 @@ describe("Lead Alchemist sync with pipeline", () => {
     expect(put.firstName).toBe("Lee");
     expect(calls.find((c) => c.path === "/contacts/saved-contact/tags")!.body!.tags).toContain("app-status:received");
     expect(calls.some((c) => c.path === "/contacts/saved-contact/notes")).toBe(true);
+  });
+
+  it("saves the rest when the phone already belongs to another Lead Alchemist contact", async () => {
+    const calls = fakeGhl([], { phoneTakenBy: "other-contact" });
+    const app = await createApplication(
+      form,
+      pruneValues(form, { email: "lead@example.com", first_name: "Lee", phone: "(555) 010-2000", legal_business_name: "Lee Gym" }),
+      {},
+    );
+    const res = await syncNewApplication(form, app, undefined, "saved-contact");
+    expect(res).toMatchObject({ contactId: "saved-contact", matchedBy: "saved_id" });
+    const puts = calls.filter((c) => c.method === "PUT" && c.path === "/contacts/saved-contact");
+    expect(puts).toHaveLength(2);
+    expect(puts[0].body!.phone).toBeTruthy();
+    expect(puts[1].body!.phone).toBeUndefined();
+    expect(puts[1].body!.firstName).toBe("Lee");
   });
 
   it("falls back to the email match when the saved contact was deleted in Lead Alchemist", async () => {

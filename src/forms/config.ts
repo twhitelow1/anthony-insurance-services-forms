@@ -33,3 +33,10 @@ export const COMPLIANCE_DOCS = {
   concussion: "sample-concussion-return-to-play-policy.pdf",
   backgroundChecks: "sample-background-check-policy.pdf",
 } as const;
+
+/**
+ * Applicant portal links. Off for now: confirmation and status emails, and the
+ * "Application submitted" screen, don't point applicants to the portal.
+ * Set to true to add the "Check application status" links back.
+ */
+export const APPLICANT_PORTAL_LINKS = false;

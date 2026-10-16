@@ -71,6 +71,8 @@ body {
 .input::placeholder { color: #95a1b4; }
 .input:focus { outline: none; border-color: var(--accent); box-shadow: var(--focus); }
 .input.is-invalid { border-color: var(--danger); }
+/* Currency boxes: room for the "$" drawn inside the box (a utility like pl-7 loses to .input's padding). */
+.input.input-currency { padding-left: 1.75rem; }
 select.input {
   appearance: none;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='%2356637a'%3E%3Cpath d='M5.3 7.3a1 1 0 0 1 1.4 0L10 10.6l3.3-3.3a1 1 0 1 1 1.4 1.4l-4 4a1 1 0 0 1-1.4 0l-4-4a1 1 0 0 1 0-1.4z'/%3E%3C/svg%3E");

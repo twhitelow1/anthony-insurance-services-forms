@@ -3,6 +3,14 @@
 A proposed build order, grouped so each phase ships something usable. Feature numbers match
 [backlog.md](backlog.md); letters are the new ideas at the bottom of that file. Reorder freely.
 
+## Now (from the Oct 16 call)
+| Item | Status |
+|---|---|
+| Aerial Instructor live on dancestudioinsurance.com, replacing the Gravity Form | Fixes done (aggregate dropdown, "$" spacing, alcohol follow-up, additional-insured Yes/No, DSI logo, no portal link). Waiting on Caitlyn's test. |
+| Fitness Class / Health Club A on the DSI site | Next |
+| "Prepare carrier email" → draft in Outlook with the PDF attached | After Aerial Instructor; needs the Microsoft 365 app |
+| Retire the two equipment forms; "Email us" buttons; fix the yoga studio page's PDF link | Website work (Jordon / Todd) |
+
 ## Shipped 2026-10-16 (Oct 9 call with Caitlyn)
 Gymnastics limits, auto-declines, compliance popups with sample documents, 12 ft silks limit, hired & non-owned auto tooltip · Staff testing mode (#7) · Branded applicant emails · One-"$" currency formatting · LARP auto total and no payment step
 

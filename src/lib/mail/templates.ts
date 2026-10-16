@@ -1,6 +1,7 @@
 import type { FormDefinition } from "@/lib/forms/types";
 import { BRANDS, type Brand, defaultBrand } from "@/lib/brands";
 import { renderEmail } from "./index";
+import { APPLICANT_PORTAL_LINKS } from "@/forms/config";
 
 /**
  * Emails to applicants, branded by the application's own site (AIS, DSI or MASI):
@@ -42,9 +43,11 @@ export function confirmationEmail(opts: {
       ...notices.map((n) => `${n.title}: ${n.message}`),
       ...(attached.length ? [`Attached: ${attached.join(", ")}.`] : []),
       ...documents.map((d) => `${d.title}${d.description ? ` (${d.description})` : ""}: ${d.url}`),
-      "You can check its status any time — sign in with this email address and we'll send you a one-time link. No password needed.",
+      ...(APPLICANT_PORTAL_LINKS
+        ? ["You can check its status any time — sign in with this email address and we'll send you a one-time link. No password needed."]
+        : []),
     ],
-    button: { label: "Check application status", url: portalUrl(appUrl) },
+    button: APPLICANT_PORTAL_LINKS ? { label: "Check application status", url: portalUrl(appUrl) } : undefined,
   });
   return { subject: `We received your application (${app.reference})`, html, text, fromName: brand.name };
 }
@@ -61,7 +64,7 @@ export function statusEmail(opts: {
     brand,
     heading: `Status update: ${opts.status.label}`,
     paragraphs: [opts.status.description, ...(opts.note?.trim() ? [`Note from your agent: ${opts.note.trim()}`] : [])],
-    button: { label: "View your application", url: portalUrl(opts.appUrl) },
+    button: APPLICANT_PORTAL_LINKS ? { label: "View your application", url: portalUrl(opts.appUrl) } : undefined,
   });
   return { subject: `Application ${opts.app.reference}: ${opts.status.label}`, html, text, fromName: brand.name };
 }

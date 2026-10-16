@@ -41,7 +41,12 @@ export default async function FormPage({ params, searchParams }: PageProps<"/for
         <header className="mb-8">
           {brand?.logo ? (
             // eslint-disable-next-line @next/next/no-img-element -- hot-linked from the brand's own site
-            <img src={brand.logo} alt={brand.name} className="mb-4 h-14 w-auto" />
+            <img
+              src={brand.logo}
+              alt={brand.name}
+              className={`mb-4 h-14 w-auto ${brand.logoBg ? "rounded-lg px-4 py-2" : ""}`}
+              style={brand.logoBg ? { background: brand.logoBg, boxSizing: "content-box" } : undefined}
+            />
           ) : (
             <p className="mb-3 text-sm font-semibold uppercase tracking-[0.18em] text-[var(--accent-strong)]">
               {brand?.name ?? "Anthony Insurance Services"}

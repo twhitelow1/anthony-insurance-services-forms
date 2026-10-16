@@ -5,6 +5,7 @@ import { getForm } from "@/forms";
 import { type FieldErrors, declined, isVisible, pruneValues, validateSection, visibleInputs } from "@/lib/forms/validate";
 import { type FormValue, type FormValues, type InputField, type Option, isInputField } from "@/lib/forms/types";
 import { Content, FieldInput, TableInput } from "./Fields";
+import { APPLICANT_PORTAL_LINKS } from "@/forms/config";
 
 type Status =
   | { kind: "idle" }
@@ -299,16 +300,22 @@ export function FormWizard({ slug, edit, canTest = false }: { slug: string; edit
             <a className="btn-secondary" href={status.pdfUrl} target="_blank" rel="noopener">
               View a copy of your application (PDF)
             </a>
-            <p className="mt-2 text-xs text-[var(--muted)]">This link works for one hour. After that, sign in to check your status.</p>
+            <p className="mt-2 text-xs text-[var(--muted)]">
+              This link works for one hour.{APPLICANT_PORTAL_LINKS ? " After that, sign in to check your status." : ""}
+            </p>
           </div>
         )}
-        <p className="mt-5 text-sm text-[var(--muted)]">
-          We&apos;ve emailed you a confirmation. You can{" "}
-          <a className="btn-link" href="/portal/login" target="_top">
-            check your application status
-          </a>{" "}
-          any time.
-        </p>
+        {APPLICANT_PORTAL_LINKS ? (
+          <p className="mt-5 text-sm text-[var(--muted)]">
+            We&apos;ve emailed you a confirmation. You can{" "}
+            <a className="btn-link" href="/portal/login" target="_top">
+              check your application status
+            </a>{" "}
+            any time.
+          </p>
+        ) : (
+          <p className="mt-5 text-sm text-[var(--muted)]">We&apos;ve emailed you a confirmation.</p>
+        )}
       </div>
     );
   }

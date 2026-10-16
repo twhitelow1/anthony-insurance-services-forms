@@ -24,8 +24,10 @@ describe("applicant emails are branded per application", () => {
     }
     expect(email.fromName).toBe(brand.name);
     expect(email.html).toContain(`href="${brand.site}"`);
-    expect(email.html).toContain(brand.vars["--button"]);
+    expect(email.html).toContain(`border-top:4px solid ${brand.vars["--accent"]}`);
     if (brand.logo) expect(email.html).toContain(brand.logo);
+    // DSI's logo is white, so it sits on the brand's navy band.
+    if (brand.logoBg) expect(email.html).toContain(`background:${brand.logoBg}`);
     // No other brand's name, site or logo.
     for (const other of Object.values(BRANDS)) {
       if (other.id === brand.id) continue;
@@ -36,8 +38,8 @@ describe("applicant emails are branded per application", () => {
         if (other.id !== "ais") expect(part).not.toContain(other.name);
       }
     }
-    // Links stay on the app.
-    expect(email.html).toContain(APP_URL);
+    // Applicants aren't sent to the portal yet (APPLICANT_PORTAL_LINKS is off).
+    for (const part of [email.html, email.text]) expect(part).not.toContain("/portal");
   });
 
   it("brands dance, aerial and gymnastics as DSI and martial arts and boxing as MASI", () => {

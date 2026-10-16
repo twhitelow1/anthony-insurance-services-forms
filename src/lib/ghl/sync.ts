@@ -178,6 +178,32 @@ export function portalCustomFields(
  * earlier sync wins, so later applications land on the same contact even if
  * staff edited it in Lead Alchemist; otherwise Lead Alchemist matches on email (upsert).
  */
+/**
+ * Lead Alchemist refuses an update that would give this contact the phone (or email)
+ * of a different contact: "This location does not allow duplicated contacts."
+ * Returns that field's name so the update can be retried without it.
+ */
+export function duplicateField(err: unknown): string | null {
+  if (!(err instanceof GhlError) || err.status !== 400) return null;
+  const body = err.body as { message?: unknown; meta?: { matchingField?: unknown } } | null;
+  if (typeof body?.message !== "string" || !/duplicated contacts/i.test(body.message)) return null;
+  return typeof body.meta?.matchingField === "string" ? body.meta.matchingField : null;
+}
+
+/** Run a contact write; if a field clashes with another contact, drop it and try once more. */
+async function withoutDuplicates<T, I extends Record<string, unknown>>(input: I, write: (input: I) => Promise<T>): Promise<T> {
+  try {
+    return await write(input);
+  } catch (err) {
+    const field = duplicateField(err);
+    if (!field || !(field in input)) throw err;
+    console.warn(`[ghl] ${field} belongs to another Lead Alchemist contact; saved without it`);
+    const { [field]: _dropped, ...rest } = input;
+    void _dropped;
+    return write(rest as I);
+  }
+}
+
 async function syncContact(
   form: FormDefinition,
   values: FormValues,
@@ -191,7 +217,7 @@ async function syncContact(
       // Email is left alone: it's what links them, and staff may have changed it in Lead Alchemist on purpose.
       const { email: _email, ...rest } = fields;
       void _email;
-      await updateContact(savedId, { ...rest, customFields });
+      await withoutDuplicates({ ...rest, customFields }, (input) => updateContact(savedId, input));
       await addTags(savedId, tags);
       return { contactId: savedId, matchedBy: "saved_id" };
     } catch (err) {
@@ -200,7 +226,7 @@ async function syncContact(
       if (!gone) throw err;
     }
   }
-  const { contact } = await upsertContact({ ...fields, source: form.source, tags, customFields });
+  const { contact } = await withoutDuplicates({ ...fields, source: form.source, tags, customFields }, upsertContact);
   return { contactId: contact.id, matchedBy: "email" };
 }
 

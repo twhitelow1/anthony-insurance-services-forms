@@ -15,6 +15,8 @@ export interface Brand {
   site: string;
   /** Hot-linked from the brand's own site; null → text wordmark. */
   logo: string | null;
+  /** Background behind the logo when the logo is light (DSI's is white), so it shows on white pages and emails. */
+  logoBg?: string;
   vars: Record<string, string>;
 }
 
@@ -40,6 +42,7 @@ export const BRANDS: Record<BrandId, Brand> = {
     name: "Dance Studio Insurance",
     site: "https://dancestudioinsurance.com",
     logo: "https://dancestudioinsurance.com/wp-content/uploads/2015/12/dsi_03.png",
+    logoBg: "#13134e", // site navy; the logo is white
     vars: {
       "--brand": "#660066", // primary purple
       "--button": "#c4380c", // site button orange #e8420e, darkened for white text
