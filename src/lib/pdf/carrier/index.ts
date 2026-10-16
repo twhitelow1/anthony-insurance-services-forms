@@ -1,6 +1,22 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import { PDFCheckBox, PDFDocument, PDFDropdown, type PDFForm, PDFName, PDFRadioGroup, PDFTextField, rgb, StandardFonts } from "pdf-lib";
+import fontkit from "@pdf-lib/fontkit";
+import {
+  PDFCheckBox,
+  PDFDict,
+  PDFDocument,
+  PDFDropdown,
+  type PDFFont,
+  type PDFForm,
+  PDFName,
+  PDFRadioGroup,
+  PDFStream,
+  PDFTextField,
+  decodePDFRawStream,
+  type PDFRawStream,
+  rgb,
+  StandardFonts,
+} from "pdf-lib";
 import type { Application } from "@/lib/db/schema";
 import { safeText, wrap } from "@/lib/pdf/summary";
 import { embedSignature } from "@/lib/pdf/signature";
@@ -46,6 +62,8 @@ export async function buildCarrierPdf(spec: CarrierFormSpec, app: Application) {
   const fill = mapAnswers(spec, app.values, app.formSlug);
   const addendum = [...fill.addendum];
   const unknownFields: string[] = [];
+  // Each box's own font (from its default appearance), or Helvetica as before.
+  const fontFor = spec.templateLook ? templateFonts(doc, helv) : () => Promise.resolve(helv);
 
   for (const [name, { value, label }] of fill.text) {
     const field = form.getFieldMaybe(name);
@@ -53,14 +71,15 @@ export async function buildCarrierPdf(spec: CarrierFormSpec, app: Application) {
       unknownFields.push(name);
       continue;
     }
+    const font = await fontFor(field.acroField.getDefaultAppearance());
     const multiline = field.isMultiline();
-    const text = multiline ? safeText(helv, value) : safeText(helv, value).replace(/\s*\n\s*/g, " ");
+    const text = multiline ? safeText(font, value) : safeText(font, value).replace(/\s*\n\s*/g, " ");
     const rect = field.acroField.getWidgets()[0].getRectangle();
     const box = rect.width - 4;
     const max = field.getMaxLength() ?? Infinity;
     const fits = (size: number) =>
       text.length <= max &&
-      (multiline ? wrap(helv, text, size, box).length * size * 1.2 <= rect.height - 2 : helv.widthOfTextAtSize(text, size) <= box);
+      (multiline ? wrap(font, text, size, box).length * size * 1.2 <= rect.height - 2 : font.widthOfTextAtSize(text, size) <= box);
     // The template's own size if it fits (auto-sized boxes count as FIELD_FONT), else shrink.
     const own = Number(field.acroField.getDefaultAppearance()?.match(/([\d.]+)\s+Tf/)?.[1]) || FIELD_FONT;
     const size = [own, FIELD_FONT, MIN_FONT].find((s) => s <= own && fits(s));
@@ -71,17 +90,22 @@ export async function buildCarrierPdf(spec: CarrierFormSpec, app: Application) {
       if (size !== own) field.setFontSize(size);
       field.setText(text);
     }
+    if (spec.templateLook) field.updateAppearances(font);
   }
 
   for (const name of fill.checked) {
     const field = form.getFieldMaybe(name);
-    if (field instanceof PDFCheckBox) field.check();
-    else unknownFields.push(name);
+    if (field instanceof PDFCheckBox) {
+      field.check();
+      if (spec.templateLook) form.markFieldAsClean(field.ref); // keep the template's own tick
+    } else unknownFields.push(name);
   }
   for (const [name, value] of fill.radios) {
     const field = form.getFieldMaybe(name);
-    if (field instanceof PDFRadioGroup && field.getOptions().includes(value)) field.select(value);
-    else unknownFields.push(`${name}=${value}`);
+    if (field instanceof PDFRadioGroup && field.getOptions().includes(value)) {
+      field.select(value);
+      if (spec.templateLook) form.markFieldAsClean(field.ref); // keep the template's own buttons
+    } else unknownFields.push(`${name}=${value}`);
   }
 
   const dropdowns: [PDFDropdown, number][] = [];
@@ -90,6 +114,7 @@ export async function buildCarrierPdf(spec: CarrierFormSpec, app: Application) {
     const index = field instanceof PDFDropdown ? field.getOptions().indexOf(value) : -1;
     if (field instanceof PDFDropdown && index >= 0) {
       field.select(value);
+      if (spec.templateLook) field.updateAppearances(await fontFor(field.acroField.getDefaultAppearance()));
       dropdowns.push([field, index]);
     } else if (field instanceof PDFDropdown) {
       addendum.push({ label, value }); // not one of the dropdown's options
@@ -115,11 +140,40 @@ export async function buildCarrierPdf(spec: CarrierFormSpec, app: Application) {
   }
   if (spec.date) pages[spec.date.page].drawText(signedDate(app.createdAt), { x: spec.date.x, y: spec.date.y, size: 10, font: helv });
 
-  drawAddendum(doc, { helv, bold }, app, addendum);
+  if (addendum.length || !spec.templateLook) drawAddendum(doc, { helv, bold }, app, addendum);
 
   doc.setTitle(`${spec.name} — ${app.businessName ?? app.applicantName} (${app.reference})`);
   doc.setAuthor("Anthony Insurance Services");
   return { bytes: await doc.save(), unknownFields, addendumCount: addendum.length, defaulted };
+}
+
+/**
+ * The font a box's default appearance names (e.g. "/Roboto 11 Tf"), embedded from the
+ * template's own copy, so filled text looks like text typed into the form. Helvetica
+ * when the box names no font, a standard one, or one the template doesn't embed.
+ */
+function templateFonts(doc: PDFDocument, helv: PDFFont) {
+  doc.registerFontkit(fontkit);
+  const fonts = doc.getForm().acroForm.dict.lookupMaybe(PDFName.of("DR"), PDFDict)?.lookupMaybe(PDFName.of("Font"), PDFDict);
+  const cache = new Map<string, Promise<PDFFont>>();
+  const load = async (name: string) => {
+    const file = fonts
+      ?.lookupMaybe(PDFName.of(name), PDFDict)
+      ?.lookupMaybe(PDFName.of("FontDescriptor"), PDFDict)
+      ?.lookupMaybe(PDFName.of("FontFile2"), PDFStream);
+    if (!file) return helv;
+    try {
+      return await doc.embedFont(decodePDFRawStream(file as PDFRawStream).decode());
+    } catch {
+      return helv;
+    }
+  };
+  return (da: string | undefined) => {
+    const name = da?.match(/\/([^\s/]+)\s+[\d.]+\s+Tf/)?.[1];
+    if (!name || name === "Helv") return Promise.resolve(helv);
+    if (!cache.has(name)) cache.set(name, load(name));
+    return cache.get(name)!;
+  };
 }
 
 /** Remove a field's blank, opaque appearance so the signature drawn beneath it shows. */

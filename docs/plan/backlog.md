@@ -200,7 +200,8 @@ The **Fitness Class & Cross Training** application now fills the carrier's own P
 dancestudioinsurance.com "Fitness and Cross Training Facilities" application), the same way Sports Facility fills SFIC.
 - **On the PDF:** every answer goes on its box: Yes/No buttons, sports trained, limits and optional coverages,
   additional insureds with their endorsements, how they'll pay, and the signature and date.
-- **Addendum page:** anything with no box goes on an extra last page, e.g. the number of independent contractors.
+- **Looks like the blank form:** the same four pages, text in the form's own font (Roboto), and the form's own
+  ticks and radio buttons. An extra last page is added only if an answer has no box on the form.
 - **Left as they are:**
   - **Premium boxes:** the PDF works out the premium itself in Acrobat. Until someone edits a field there, the premium
     boxes show $0.00.

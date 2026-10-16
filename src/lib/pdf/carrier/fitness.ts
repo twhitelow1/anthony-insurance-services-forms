@@ -139,11 +139,7 @@ function additionalInsureds(f: Filler) {
   f.set("Waiver Number", String(counts.waiver), "Waiver of subrogation endorsements");
   // The PDF counts additional insureds marked IC; the web form asks for the number of
   // independent contractors directly, which can be more than three.
-  const contractors = f.get("independent_contractors").replace(/\D/g, "");
-  if (contractors) {
-    f.set("IC Number", contractors, "Independent contractors");
-    if (Number(contractors) > 0) f.note("Independent contractors", contractors);
-  }
+  f.set("IC Number", f.get("independent_contractors").replace(/\D/g, ""), "Independent contractors");
 }
 
 export const fitnessCarrierForm: CarrierFormSpec = {
@@ -153,6 +149,7 @@ export const fitnessCarrierForm: CarrierFormSpec = {
   // Page 4: "Signed for the Proposed Policyholder" box runs x 18–182, y 150–171; its Date box is a field.
   signature: { page: 3, x: 22, y: 151, width: 156, height: 19 },
   signatureField: "Proposed Policyholder",
+  templateLook: true,
   // No `blanks`: the premium, payment and card boxes must stay empty, so the
   // mapping writes N/A into the few boxes a skipped question leaves.
 

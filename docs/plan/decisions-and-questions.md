@@ -32,6 +32,7 @@
 | 2026-10-16 | **Applicant emails are branded by the application's own site** (AIS, DSI or MASI). Gymnastics counts as DSI. The Microsoft 365 email path stays switched off. |
 | 2026-10-16 | **LARP:** no payment at application time (the carrier doesn't publish rates). An agent quotes after submission. |
 | 2026-10-16 | **The Fitness form fills the carrier's own PDF** (CTF 2/28/2023), like SFIC. The premium calculator, card details and agent signature are left for Acrobat, the agency and the agent. |
+| 2026-10-16 | **The downloaded fitness PDF looks exactly like the carrier's blank form, filled in:** the same four pages, its own font, ticks and radio buttons. An addendum page is added only when an answer has no box. |
 
 ## Open questions
 

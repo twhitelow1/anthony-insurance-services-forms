@@ -82,6 +82,7 @@ Each submission fills in the carrier's own fillable application:
 - **Sports Facility, Gymnastics and Boxing Gym:** `carrier-forms/sfic-stl-app-001.pdf` (SFIC-STL-APP-001 04/2026), mapped in `src/lib/pdf/carrier/sports-facility.ts`.
 - **Fitness Class & Cross Training:** `carrier-forms/dsi-ctf-fitness-2023.pdf` (FORM: CTF REV 2/28/2023), mapped in `src/lib/pdf/carrier/fitness.ts`.
   - Its Yes/No questions are radio buttons, and six on page 2 are named one row off from their question. The mapping follows where each button sits, and a test checks the rows are in page order.
+  - It looks like the blank form filled in by hand: the same four pages, the form's own font (Roboto, reused from the template) and its own ticks and radio buttons. An addendum page is added only when an answer has no box (`templateLook` in the mapping).
   - The premium calculator, payment and card boxes are left as they are. The PDF works out the premium itself in Acrobat, and the agency collects payment details.
 
 The rest of this section describes the SFIC form.

@@ -25,6 +25,12 @@ export interface CarrierFormSpec {
   template: string;
   /** Signature image box and date position, in PDF points from the bottom-left of the page (0-based page). */
   signature: { page: number; x: number; y: number; width: number; height: number };
+  /**
+   * Make the filled PDF look like the blank template filled in by hand: text in each
+   * box's own font, the template's own ticks and radio buttons, and no addendum page
+   * unless an answer needs one.
+   */
+  templateLook?: boolean;
   /** The template's own (empty) signature field over that box, made see-through so the signature shows. */
   signatureField?: string;
   /** Where the submission date is drawn. Omit when the mapping fills the template's own date field. */

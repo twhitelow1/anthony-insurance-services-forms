@@ -162,7 +162,7 @@ describe("carrier PDF mapping (Fitness CTF 2/28/2023)", () => {
       "WeightsOver50lb?": "false",
       "Incident reports?": "Choice2", // the playground-equipment row
     });
-    expect(fill.addendum).toContainEqual({ label: "Independent contractors", value: "2" });
+    expect(fill.addendum).toEqual([]);
   });
 
   it("writes N/A where a No hid the follow-up", () => {
@@ -175,6 +175,14 @@ describe("carrier PDF mapping (Fitness CTF 2/28/2023)", () => {
     expect(fill.text.get("Other Style 3")?.value).toBe("N/A");
   });
 
+  it("adds the addendum page only when an answer has no box", async () => {
+    const values = { ...pruneValues(form, fullAnswers()), general_liability_aggregate: "$6,000,000" };
+    const app = await createApplication(form, pruneValues(form, fullAnswers()), {});
+    const { bytes, addendumCount } = await buildCarrierPdf(spec, { ...app, values });
+    expect(addendumCount).toBe(1);
+    expect((await PDFDocument.load(bytes)).getPageCount()).toBe(5);
+  });
+
   it("puts an answer with no matching box on the addendum", () => {
     const fill = mapAnswers(spec, { ...pruneValues(form, fullAnswers()), general_liability_aggregate: "$6,000,000", mailing_state: "PR" });
     expect(fill.addendum).toContainEqual({ label: "General liability aggregate", value: "$6,000,000" });
@@ -182,14 +190,14 @@ describe("carrier PDF mapping (Fitness CTF 2/28/2023)", () => {
     expect(fill.radios.has("General Aggregate")).toBe(false);
   });
 
-  it("fills the real template, keeps the premium and card boxes empty, and adds the addendum", async () => {
+  it("fills the real template, four pages like the blank, with the premium and card boxes left alone", async () => {
     const app = await createApplication(form, pruneValues(form, fullAnswers()), {});
     const { bytes, unknownFields, addendumCount, defaulted } = await buildCarrierPdf(spec, app);
     expect(unknownFields).toEqual([]);
     expect(defaulted).toEqual({ no: 0, na: 0 });
-    expect(addendumCount).toBe(1);
+    expect(addendumCount).toBe(0);
     const pdf = await PDFDocument.load(bytes);
-    expect(pdf.getPageCount()).toBe(5);
+    expect(pdf.getPageCount()).toBe(4);
     const f = pdf.getForm();
     expect(f.getTextField("Email Address").getText()).toBe("sam@peakmotion.example");
     // Too wide at the template's 11pt: shrunk to fit rather than cut off.
@@ -209,6 +217,12 @@ describe("carrier PDF mapping (Fitness CTF 2/28/2023)", () => {
     expect(state.get(PDFName.of("V"))?.toString()).toBe("(0)");
     expect(state.get(PDFName.of("I"))?.toString()).toBe(`[ ${f.getDropdown("State").getOptions().indexOf("Colorado")} ]`);
     expect(f.getDropdown("Relationship 2").acroField.dict.get(PDFName.of("V"))?.toString()).toBe("(1)");
+    // Looks like the template: ticks and radio buttons keep its own drawings, text uses its Roboto.
+    const blank = (await template()).getForm();
+    const ap = (form: typeof f, name: string) => form.getField(name).acroField.getWidgets()[0].dict.get(PDFName.of("AP"))?.toString();
+    for (const name of ["Check Box 12", "Primary 1", "General Aggregate", "Payment Method"]) expect(ap(f, name), name).toBe(ap(blank, name));
+    const fontsUsed = f.getTextField("Name Email 1").acroField.getWidgets()[0].getNormalAppearance();
+    expect(pdf.context.lookup(fontsUsed)?.toString() ?? "").toMatch(/Roboto/);
     // CARRIER_PDF_OUT=/tmp/fitness.pdf npx vitest run src/lib/pdf/carrier/fitness — to look at the result.
     if (process.env.CARRIER_PDF_OUT) (await import("node:fs")).writeFileSync(process.env.CARRIER_PDF_OUT, bytes);
   });
