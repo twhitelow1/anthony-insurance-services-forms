@@ -35,7 +35,7 @@ Staff work in the **admin**:
 - **Lead Alchemist setup:** shows the connection and every pipeline and stage.
 - **Settings:** admins, notifications, sender, carrier email, pipeline.
 
-Applicants have a **portal** where they sign in by email link and see their applications, statuses and PDFs.
+Applicants have a **portal** where they sign in by email link and see their applications, statuses and PDFs. **For now applicants aren't sent links to it** (2026-10-16); staff can still use it.
 
 Applicants can also:
 - **sign by drawing or typing**, like DocuSign;
