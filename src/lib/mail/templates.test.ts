@@ -26,6 +26,8 @@ describe("applicant emails are branded per application", () => {
     expect(email.html).toContain(`href="${brand.site}"`);
     expect(email.html).toContain(`border-top:4px solid ${brand.vars["--accent"]}`);
     if (brand.logo) expect(email.html).toContain(brand.logo);
+    // DSI's logo is white, so it sits on the brand's navy band.
+    if (brand.logoBg) expect(email.html).toContain(`background:${brand.logoBg}`);
     // No other brand's name, site or logo.
     for (const other of Object.values(BRANDS)) {
       if (other.id === brand.id) continue;

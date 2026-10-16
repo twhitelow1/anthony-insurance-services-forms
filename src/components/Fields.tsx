@@ -154,7 +154,7 @@ export function FieldInput({
             <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-[var(--muted)]">$</span>
             <input
               {...common}
-              className={`${common.className} pl-7`}
+              className={`${common.className} input-currency`}
               type="text"
               inputMode="decimal"
               // Saved answers may already carry a "$" (older or staff-edited); the box shows its own.

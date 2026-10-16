@@ -31,6 +31,9 @@
 | 2026-10-16 | **Testing mode is staff only**, enforced on the server, and off by default. This replaces the "special link" decision. |
 | 2026-10-16 | **Applicant emails are branded by the application's own site** (AIS, DSI or MASI). Gymnastics counts as DSI. The Microsoft 365 email path stays switched off. |
 | 2026-10-16 | **LARP:** no payment at application time (the carrier doesn't publish rates). An agent quotes after submission. |
+| 2026-10-16 (call) | **Go-live order for the website forms:** 1. Aerial Instructor (replaces the DSI Gravity Form once Caitlyn approves a test). 2. Fitness Class / Health Club A (DSI site). Then the rest of the Gravity Forms, a little each day. |
+| 2026-10-16 (call) | **Sports equipment and production equipment forms are retired.** Their pages get an "Email us" button to Caitlyn instead of a form. |
+| 2026-10-16 (call) | **"Prepare carrier email" should drop a draft, with the PDF attached, straight into Outlook Drafts.** Needs the Microsoft 365 connection; built after Aerial Instructor is live. |
 | 2026-10-16 | **Applicants aren't pointed to the portal yet.** The confirmation and status emails and the "submitted" screen have no portal link. The portal still works; turn the links back on with `APPLICANT_PORTAL_LINKS` in `src/forms/config.ts`. |
 
 ## Open questions
@@ -43,6 +46,8 @@
 | 3b | **Real sample documents** for the concussion and background-check popups, to replace the placeholders | Caitlyn | #5 |
 | 3c | Should the gymnastics **declines, compliance popups and 12 ft silks limit** also apply to Aerial Yoga / Aerial Dance, Sports Facility or Boxing Gym? | Caitlyn | #4, #5 |
 | 3d | **The DSI email that linked to the martial arts page:** this app's emails never used DSI branding before 2026-10-16, so that email was probably a Lead Alchemist workflow. Which email was it? | Caitlyn / Todd | — |
+| 3e | **Gravity Forms notifications stopped** on several sites (likely an expired license) | Todd | Website forms until replaced |
+| 3f | **Microsoft 365 app for Outlook drafts:** an Azure app registration with delegated Mail.ReadWrite for the staff mailboxes | Todd / Anthony IT | #13 |
 | 4 | **Carrier list:** name, contact, products and states, how each accepts submissions, and their application PDFs | Anthony | C, #13, #9 |
 | 5 | **Compliance sign-off** on the carrier magic-link design (48-hour links, access log) | Anthony / compliance | #13 |
 | 6 | **Brand assets:** confirm MASI's brand colors (current: charcoal #262e37 with a red accent), and send the AIS logo file (PNG or SVG) | Todd / Anthony | #10 polish |

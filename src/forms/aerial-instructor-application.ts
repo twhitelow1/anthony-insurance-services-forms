@@ -1,5 +1,5 @@
 import { includes, isYes, money, num, opts, text, US_STATES, yesNo } from "@/lib/forms/helpers";
-import type { Field, FormDefinition } from "@/lib/forms/types";
+import type { Field, FormDefinition, FormValues } from "@/lib/forms/types";
 
 /**
  * Aerial Instructor — General Liability application.
@@ -7,14 +7,19 @@ import type { Field, FormDefinition } from "@/lib/forms/types";
  * dancestudioinsurance.com/aerial-yoga-instructor-form/), plus client-requested Additional Insured fields.
  */
 
+/** Additional insureds are asked for only after "Yes". Older applications (before the question) still show theirs. */
+const wantsAdditionalInsured = (v: FormValues) =>
+  v.needs_additional_insured === "Yes" || (v.needs_additional_insured === undefined && Boolean(v.ai_1_name));
+
 function additionalInsuredFields(n: number): Field[] {
+  const showIf = wantsAdditionalInsured;
   return [
-    { type: "content", id: `ai_${n}_heading`, variant: "subheading", title: `Additional Insured #${n}` },
-    text(`ai_${n}_name`, "Name"),
-    text(`ai_${n}_address`, "Address"),
-    text(`ai_${n}_city`, "City", { width: "third" }),
-    { type: "select", id: `ai_${n}_state`, label: "State", options: US_STATES, width: "third" },
-    text(`ai_${n}_zip`, "Zip Code", { width: "third" }),
+    { type: "content", id: `ai_${n}_heading`, variant: "subheading", title: `Additional Insured #${n}`, showIf },
+    text(`ai_${n}_name`, "Name", { showIf, required: n === 1 }),
+    text(`ai_${n}_address`, "Address", { showIf }),
+    text(`ai_${n}_city`, "City", { width: "third", showIf }),
+    { type: "select", id: `ai_${n}_state`, label: "State", options: US_STATES, width: "third", showIf },
+    text(`ai_${n}_zip`, "Zip Code", { width: "third", showIf }),
   ];
 }
 
@@ -169,12 +174,16 @@ export const aerialInstructorApplication: FormDefinition = {
       id: "coverage",
       title: "Premium and Coverage Selections",
       fields: [
-        // The source renders this as a dropdown whose options could not be read; collected as free text.
-        text("general_aggregate_limit", "Select General Aggregate Limit", {
+        // Options from the website's Gravity Form (dancestudioinsurance.com/aerial-yoga-instructor-form/).
+        {
+          type: "select",
+          id: "general_aggregate_limit",
+          label: "Select General Aggregate Limit",
+          options: opts("$1,000,000", "$2,000,000", "$3,000,000", "$4,000,000", "$5,000,000"),
           required: true,
           width: "half",
           tooltip: "$1,000,000.00 Limit Per Occurrence Liability Policy. Please select the general aggregate limit.",
-        }),
+        },
       ],
     },
     {
@@ -207,6 +216,8 @@ export const aerialInstructorApplication: FormDefinition = {
         {
           type: "textarea",
           id: "alcohol_details",
+          required: true,
+          showIf: isYes("alcohol"),
           label: "Please describe any type of alcohol related activities with regards to your instruction. If the studio you teach at allows BYOB and/or serves alcohol, please describe below.",
         },
         {
@@ -250,8 +261,13 @@ export const aerialInstructorApplication: FormDefinition = {
     {
       id: "additional_insured",
       title: "Additional Insured",
-      description: "Leave blank if you don't need an additional insured.",
-      fields: [1, 2, 3].flatMap(additionalInsuredFields),
+      fields: [
+        yesNo("needs_additional_insured", "Do you need to add an additional insured?", {
+          tooltip:
+            "An additional insured is a person or business (for example, a studio or venue you teach at) added to your policy. You can always add them later.",
+        }),
+        ...[1, 2, 3].flatMap(additionalInsuredFields),
+      ],
     },
     {
       id: "additional_info",

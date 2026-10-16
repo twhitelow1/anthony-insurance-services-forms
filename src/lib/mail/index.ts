@@ -70,8 +70,13 @@ export function renderEmail({ heading, paragraphs, button, brand = BRANDS.ais }:
   const color = brand.vars["--brand"];
   const buttonColor = brand.vars["--button"];
   const accent = brand.vars["--accent"];
+  const img = brand.logo
+    ? `<img src="${esc(brand.logo)}" alt="${esc(brand.name)}" height="48" style="display:block;height:48px;width:auto;border:0">`
+    : "";
   const logo = brand.logo
-    ? `<img src="${esc(brand.logo)}" alt="${esc(brand.name)}" height="48" style="display:block;height:48px;width:auto;border:0;margin:0 0 20px">`
+    ? brand.logoBg
+      ? `<table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 0 20px"><tr><td style="background:${brand.logoBg};border-radius:8px;padding:10px 16px">${img}</td></tr></table>`
+      : `<div style="margin:0 0 20px">${img}</div>`
     : `<p style="margin:0 0 16px;font-size:13px;letter-spacing:2px;text-transform:uppercase;color:${color};font-weight:bold">${esc(brand.name)}</p>`;
   const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(heading)}</title></head>
 <body style="margin:0;background:#f4f6fa;font-family:Arial,Helvetica,sans-serif;color:#1f2937">
