@@ -1,4 +1,4 @@
-import { is, isYes, money, opts, text, US_STATES, yesNo } from "@/lib/forms/helpers";
+import { all, includes, is, isYes, money, num, opts, parseMoney, text, US_STATES, yesNo } from "@/lib/forms/helpers";
 import type { FormDefinition, FormValues } from "@/lib/forms/types";
 
 /**
@@ -21,6 +21,13 @@ const isShortTerm = is("policy_term", SHORT_TERM);
 const isAnnual = is("policy_term", ANNUAL);
 const annualAnd = (pred: (v: FormValues) => boolean) => (v: FormValues) => isAnnual(v) && pred(v);
 const wantsBusinessIncome = annualAnd(is("business_income", "Limit Requested"));
+const hasTenantImprovements = annualAnd((v) => parseMoney(v.tenant_improvements_value as string | undefined) > 0);
+const hasTrailers = annualAnd(isYes("has_trailers"));
+const trailerAnd = (pred: (v: FormValues) => boolean) => (v: FormValues) => hasTrailers(v) && pred(v);
+const leavesInVehicle = annualAnd(isYes("unattended_in_vehicle"));
+const vehicleAnd = (pred: (v: FormValues) => boolean) => (v: FormValues) => leavesInVehicle(v) && pred(v);
+const yearBuilt = (id: string, label: string, showIf: (v: FormValues) => boolean) =>
+  num(id, label, { min: 1800, max: 2100, width: "half", placeholder: "YYYY", showIf });
 
 const EQUIPMENT_TYPES: { id: string; label: string; descLabel: string; tooltip: string }[] = [
   {
@@ -121,6 +128,9 @@ export const equipmentFloaterApplication: FormDefinition = {
         yesNo("waterproof_case", "Is it in a waterproof protective case?", {
           required: false,
           showIf: isYes("equipment_under_water"),
+        }),
+        yesNo("single_item_150k", "Is any single item valued at $150K or more?", {
+          tooltip: "The maximum limit is $150K per item.",
         }),
       ],
     },
@@ -265,6 +275,162 @@ export const equipmentFloaterApplication: FormDefinition = {
           ],
           showIf: annualAnd(isYes("single_item_5001")),
         },
+        { type: "content", id: "custom_items_heading", variant: "subheading", title: "Custom-Made Items", showIf: isAnnual },
+        yesNo("custom_items", "Do you have any items that are custom made?", { showIf: isAnnual }),
+        yesNo("custom_items_over_5000", "Do you have any custom-made equipment valued over $5,000 a piece?", {
+          showIf: annualAnd(isYes("custom_items")),
+        }),
+        {
+          type: "table",
+          id: "custom_items_table",
+          label: "Custom-Made Items Valued Over $5,000",
+          description:
+            "If an item was made more than 10 years ago, we'll need photos of it before binding. Custom items require a receipt, work order or appraisal before we can provide a quote.",
+          maxRows: 10,
+          columns: [
+            { id: "description", label: "Description of Custom-Made Item", type: "text" },
+            { id: "date_made", label: "Date Made", type: "text" },
+            { id: "materials", label: "Materials and Their Costs", type: "text" },
+            { id: "labor_cost", label: "Labor Costs", type: "number" },
+          ],
+          showIf: annualAnd(all(isYes("custom_items"), isYes("custom_items_over_5000"))),
+        },
+      ],
+    },
+    {
+      id: "annual_property",
+      title: "Annual Coverage — Tenant Betterments & Trailers",
+      fields: [
+        {
+          type: "content",
+          id: "annual_property_na",
+          variant: "info",
+          body: "This section applies to Annual policies only. Continue to the next step.",
+          showIf: (v) => !isAnnual(v),
+        },
+        { type: "content", id: "tenant_betterments_heading", variant: "subheading", title: "Tenant Betterments", showIf: isAnnual },
+        {
+          type: "content",
+          id: "tenant_betterments_na",
+          variant: "info",
+          body: "You didn't enter a Tenant Improvements & Betterments value, so you can skip these questions.",
+          showIf: (v) => isAnnual(v) && !hasTenantImprovements(v),
+        },
+        text("tb_location_address", "Location address (where the tenant improvements are)", { required: true, showIf: hasTenantImprovements }),
+        num("tb_square_footage", "Square footage of the location", { required: true, width: "half", showIf: hasTenantImprovements }),
+        yearBuilt("tb_year_built", "What year was the building built?", hasTenantImprovements),
+        {
+          type: "content",
+          id: "tb_updates_heading",
+          variant: "subheading",
+          title: "If the building is more than 50 years old, what year was each of these updated?",
+          showIf: hasTenantImprovements,
+        },
+        yearBuilt("tb_heating_updated", "Heating", hasTenantImprovements),
+        yearBuilt("tb_electrical_updated", "Electrical", hasTenantImprovements),
+        yearBuilt("tb_plumbing_updated", "Plumbing", hasTenantImprovements),
+        yearBuilt("tb_roofing_updated", "Roofing", hasTenantImprovements),
+        text("tb_construction_type", "What is the construction type of the building (steel, wood, concrete)?", {
+          required: true,
+          showIf: hasTenantImprovements,
+        }),
+        yesNo("tb_sprinklers", "Does the location have an active sprinkler system?", { showIf: hasTenantImprovements }),
+        yesNo("tb_alarm_monitored", "Does the location have a fire and burglar alarm connected to a monitoring service?", {
+          showIf: hasTenantImprovements,
+        }),
+        { type: "textarea", id: "tb_other_security", label: "What other security does the location have, besides burglar and fire alarms?", showIf: hasTenantImprovements },
+
+        { type: "content", id: "trailers_heading", variant: "subheading", title: "Trailers", showIf: isAnnual },
+        yesNo("has_trailers", "Do you have any trailers to insure?", { showIf: isAnnual }),
+        {
+          type: "content",
+          id: "trailers_instructions",
+          variant: "info",
+          body: ["ALL trailers must be scheduled.", "If a trailer is more than 10 years old, we'll need photos of it to provide a quote."],
+          showIf: hasTrailers,
+        },
+        {
+          type: "table",
+          id: "trailers",
+          label: "Trailers",
+          maxRows: 10,
+          columns: [
+            { id: "make", label: "Make", type: "text" },
+            { id: "model", label: "Model", type: "text" },
+            { id: "vin", label: "VIN #", type: "text" },
+            { id: "year_built", label: "Year Built", type: "number" },
+            { id: "replacement_value", label: "Replacement Value (incl. sales tax)", type: "number" },
+          ],
+          showIf: hasTrailers,
+        },
+        yesNo("trailer_attached_equipment", "1. Do you have any equipment that is permanently attached to the trailer?", { showIf: hasTrailers }),
+        money("trailer_attached_value", "What is the total value of equipment permanently attached to the trailer?", {
+          required: true,
+          showIf: trailerAnd(isYes("trailer_attached_equipment")),
+        }),
+        yesNo("trailer_attached_over_5000", "Is any single item of the permanently attached equipment over $5,000 a piece?", {
+          showIf: trailerAnd(isYes("trailer_attached_equipment")),
+        }),
+        {
+          type: "textarea",
+          id: "trailer_attached_schedule",
+          label: "Please list each attached item over $5,000 (make, model, serial number and replacement cost)",
+          required: true,
+          showIf: trailerAnd(all(isYes("trailer_attached_equipment"), isYes("trailer_attached_over_5000"))),
+        },
+        {
+          type: "radio",
+          id: "trailer_storage",
+          label: "2. Where do you store your trailer when not in use?",
+          options: opts(
+            "Personal residence - away from public view",
+            "Personal residence - on driveway",
+            "Guarded parking lot/garage - not at personal residence location",
+            "Other",
+          ),
+          required: true,
+          showIf: hasTrailers,
+        },
+        text("trailer_storage_other", "Please describe where you store your trailer", {
+          required: true,
+          showIf: trailerAnd(is("trailer_storage", "Other")),
+        }),
+        {
+          type: "checkboxes",
+          id: "trailer_storage_security",
+          label: "3. What kind of security does this location have to keep the public out? (check all that apply)",
+          options: opts(
+            "Monitored alarm system (connected to a police station or alarm company)",
+            "Unmonitored alarm system (alarm that only makes noise)",
+            "Locked fence",
+            "Guarded security (monitored 24/7)",
+          ),
+          showIf: hasTrailers,
+        },
+        yesNo("trailer_alarm", "4. Does your trailer have an alarm system?", { showIf: hasTrailers }),
+        yesNo("trailer_lock", "5. Does your trailer have a lock?", { showIf: hasTrailers }),
+        text("trailer_lock_description", "Please describe the lock", { required: true, showIf: trailerAnd(isYes("trailer_lock")) }),
+        yesNo("trailer_overnight", "6. Do you ever leave the trailer out overnight at a job or event?", { showIf: hasTrailers }),
+        {
+          type: "radio",
+          id: "trailer_overnight_guarded",
+          label: "Will your equipment be attended/guarded at ALL times (24/7)?",
+          options: opts("Yes", "No", "It will be attended/guarded a majority of the time"),
+          required: true,
+          showIf: trailerAnd(isYes("trailer_overnight")),
+        },
+        {
+          type: "radio",
+          id: "trailer_overnight_parking",
+          label: "Where is it parked when left overnight at a job or event?",
+          options: opts("On the event grounds", "At the event parking area", "Other"),
+          required: true,
+          showIf: trailerAnd(isYes("trailer_overnight")),
+        },
+        text("trailer_overnight_parking_other", "Please describe where it's parked", {
+          required: true,
+          showIf: trailerAnd(all(isYes("trailer_overnight"), is("trailer_overnight_parking", "Other"))),
+        }),
       ],
     },
     {
@@ -372,6 +538,82 @@ export const equipmentFloaterApplication: FormDefinition = {
           "This policy has a Locked Vehicle Warranty, which states there is NO coverage for equipment stolen from an Unlock vehicle. Do you wan to remove this warranty and thus add back coverage for equipment stolen from an Unlock vehicle for an additional 10% charge?",
           { required: false, showIf: isAnnual },
         ),
+        { type: "content", id: "unattended_vehicle_heading", variant: "subheading", title: "11. Equipment Left in Vehicles", showIf: isAnnual },
+        yesNo("unattended_in_vehicle", "Will you ever leave any equipment in your vehicle unattended?", { showIf: isAnnual }),
+        money("unattended_owned_max", "Maximum value of OWNED equipment left unattended in your vehicle", {
+          required: true,
+          width: "half",
+          placeholder: "0",
+          showIf: leavesInVehicle,
+        }),
+        money("unattended_rented_max", "Maximum value of RENTED equipment left unattended in your vehicle", {
+          required: true,
+          width: "half",
+          placeholder: "0",
+          showIf: leavesInVehicle,
+        }),
+        {
+          type: "textarea",
+          id: "unattended_vehicle_type",
+          label: "What kind of vehicle will you leave your equipment in? Please describe in detail.",
+          required: true,
+          showIf: leavesInVehicle,
+        },
+        yesNo("equipment_gps", "Does the equipment being insured have a GPS tracking device?", { showIf: leavesInVehicle }),
+        yesNo("equipment_gps_monitored", "Does the tracking device signal go to a monitored, remote device or security system?", {
+          showIf: vehicleAnd(isYes("equipment_gps")),
+        }),
+        yesNo("vehicle_alarm", "Does the vehicle have an alarm system?", { showIf: leavesInVehicle }),
+        {
+          type: "textarea",
+          id: "vehicle_alarm_monitoring",
+          label: "Does the alarm signal go to a monitored, remote device or security system? Please explain.",
+          required: true,
+          showIf: vehicleAnd(isYes("vehicle_alarm")),
+        },
+        {
+          type: "textarea",
+          id: "vehicle_other_security",
+          label: "What other security measures will protect the equipment while it's left in a vehicle?",
+          required: true,
+          showIf: leavesInVehicle,
+        },
+        {
+          type: "checkboxes",
+          id: "vehicle_parking",
+          label: "Where will the vehicle be parked when left unattended? (check all that apply)",
+          options: opts(
+            "City street",
+            "Residential street",
+            "Residential garage (private home)",
+            "Residential shared garage (e.g. apartment complex)",
+            "Parking garage",
+          ),
+          required: true,
+          showIf: leavesInVehicle,
+        },
+        {
+          type: "checkboxes",
+          id: "parking_garage_features",
+          label: "About the parking garage (check all that apply)",
+          options: opts(
+            "24-hour security guard and surveillance",
+            "Limited surveillance",
+            "Restricted access (key card)",
+            "Fenced",
+            "Gated",
+            "Lighted",
+            "Not guarded",
+            "No lot attendant",
+            "Other",
+          ),
+          required: true,
+          showIf: vehicleAnd(includes("vehicle_parking", "Parking garage")),
+        },
+        text("parking_garage_other", "Please describe the parking garage", {
+          required: true,
+          showIf: vehicleAnd(all(includes("vehicle_parking", "Parking garage"), includes("parking_garage_features", "Other"))),
+        }),
       ],
     },
     {
