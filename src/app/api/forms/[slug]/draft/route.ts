@@ -2,7 +2,7 @@ import { after, type NextRequest } from "next/server";
 import { getForm } from "@/forms";
 import type { FormValues } from "@/lib/forms/types";
 import { decodeRef, encodeRef, getDraft, saveDraft } from "@/lib/applications/drafts";
-import { syncDraftStarted } from "@/lib/applications/pipeline";
+import { linkDraftClient, syncDraftStarted } from "@/lib/applications/pipeline";
 
 const MAX_BODY_BYTES = 300_000;
 
@@ -35,7 +35,7 @@ export async function POST(req: NextRequest, ctx: RouteContext<"/api/forms/[slug
   const saved = await saveDraft(form, { ref: decodeRef(body.ref), values: sanitize(body.values), step: Number(body.step) || 0 });
   if (!saved) return Response.json({ error: "This application was already submitted." }, { status: 409 });
   // Once there's an email, Lead Alchemist gets the contact tagged "app-started" (after the response).
-  if (saved.emailChanged) after(() => syncDraftStarted(form, saved.draft));
+  if (saved.emailChanged) after(() => Promise.allSettled([linkDraftClient(form, saved.draft), syncDraftStarted(form, saved.draft)]));
   return Response.json({ ok: true, ref: encodeRef(saved.ref) });
 }
 

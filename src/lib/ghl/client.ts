@@ -1,4 +1,5 @@
 import "server-only";
+import { buildUrl } from "@/lib/integrations/urls";
 
 /**
  * Minimal Lead Alchemist (LeadConnector) API v2 client.
@@ -145,7 +146,7 @@ export async function getContact(id: string): Promise<GhlContact | null> {
 export function contactUrl(contactId: string) {
   const cfg = ghlConfig();
   const host = (process.env.GHL_APP_URL || "https://app.gohighlevel.com").replace(/\/$/, "");
-  return cfg ? `${host}/v2/location/${cfg.locationId}/contacts/detail/${contactId}` : null;
+  return cfg ? buildUrl("ghlContact", { ghl: host, locationId: cfg.locationId, id: contactId }) : null;
 }
 
 export async function addContactNote(contactId: string, body: string) {

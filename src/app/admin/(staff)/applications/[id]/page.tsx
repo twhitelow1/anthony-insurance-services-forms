@@ -8,7 +8,13 @@ import { STATUSES, STATUS_KEYS } from "@/lib/applications/status";
 import { answerSections } from "@/lib/forms/flatten";
 import { AiReviewCard } from "@/components/AiReviewCard";
 import { DOCUMENT_LABELS, listDocuments } from "@/lib/applications/documents";
-import { applicantPath } from "@/lib/applications/links";
+import { clientPath } from "@/lib/applications/links";
+import { SalesforceBadge, SystemLink } from "@/components/clients";
+import { links } from "@/lib/integrations/links";
+import { jobsFor } from "@/lib/salesforce/jobs";
+import { salesforceConfig } from "@/lib/salesforce/config";
+import { getSettings } from "@/lib/settings";
+import { syncApplicationAction } from "../../clients/actions";
 import {
   addNoteAction,
   deleteApplicationAction,
@@ -30,6 +36,15 @@ export default async function AdminApplication({ params, searchParams }: PagePro
   const docs = await listDocuments(app.id);
   const ghlFailed = !app.ghlContactId && events.some((e) => e.type === "ghl_sync_failed");
   const pdfError = !docs.some((d) => d.kind === "carrier_form") ? events.find((e) => e.type === "pdf_failed") : undefined;
+  const [l, settings, jobs] = await Promise.all([links(), getSettings(), jobsFor(app.id)]);
+  const sfReady = !!salesforceConfig() && settings.salesforceEnabled;
+  const openJob = jobs.find((j) => j.status === "pending" || j.status === "running");
+  const lastSfEvent = events.find((e) => e.type.startsWith("sf_"));
+  const SF_RESULT: Record<string, string> = {
+    done: "Salesforce sync finished. The result is under Salesforce below.",
+    error: "The Salesforce sync failed; the error is below. It's retried automatically, or try again.",
+    off: "Salesforce sync is turned off (Admin → Settings) or Salesforce isn't connected yet.",
+  };
 
   return (
     <div>
@@ -46,7 +61,7 @@ export default async function AdminApplication({ params, searchParams }: PagePro
             <a className="btn-link" href={`mailto:${app.applicantEmail}`}>{app.applicantEmail}</a>
           </p>
           <p className="mt-1 text-sm">
-            <Link className="btn-link" href={applicantPath(app.applicantEmail)}>All applications from this applicant</Link>
+            <Link className="btn-link" href={clientPath(app.clientId, app.applicantEmail)}>All applications from this client</Link>
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
@@ -54,6 +69,9 @@ export default async function AdminApplication({ params, searchParams }: PagePro
           <Link className="btn-secondary" href={`/admin/applications/${app.id}/edit`}>Edit answers</Link>
         </div>
       </div>
+      {typeof sp.sf === "string" && SF_RESULT[sp.sf] && (
+        <p className="callout mb-6 text-sm" role="status">{SF_RESULT[sp.sf]}</p>
+      )}
       {sp.saved === "1" && (
         <p className="callout mb-6 text-sm" role="status">Changes saved. The PDFs are being rebuilt; refresh in a moment to see them.</p>
       )}
@@ -232,6 +250,47 @@ export default async function AdminApplication({ params, searchParams }: PagePro
               <input type="hidden" name="id" value={app.id} />
               <button className="btn-secondary w-full">{app.ghlContactId ? "Re-sync contact" : "Sync to Lead Alchemist"}</button>
             </form>
+          </div>
+
+          <div className="card space-y-3 !p-5">
+            <h2 className="font-semibold">Salesforce</h2>
+            <p className="flex flex-wrap items-center gap-2 text-sm">
+              <SalesforceBadge status={app.sfSyncStatus} title={app.sfLastError} />
+              {app.sfSyncedAt && <span className="text-xs text-[var(--muted)]">{fmtDate(app.sfSyncedAt)}</span>}
+            </p>
+            {app.isTest && <p className="text-sm text-[var(--muted)]">Test submissions are never sent to Salesforce.</p>}
+            {app.sfSyncStatus === "needs_review" && (
+              <p className="rounded-lg border border-[var(--notice-border)] bg-[var(--notice-bg)] p-3 text-sm">
+                Needs a decision: {app.sfLastError} Nothing was created in Salesforce.
+              </p>
+            )}
+            {app.sfSyncStatus === "error" && <p className="rounded-lg bg-[var(--danger-bg)] p-3 text-sm text-[var(--danger)]">{app.sfLastError}</p>}
+            {openJob && openJob.attempts > 0 && (
+              <p className="text-xs text-[var(--muted)]">
+                Attempt {openJob.attempts} failed ({openJob.lastError}). Next try {fmtDate(openJob.nextAttemptAt)}.
+              </p>
+            )}
+            {lastSfEvent && app.sfSyncStatus !== "error" && <p className="text-xs text-[var(--muted)]">{lastSfEvent.message}</p>}
+            <div className="flex flex-wrap gap-2 text-sm">
+              <SystemLink className="btn-link" href={l.salesforce("Opportunity", app.sfOpportunityId)} missing="No Salesforce Opportunity yet">
+                View Opportunity in Salesforce
+              </SystemLink>
+              <SystemLink className="btn-link" href={l.ghlOpportunity(app.ghlOpportunityId)} missing="No Lead Alchemist opportunity yet">
+                View Opportunity in Lead Alchemist
+              </SystemLink>
+            </div>
+            {!app.isTest && (
+              <form action={syncApplicationAction}>
+                <input type="hidden" name="id" value={app.id} />
+                <button
+                  className="btn-secondary w-full"
+                  disabled={!sfReady}
+                  title={sfReady ? undefined : "Salesforce sync is off or not connected (Admin → Settings)"}
+                >
+                  Sync to Salesforce
+                </button>
+              </form>
+            )}
           </div>
 
           <div className="card !p-5">

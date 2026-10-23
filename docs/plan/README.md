@@ -30,7 +30,8 @@ Applicants fill in an online application. The app then:
 
 Staff work in the **admin**:
 - **Applications:** status, notes, PDFs, edit answers, activity log.
-- **Applicants:** grouped by email, linked to their Lead Alchemist contact.
+- **Clients:** every client and prospect with all of their applications, searchable by name, email or phone, with CSV export, merge and split. Buttons open the client in Salesforce and Lead Alchemist.
+- **Salesforce (built 2026-10-23, waiting on Anthony's Salesforce admin):** each submitted application creates or links the client's Account and Contact, adds an Opportunity, the PDF and a Chatter note, and links all three systems to each other. Setup: `docs/salesforce-setup.md`.
 - **Ask AI:** questions about application data in plain English.
 - **Lead Alchemist setup:** shows the connection and every pipeline and stage.
 - **Settings:** admins, notifications, sender, carrier email, pipeline.

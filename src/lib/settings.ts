@@ -28,6 +28,14 @@ export interface Settings {
   ghlLeadStage: string;
   /** Portal status → Lead Alchemist stage, moved on status changes. */
   ghlStageMap: Partial<Record<ApplicationStatus, string>>;
+  /** Lead Alchemist web address for links (the white-label domain), e.g. https://app.gohighlevel.com. */
+  ghlAppUrl: string;
+  /** Sync submitted applications to Salesforce. Off until Salesforce is set up and tested. */
+  salesforceEnabled: boolean;
+  /** Log what would be written to Salesforce without writing. Defaults to on outside production. */
+  salesforceDryRun: boolean;
+  /** Portal status → Salesforce Opportunity stage (as shown in Salesforce). Unmapped: an open stage is picked automatically. */
+  salesforceStageMap: Partial<Record<ApplicationStatus, string>>;
 }
 
 export type SettingKey = keyof Settings;
@@ -39,7 +47,7 @@ const list = (v: string | undefined) =>
     .map((s) => s.trim())
     .filter(Boolean);
 
-function parseStageMap(raw: string | undefined): Partial<Record<ApplicationStatus, string>> {
+function parseStageMap(raw: string | undefined, name = "GHL_STAGE_IDS"): Partial<Record<ApplicationStatus, string>> {
   try {
     const obj: unknown = JSON.parse(raw || "{}");
     if (!obj || typeof obj !== "object") return {};
@@ -47,9 +55,16 @@ function parseStageMap(raw: string | undefined): Partial<Record<ApplicationStatu
       Object.entries(obj).filter(([k, v]) => isStatus(k) && typeof v === "string" && v.trim()),
     ) as Partial<Record<ApplicationStatus, string>>;
   } catch {
-    console.warn("[settings] GHL_STAGE_IDS is not valid JSON — ignoring");
+    console.warn(`[settings] ${name} is not valid JSON — ignoring`);
     return {};
   }
+}
+
+/** SALESFORCE_DRY_RUN=1/0 wins; otherwise dry run everywhere except Vercel production. */
+export function defaultDryRun(env: NodeJS.ProcessEnv = process.env) {
+  if (env.SALESFORCE_DRY_RUN === "1" || env.SALESFORCE_DRY_RUN === "true") return true;
+  if (env.SALESFORCE_DRY_RUN === "0" || env.SALESFORCE_DRY_RUN === "false") return false;
+  return env.VERCEL_ENV !== "production";
 }
 
 /** The Vercel environment's values, used for anything not set in Admin → Settings. */
@@ -66,6 +81,10 @@ export function envSettings(env: NodeJS.ProcessEnv = process.env): Settings {
     ghlLeadPipeline: env.GHL_LEAD_PIPELINE_ID?.trim() ?? "",
     ghlLeadStage: env.GHL_LEAD_STAGE_ID?.trim() ?? "",
     ghlStageMap: parseStageMap(env.GHL_STAGE_IDS),
+    ghlAppUrl: env.GHL_APP_URL?.trim() ?? "",
+    salesforceEnabled: env.SALESFORCE_SYNC_ENABLED === "1",
+    salesforceDryRun: defaultDryRun(env),
+    salesforceStageMap: parseStageMap(env.SALESFORCE_STAGE_MAP, "SALESFORCE_STAGE_MAP"),
   };
 }
 

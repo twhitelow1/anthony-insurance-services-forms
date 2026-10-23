@@ -4,7 +4,7 @@ import { fmtDate, StatusBadge } from "@/components/portal";
 import { requireStaff } from "@/lib/auth/session";
 import { searchApplications } from "@/lib/applications/repo";
 import { STATUSES, STATUS_KEYS, isStatus } from "@/lib/applications/status";
-import { applicantPath } from "@/lib/applications/links";
+import { clientPath } from "@/lib/applications/links";
 
 export const metadata = { title: "Applications | Anthony Insurance Services" };
 
@@ -61,7 +61,7 @@ export default async function AdminHome({ searchParams }: PageProps<"/admin">) {
                   <div className="font-medium">{a.businessName ?? a.applicantName}</div>
                   <div className="text-xs text-[var(--muted)]">
                     {a.applicantName} ·{" "}
-                    <Link className="hover:underline" href={applicantPath(a.applicantEmail)}>{a.applicantEmail}</Link>
+                    <Link className="hover:underline" href={clientPath(a.clientId, a.applicantEmail)}>{a.applicantEmail}</Link>
                     {a.state ? ` · ${a.state}` : ""}
                   </div>
                 </td>

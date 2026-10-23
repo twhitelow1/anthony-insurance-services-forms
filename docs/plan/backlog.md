@@ -16,7 +16,7 @@ Status key: ✅ built · 🟡 partly built · ⬜ not started.
 | 8 | Click-to-type signature | ✅ draw or type, switchable |
 | 9 | Conditional carrier routing based on answers | ⬜ |
 | 10 | Embeddable, branded forms for the websites | ✅ |
-| 11 | Salesforce sync, including PDFs on account records | ⬜ |
+| 11 | Salesforce sync, including PDFs on account records | 🟡 built, waiting on Salesforce setup |
 | 12 | Ask AI for querying application data | ✅ |
 | 13 | Carrier-submission portal with multiple carriers | 🟡 Outlook draft only |
 | 14 | Automated follow-up and reactivation for unconverted leads | 🟡 app-started trigger ready; workflows still to build in Lead Alchemist |
@@ -45,6 +45,7 @@ Built:
 Built:
 - **One-time email links**, valid 20 minutes, limited to 3 per 15 minutes.
 - **Staff access:** controlled by the Admins list in Settings.
+- **Microsoft 365 single sign-on for staff (built 2026-10-23, switched on once the Entra ID app exists):** staff already signed in to Microsoft 365 in their browser go straight into the admin with no screen at all. Anyone else sees the sign-in page with "Sign in with Microsoft" and the email link. Signing out doesn't sign them straight back in. A Microsoft account that isn't on the Admins list gets a clear message.
 - **Applicant portal:** shows their applications, a status timeline and PDFs.
 
 ## 🟡 4. Auto-decline answers
@@ -125,7 +126,23 @@ Example: an Aerial Yoga Studio with height over 10 ft can only go to two specifi
 - Each form's admin page has a **"Copy embed code"** button.
 - The iframe resizes to fit its content automatically, with no inner scrollbars.
 
-## ⬜ 11. Salesforce sync
+## 🟡 11. Salesforce sync
+**Built (2026-10-23, branch feature/salesforce-sync), off until Anthony's Salesforce admin does the setup** in `docs/salesforce-setup.md`:
+- **Every submitted application** (never test ones) syncs to Salesforce.
+  - The client is matched: Contact by email first, then Account by exact name and phone.
+  - An uncertain match is marked **Needs review** and nothing is created.
+  - A new client gets an Account (Type Customer, Legal Entity, address, phone), a Contact, and an Opportunity named "<Account Name> - <year>" in an open stage.
+  - The application PDF goes to the Account's Files, and a Chatter note is posted.
+  - Mapped Account fields (Program, participants, GL aggregate, effective date) are filled only while empty. Picklist values are checked against the org.
+- **Three-way links**: on the Salesforce Account, Contact and Opportunity; on the Lead Alchemist contact and opportunity (fields created automatically, plus a note); and buttons on the app's Client page.
+- **Reliability**: queued after the submission is saved, retried 5 times with backoff, with failures and a retry button in the admin. It's idempotent, has dry-run mode, an on/off switch and stage mapping in Settings, and a Health panel that lists missing fields.
+- **Admin → Clients** (new; replaces Applicants):
+  - every client and prospect, with search by name, email or phone and a CSV export;
+  - merge and split with an audit log, notes, and Salesforce and Lead Alchemist buttons;
+  - the client page's address is never an email.
+- **One-time backfill** of existing Salesforce Accounts: a dry run with a CSV report first, then apply. It writes only the link fields, and is resumable, with an admin page and a CLI.
+- **Lead Alchemist Companies**: not connected yet; the token needs the Businesses and Associations scopes (`docs/lead-alchemist-companies-plan.md`).
+
 **Decided**
 - Anthony Insurance uses Salesforce. The goal is to **bridge all three**: this app, Lead Alchemist and Salesforce, with data moving in and out.
 - Sync **Accounts, their Contacts, and the PDFs** to Files on the account. Anthony has a Salesforce admin who can create the API connection.

@@ -4,6 +4,8 @@ import { type GhlPipeline, ghlConfig, listPipelines } from "@/lib/ghl/client";
 import { resendConfigured } from "@/lib/mail/resend";
 import { envSettings, storedSettings } from "@/lib/settings";
 import { saveSettingsAction, sendTestEmailAction } from "./actions";
+import { salesforceHealth } from "@/lib/salesforce/health";
+import { DEFAULT_GHL_APP_URL } from "@/lib/integrations/links";
 
 export const metadata = { title: "Settings | Anthony Insurance Services" };
 
@@ -50,6 +52,8 @@ export default async function SettingsPage({ searchParams }: PageProps<"/admin/s
   const pipelineIds = pipelines.map((p) => p.id);
   const stageIds = pipelines.flatMap((p) => (p.stages ?? []).map((s) => s.id));
   const vercel = (v: string) => (v ? `Use Vercel value (${v})` : "Not set");
+  const sf = await salesforceHealth({ fresh: sp.sfcheck === "1" });
+  const sfStageLabels = sf.stages.map((st) => st.label);
 
   return (
     <div className="mx-auto max-w-3xl">
@@ -113,7 +117,13 @@ export default async function SettingsPage({ searchParams }: PageProps<"/admin/s
           ) : ghlError ? (
             <p className="text-sm text-[var(--danger)]">Lead Alchemist didn&apos;t return pipelines: {ghlError}. See Lead Alchemist setup.</p>
           ) : null}
-          <p className="mb-3 text-sm text-[var(--muted)]">Every application becomes its own opportunity in this pipeline.</p>
+          <label className="field-label" htmlFor="ghlAppUrl">Lead Alchemist web address (for links to contacts and opportunities)</label>
+          <input id="ghlAppUrl" name="ghlAppUrl" className="input" defaultValue={saved.ghlAppUrl ?? ""} placeholder={env.ghlAppUrl || DEFAULT_GHL_APP_URL} />
+          <Hint>
+            The address your team opens Lead Alchemist at (the white-label domain), without a path. Blank uses{" "}
+            <code>{env.ghlAppUrl || DEFAULT_GHL_APP_URL}</code>.
+          </Hint>
+          <p className="mb-3 mt-4 text-sm text-[var(--muted)]">Every application becomes its own opportunity in this pipeline.</p>
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
               <label className="field-label" htmlFor="ghlPipeline">Applications pipeline</label>
@@ -169,6 +179,114 @@ export default async function SettingsPage({ searchParams }: PageProps<"/admin/s
             })}
           </div>
           <Hint>Pick stages from the applications pipeline. Bound, declined and withdrawn also mark the opportunity won, lost or abandoned.</Hint>
+        </section>
+
+        <section className="card !p-5" aria-labelledby="salesforce">
+          <h2 id="salesforce" className="mb-1 font-semibold">Salesforce</h2>
+          <p className="mb-3 text-sm text-[var(--muted)]">
+            Submitted applications (never test ones) create or link the client&apos;s Account and Contact and an Opportunity, upload the PDF and
+            post a note. Set up in docs/salesforce-setup.md.
+          </p>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <label className="field-label" htmlFor="salesforceEnabled">Sync to Salesforce</label>
+              <select
+                id="salesforceEnabled"
+                name="salesforceEnabled"
+                className="input"
+                defaultValue={saved.salesforceEnabled === undefined ? "" : saved.salesforceEnabled ? "on" : "off"}
+              >
+                <option value="">{`Use Vercel value (${env.salesforceEnabled ? "on" : "off"})`}</option>
+                <option value="on">On</option>
+                <option value="off">Off</option>
+              </select>
+            </div>
+            <div>
+              <label className="field-label" htmlFor="salesforceDryRun">Mode</label>
+              <select
+                id="salesforceDryRun"
+                name="salesforceDryRun"
+                className="input"
+                defaultValue={saved.salesforceDryRun === undefined ? "" : saved.salesforceDryRun ? "dry" : "live"}
+              >
+                <option value="">{`Default (${env.salesforceDryRun ? "dry run" : "live"} here)`}</option>
+                <option value="dry">Dry run: log what would be written, write nothing</option>
+                <option value="live">Live: write to Salesforce</option>
+              </select>
+            </div>
+          </div>
+          <h3 className="mb-2 mt-5 text-sm font-semibold">Opportunity stage for each status (optional)</h3>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {STATUS_KEYS.map((k) => {
+              const value = saved.salesforceStageMap?.[k] ?? "";
+              return (
+                <div key={k}>
+                  <label className="field-label" htmlFor={`sfstage_${k}`}>{STATUSES[k].label}</label>
+                  {sfStageLabels.length ? (
+                    <select id={`sfstage_${k}`} name={`sfstage_${k}`} className="input" defaultValue={value}>
+                      <option value="">Automatic</option>
+                      {value && !sfStageLabels.includes(value) && <option value={value}>{value} (saved)</option>}
+                      {sf.stages.map((st) => (
+                        <option key={st.label} value={st.label}>
+                          {st.label}
+                          {st.isWon ? " (won)" : st.isClosed ? " (closed)" : ""}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <input id={`sfstage_${k}`} name={`sfstage_${k}`} className="input" defaultValue={value} placeholder="Automatic" />
+                  )}
+                </div>
+              );
+            })}
+          </div>
+          <Hint>
+            Automatic: the first open stage while the application is in progress (never Closed Won), the first won stage once bound, and the first
+            lost stage when declined or withdrawn.
+          </Hint>
+
+          <h3 className="mb-2 mt-5 text-sm font-semibold">Health</h3>
+          {!sf.configured ? (
+            <p className="text-sm text-[var(--muted)]">
+              Not connected. Add SALESFORCE_LOGIN_URL, SALESFORCE_CLIENT_ID, SALESFORCE_CLIENT_SECRET and SALESFORCE_LIGHTNING_URL in Vercel.
+            </p>
+          ) : !sf.connected ? (
+            <p className="text-sm text-[var(--danger)]" role="alert">Can&apos;t sign in to Salesforce: {sf.error}</p>
+          ) : (
+            <div className="space-y-2 text-sm">
+              <p>
+                <span className="badge badge-success">Connected</span>{" "}
+                {sf.usage && <span className="text-xs text-[var(--muted)]">API calls today: {sf.usage.used} of {sf.usage.max}</span>}
+              </p>
+              {sf.missingFields.length ? (
+                <ul className="list-disc pl-5 text-[var(--danger)]">
+                  {sf.missingFields.map((f) => (
+                    <li key={f}>missing field: {f}</li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-[var(--muted)]">Every field the sync uses exists.</p>
+              )}
+              <details>
+                <summary className="cursor-pointer">Picklist values the sync checks against</summary>
+                <ul className="mt-2 space-y-1 text-xs">
+                  {Object.entries(sf.picklists).map(([field, values]) => (
+                    <li key={field}>
+                      <code>{field}</code>: {values.join(", ") || "none"}
+                    </li>
+                  ))}
+                  <li>
+                    <code>Opportunity stages</code>: {sfStageLabels.join(", ") || "none"}
+                  </li>
+                </ul>
+              </details>
+            </div>
+          )}
+          {sf.configured && (
+            <p className="mt-2 text-xs text-[var(--muted)]">
+              Checked {sf.checkedAt.toLocaleString("en-US")}. <a className="btn-link" href="/admin/settings?sfcheck=1#salesforce">Check again</a>
+            </p>
+          )}
         </section>
 
         <button className="btn-primary">Save settings</button>

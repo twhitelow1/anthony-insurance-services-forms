@@ -1,6 +1,6 @@
 # Anthony Insurance Services — Applications Portal
 
-Online insurance applications plus a portal around them. Clients apply and track their status without a password. Staff sign in with Microsoft 365 to search and manage every application. **Lead Alchemist holds only the contact**, with a link back to the full application. Next.js on Vercel, Postgres (Neon).
+Online insurance applications plus a portal around them. Clients apply and track their status without a password. Staff sign in with Microsoft 365 to search and manage every application. **Lead Alchemist holds only the contact**, with a link back to the full application. **Salesforce** gets the client's Account, Contact and an Opportunity per application, and all three systems link to each other. Next.js on Vercel, Postgres (Neon).
 
 | Who | URL | Sign-in |
 | --- | --- | --- |
@@ -16,12 +16,16 @@ Applicant ──► form ──► POST /api/forms/<slug>/submit
                          2. save to Postgres  ◄── system of record (nothing lost if Lead Alchemist is down)
                          3. after response:
                             ├─ fill the carrier's own PDF application + make an answer summary; store both privately
+                            ├─ client record (Admin → Clients), grouped by email
                             ├─ Lead Alchemist: upsert contact + tags + 4 custom fields (incl. PDF link) + opportunity
+                            ├─ Salesforce (when on): Account + Contact + Opportunity + PDF + Chatter note + links
+                            │    queued and retried; never blocks the applicant; test submissions never go
                             ├─ Resend: confirmation email to the applicant
                             └─ Claude: AI pre-review for staff (optional)
 
 Staff  ──► /admin (email sign-in link) ──► search · view · edit · delete · status · notes · PDF · Ask AI
-                         /admin/applicants ──► every applicant by email, with all their applications
+                         /admin/clients ──► every client and prospect, all their applications, links to Salesforce
+                                            and Lead Alchemist, search by name/email/phone, CSV export, merge/split
                          "Switch to user mode" ──► the client portal, as yourself or as any applicant
                          status change ──► Lead Alchemist field + tag + opportunity stage; optional client email
                          "Prepare carrier email" ──► Outlook draft (.eml) with the filled carrier PDF + [encrypt] subject
@@ -35,7 +39,8 @@ Day-to-day settings live in the app, not in Vercel. They take effect immediately
 - **Notifications:** who gets an email for every new application.
 - **Email sender:** the From and Reply-To addresses. The domain must be verified in Resend. **Send me a test email** checks the setup.
 - **Carrier email:** pre-filled on the carrier draft.
-- **Lead Alchemist pipeline:** the applications pipeline and stage, the lead pipeline and stage, and status → stage moves. All are picked from dropdowns that Lead Alchemist fills.
+- **Lead Alchemist pipeline:** the applications pipeline and stage, the lead pipeline and stage, and status → stage moves. All are picked from dropdowns that Lead Alchemist fills. Also the Lead Alchemist web address used for links (the white-label domain).
+- **Salesforce:** sync on or off, dry run or live, the Opportunity stage for each status, and a Health panel (sign-in, missing fields, the org's stages and picklist values). See `docs/salesforce-setup.md`.
 
 Anything left blank falls back to its Vercel variable. Secrets stay in Vercel: `RESEND_API_KEY`, `GHL_API_TOKEN`, `ANTHROPIC_API_KEY`, `SESSION_SECRET` and the database URL.
 
@@ -50,7 +55,8 @@ Anything left blank falls back to its Vercel variable. Secrets stay in Vercel: `
 - **One contact per applicant email.** The first sync matches the Lead Alchemist contact by email and saves its ID; every later application from that email updates that same contact by ID (its email in Lead Alchemist is left alone). **Admin → Applicants** shows who's linked, opens the contact in Lead Alchemist, and can link a contact by ID or link everyone by email. If the saved contact is deleted in Lead Alchemist, the next sync falls back to the email match.
 - **One opportunity per application** in `GHL_PIPELINE_ID`, at stage `GHL_PIPELINE_STAGE_ID`. Both accept Lead Alchemist's ID or the name as shown in Lead Alchemist, e.g. `Applications` / `Application Submitted`. **Admin → Lead Alchemist setup** confirms what they resolve to. The opportunity carries the application's reference, status, link and PDF in opportunity custom fields with the same four names (create them in Lead Alchemist under the opportunity model). If `GHL_STAGE_IDS` maps statuses to stages, status changes move it. Bound marks it won, declined marks it lost, withdrawn marks it abandoned.
 - **Leads leave the lead pipeline.** Set `GHL_LEAD_PIPELINE_ID` (and optionally `GHL_LEAD_STAGE_ID`, e.g. the booked-call stage). When someone applies, their open opportunity there is moved into the applications pipeline and becomes that application's opportunity. Later applications get new opportunities.
-- **One note** with the reference, the application link, the PDF link, and a link to every application from that email address.
+- **One note** with the reference, the application link, the PDF link, and a link to the client's page (all of their applications).
+- **Link fields** the app creates itself (needs the Edit Custom Fields scope): `Client Page Link` and `Salesforce Account Link` on the contact, `Salesforce Opportunity Link` on the opportunity. After the Salesforce sync, a second note lists every link.
 
 None of the application answers go to Lead Alchemist.
 
@@ -58,7 +64,14 @@ None of the application answers go to Lead Alchemist.
 Received → In review → Information needed → Submitted to carrier → Quote ready → Coverage bound / Declined / Withdrawn. The wording clients see is in `src/lib/applications/status.ts`.
 
 ## Managing applications (staff)
-- **Applicants** (`/admin/applicants`): one row per email address. Open one to see all of their applications, each with its PDF.
+- **Clients** (`/admin/clients`): one row per client or prospect (someone who only started an application shows as a prospect).
+  - Search by name, business, email or phone (any phone format). The search is kept in a cookie, never in the address.
+  - **Export CSV** exports the current list.
+  - A client's page has all of their applications with PDFs, and buttons that open the Account in Salesforce and the contact in Lead Alchemist (greyed out until the record exists).
+  - **Sync to Salesforce** (retry), notes and an activity log.
+  - **Merge** two clients (paste the other's page link), or **split** an email off into its own client.
+  - Its address is `/admin/clients/<id>`, never an email. Old `/admin/applicants/...` links redirect there.
+  - **Link existing Salesforce accounts** runs the one-time backfill: a dry run with a CSV report first, then apply.
 - **Edit answers:** the button on an application page opens the same form, already filled in, and you can jump to any section.
   - Saving runs the same checks as the public form.
   - The activity log records which questions changed.
@@ -136,6 +149,7 @@ The full step-by-step guide is the shared setup doc. In short:
    - Create the 4 custom fields and a sub-account Private Integration token with contacts, custom fields and opportunities scopes.
    - Optional: copy the pipeline ID and stage IDs.
 4. **Environment variables:** see `.env.example`, then redeploy.
+5. **Salesforce (optional):** follow `docs/salesforce-setup.md` (fields, integration user, External Client App, then test in a sandbox with dry run first).
 
 Microsoft 365 sign-in and Graph mail are still in the code but switched off. Setting the `AZURE_*` variables turns them back on.
 

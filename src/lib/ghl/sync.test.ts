@@ -225,6 +225,18 @@ describe("Lead Alchemist sync with pipeline", () => {
     expect(note).not.toContain("Secret details");
   });
 
+  it("puts the Client page link on the contact and in the note, never an email address in a URL", async () => {
+    const calls = fakeGhl();
+    const app = await newApp();
+    await syncNewApplication(form, app, undefined, null, "https://forms.example.com/admin/clients/5f2b0000-0000-4000-8000-000000000000");
+    expect(calls.find((c) => c.method === "POST" && c.path.endsWith("/customFields"))!.body).toMatchObject({ name: "Client Page Link", model: "contact" });
+    const upsert = calls.find((c) => c.path === "/contacts/upsert")!.body as { customFields: { id: string; field_value: string }[] };
+    expect(upsert.customFields).toContainEqual({ id: "new-Client Page Link", field_value: "https://forms.example.com/admin/clients/5f2b0000-0000-4000-8000-000000000000" });
+    const note = String((calls.find((c) => c.path.endsWith("/notes"))!.body as { body: string }).body);
+    expect(note).toContain("All of this client's applications: https://forms.example.com/admin/clients/5f2b0000-0000-4000-8000-000000000000");
+    expect(note).not.toMatch(/https?:\/\/\S*@/);
+  });
+
   it("falls back to the email match when the saved contact was deleted in Lead Alchemist", async () => {
     const calls = fakeGhl([], { goneContacts: ["deleted"] });
     const res = await syncNewApplication(form, await newApp(), undefined, "deleted");

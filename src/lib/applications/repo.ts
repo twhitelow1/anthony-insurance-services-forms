@@ -120,6 +120,7 @@ const listColumns = {
   updatedAt: applications.updatedAt,
   aiHighFlags: applications.aiHighFlags,
   isTest: applications.isTest,
+  clientId: applications.clientId,
 };
 export type ApplicationListItem = {
   [K in keyof typeof listColumns]: Application[K];

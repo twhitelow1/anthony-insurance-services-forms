@@ -20,6 +20,10 @@ afterEach(async () => {
       ghlLeadPipeline: null,
       ghlLeadStage: null,
       ghlStageMap: null,
+      ghlAppUrl: null,
+      salesforceEnabled: null,
+      salesforceDryRun: null,
+      salesforceStageMap: null,
     },
     "test",
   );

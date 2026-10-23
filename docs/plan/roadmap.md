@@ -6,7 +6,7 @@ A proposed build order, grouped so each phase ships something usable. Feature nu
 ## Now (from the Oct 16 call)
 | Item | Status |
 |---|---|
-| Aerial Instructor live on dancestudioinsurance.com, replacing the Gravity Form | Fixes done (aggregate dropdown, "$" spacing, alcohol follow-up, additional-insured Yes/No, DSI logo, no portal link). Waiting on Caitlyn's test. |
+| Aerial Instructor live on dancestudioinsurance.com, replacing the Gravity Form | **Live** (by 2026-10-20). Caitlyn approved the test. |
 | Aerial Instructor waiver upload, with the "required before coverage starts" popup | Built |
 | Lead Alchemist: a fuller note per application, and links on every opportunity card | Built |
 | Fitness Class / Health Club A on the DSI site | Next |
@@ -63,7 +63,8 @@ Typed or drawn signature (#8) · Save progress + "Started" status (E) · Documen
 ## Phase 7: Salesforce and the three-way bridge (nice to have)
 | Item | Needs |
 |---|---|
-| #11 / G Accounts, contacts and PDFs synced to Salesforce, then two-way across all three systems | A Salesforce admin to create the API connection |
+| #11 Accounts, contacts, opportunities and PDFs synced to Salesforce, with three-way links and Admin → Clients | 🟡 Built (feature/salesforce-sync). Next: Salesforce admin setup, sandbox dry run, live, then the backfill |
+| G Two-way across all three systems (Salesforce → app and Lead Alchemist; Lead Alchemist Companies) | Companies scopes; the conflict rule (open question 8) |
 | #15 Commission and revenue tracking | To learn where policy and premium data lives |
 
 ## Already done
