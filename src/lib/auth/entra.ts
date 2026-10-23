@@ -28,7 +28,12 @@ export function entraConfig() {
 
 const b64url = (buf: Buffer) => buf.toString("base64url");
 
-export function newAuthRequest() {
+/**
+ * `silent` asks Microsoft not to show any screen (prompt=none): it signs straight in when the
+ * browser already has a Microsoft 365 session, and otherwise comes back with an error
+ * (e.g. login_required) so the app can fall back to the email sign-in.
+ */
+export function newAuthRequest(silent = false) {
   const cfg = entraConfig()!;
   const state = b64url(randomBytes(24));
   const nonce = b64url(randomBytes(24));
@@ -45,7 +50,7 @@ export function newAuthRequest() {
     nonce,
     code_challenge: challenge,
     code_challenge_method: "S256",
-    prompt: "select_account",
+    prompt: silent ? "none" : "select_account",
   }).toString();
   return { url: url.toString(), state, nonce, verifier };
 }

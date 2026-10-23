@@ -12,6 +12,11 @@ export default async function AdminLogin({ searchParams }: PageProps<"/admin/log
   const error = typeof sp.error === "string" ? sp.error : null;
   const microsoft = !!entraConfig();
   const devLogin = process.env.NODE_ENV !== "production" && process.env.DEV_STAFF_LOGIN === "1";
+  // Try Microsoft 365 single sign-on first, without showing anything. It signs staff straight in
+  // when the browser already has a Microsoft session; otherwise it comes back here with sso=0.
+  if (microsoft && sp.sso !== "0" && !error && !sp.expired && !sp.sent) {
+    redirect(`/api/auth/microsoft/login?silent=1&returnTo=${encodeURIComponent(returnTo)}`);
+  }
 
   return (
     <main className="mx-auto flex w-full max-w-md flex-1 flex-col justify-center px-4 py-16">
@@ -28,23 +33,27 @@ export default async function AdminLogin({ searchParams }: PageProps<"/admin/log
           </div>
         ) : (
           <>
-            <p className="mb-6 text-[var(--muted)]">Enter your @anthonyinsuranceservices.com email and we&apos;ll send you a one-time sign-in link.</p>
+            <p className="mb-6 text-[var(--muted)]">
+              {microsoft
+                ? "Sign in with your Anthony Insurance Microsoft 365 account, or get a one-time sign-in link by email."
+                : "Enter your @anthonyinsuranceservices.com email and we'll send you a one-time sign-in link."}
+            </p>
             {(error || sp.expired) && (
               <p className="mb-4 rounded-lg bg-[var(--danger-bg)] p-3 text-sm text-[var(--danger)]" role="alert">
                 {error ?? "That sign-in link has expired or was already used. Request a new one below."}
               </p>
             )}
+            {microsoft && (
+              <a className="btn-primary mb-6 w-full" href={`/api/auth/microsoft/login?returnTo=${encodeURIComponent(returnTo)}`}>
+                Sign in with Microsoft
+              </a>
+            )}
             <form action={requestStaffLinkAction} className="space-y-3">
               <input type="hidden" name="returnTo" value={returnTo} />
               <label htmlFor="email" className="field-label">Work email</label>
               <input id="email" name="email" type="email" required autoComplete="email" className="input" />
-              <button className="btn-primary w-full">Email me a sign-in link</button>
+              <button className={microsoft ? "btn-secondary w-full" : "btn-primary w-full"}>Email me a sign-in link</button>
             </form>
-            {microsoft && (
-              <a className="btn-secondary mt-3 w-full" href={`/api/auth/microsoft/login?returnTo=${encodeURIComponent(returnTo)}`}>
-                Sign in with Microsoft instead
-              </a>
-            )}
             {devLogin && (
               <a className="btn-secondary mt-3 w-full" href="/api/auth/dev-login">
                 Dev sign-in (local only)
