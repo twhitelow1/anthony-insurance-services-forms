@@ -23,7 +23,7 @@ const uniq = () => Math.random().toString(36).slice(2, 8);
 
 describe("contacts directory", () => {
   it("imports both systems, matches people, filters by where they are, and adds the missing to the app", async () => {
-    const { startImport, stepImport, listDirectory, addSelectedToApp } = await import("./directory");
+    const { startImport, stepImport, listDirectory, addSelectedToApp, directoryBreakdown } = await import("./directory");
     const tag = uniq();
     const db = await getDb();
     await db.delete(schema.directoryContacts);
@@ -54,6 +54,16 @@ describe("contacts directory", () => {
     const notApp = await rows("not_app");
     expect(notApp.map((r) => r.email).sort()).toEqual([`cy.${tag}@gmail.com`, `di.${tag}@gmail.com`]);
     expect((await rows("not_la")).map((r) => r.email).sort()).toEqual([`bo.${tag}@gmail.com`, `cy.${tag}@gmail.com`]);
+
+    // Any combination: in the app and Lead Alchemist but not Salesforce → Ann.
+    const both = await listDirectory({ q: tag, presence: { app: "yes", la: "yes", sf: "no" } });
+    expect(both.rows.map((r) => r.email)).toEqual([`ann.${tag}@gmail.com`]);
+    expect(both.total).toBe(1);
+    expect((await listDirectory({ q: tag, presence: { app: "no" }, filter: "la_only" })).rows.map((r) => r.email)).toEqual([`di.${tag}@gmail.com`]);
+    const breakdown = await directoryBreakdown(tag);
+    expect(breakdown.total).toBe(4);
+    const combo = (app: boolean, sf: boolean, la: boolean) => breakdown.combos.find((c) => c.app === app && c.sf === sf && c.la === la)?.count ?? 0;
+    expect([combo(true, false, true), combo(true, false, false), combo(false, true, false), combo(false, false, true)]).toEqual([1, 1, 1, 1]);
 
     // Add Cy (Salesforce: comes in with its Account) and Di (Lead Alchemist: a new account for its Company).
     const r = await addSelectedToApp(
