@@ -35,7 +35,7 @@ export default async function AdminLogin({ searchParams }: PageProps<"/admin/log
           <>
             <p className="mb-6 text-[var(--muted)]">
               {microsoft
-                ? "Sign in with your Anthony Insurance Microsoft 365 account, or get a one-time sign-in link by email."
+                ? "Sign in with your work Microsoft 365 account, or get a one-time sign-in link by email."
                 : "Enter your @anthonyinsuranceservices.com email and we'll send you a one-time sign-in link."}
             </p>
             {(error || sp.expired) && (
