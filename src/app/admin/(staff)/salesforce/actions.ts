@@ -68,11 +68,39 @@ export async function searchSalesforceAction(formData: FormData) {
   const jar = await cookies();
   if (q) jar.set(SF_SEARCH_COOKIE, q, { httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "lax", path: "/admin/salesforce", maxAge: 3600 });
   else jar.delete({ name: SF_SEARCH_COOKIE, path: "/admin/salesforce" });
-  redirect("/admin/salesforce");
+  // Keep the Type filter; a new search starts from the first page.
+  redirect(backTo(formData).replace(/([?&])offset=\d+&?/, "$1").replace(/[?&]$/, ""));
 }
 
 export async function syncAccountAction(formData: FormData) {
   return run(formData, async (actor) => (await syncAccount(id(formData, "sfAccountId"), { sf: await sf(), links: await links() }, actor)).result);
+}
+
+/** "Sync selected": pull each ticked Salesforce Account into the app (up to 25 at a time). */
+export async function syncSelectedAccountsAction(formData: FormData) {
+  return run(formData, async (actor) => {
+    const ids = formData
+      .getAll("ids")
+      .map(String)
+      .filter((v) => /^[A-Za-z0-9]{15,18}$/.test(v));
+    if (!ids.length) throw new Error("Tick at least one Account first.");
+    if (ids.length > 25) throw new Error("Sync up to 25 Accounts at a time.");
+    const deps = { sf: await sf(), links: await links() };
+    const started = Date.now();
+    let done = 0;
+    const failed: string[] = [];
+    for (const id of ids) {
+      if (Date.now() - started > 45_000) break;
+      try {
+        await syncAccount(id, deps, actor);
+        done++;
+      } catch (err) {
+        failed.push(err instanceof Error ? err.message : String(err));
+      }
+    }
+    const left = ids.length - done - failed.length;
+    return `Synced ${done} of ${ids.length} Accounts.${left ? ` ${left} not reached in time: tick them again.` : ""}${failed.length ? ` ${failed.length} failed: ${failed[0]}` : ""}`;
+  });
 }
 
 export async function unsyncAccountAction(formData: FormData) {
