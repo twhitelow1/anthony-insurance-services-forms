@@ -1,6 +1,6 @@
 import "server-only";
 import { randomInt } from "node:crypto";
-import { and, count, desc, eq, ilike, max, or, sql, type SQL } from "drizzle-orm";
+import { and, asc, count, desc, eq, ilike, inArray, max, or, sql, type SQL } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
 import type { Applicant, Application, EventType } from "@/lib/db/schema";
 import type { AiReview } from "@/lib/ai/review";
@@ -120,6 +120,7 @@ const listColumns = {
   updatedAt: applications.updatedAt,
   aiHighFlags: applications.aiHighFlags,
   isTest: applications.isTest,
+  clientId: applications.clientId,
 };
 export type ApplicationListItem = {
   [K in keyof typeof listColumns]: Application[K];
@@ -150,13 +151,15 @@ export interface SearchParams {
   state?: string;
   limit?: number;
   offset?: number;
+  /** "account": grouped by business (A–Z), newest first within each. */
+  order?: "latest" | "account";
 }
 
 /**
  * Staff search: full-text over every answer (stemmed, so "trampoline" matches
  * "trampolines"), plus partial matches on reference, name, email, and business.
  */
-export async function searchApplications({ q, status, state, limit = 50, offset = 0 }: SearchParams) {
+export async function searchApplications({ q, status, state, limit = 50, offset = 0, order = "latest" }: SearchParams) {
   const db = await getDb();
   const where: SQL[] = [];
   const query = q?.trim();
@@ -177,11 +180,20 @@ export async function searchApplications({ q, status, state, limit = 50, offset 
 
   const rank = sql<number>`ts_rank(to_tsvector('english', ${applications.searchText}), websearch_to_tsquery('english', ${query ?? ""}))`;
 
+  const accountName = sql<string>`coalesce(${schema.clients.name}, ${applications.businessName}, ${applications.applicantName})`;
   return db
-    .select(listColumns)
+    .select({ ...listColumns, accountName, contactName: schema.contacts.name })
     .from(applications)
+    .leftJoin(schema.clients, eq(schema.clients.id, applications.clientId))
+    .leftJoin(schema.contacts, eq(schema.contacts.id, applications.contactId))
     .where(where.length ? and(...where) : undefined)
-    .orderBy(...(query ? [desc(rank), desc(applications.createdAt)] : [desc(applications.createdAt)]))
+    .orderBy(
+      ...(order === "account"
+        ? [asc(sql`lower(${accountName})`), asc(applications.clientId), desc(applications.createdAt)]
+        : query
+          ? [desc(rank), desc(applications.createdAt)]
+          : [desc(applications.createdAt)]),
+    )
     .limit(Math.min(limit, 200))
     .offset(offset);
 }
@@ -345,6 +357,9 @@ export async function linkApplicantGhl(email: string, contactId: string | null) 
     .insert(schema.applicants)
     .values({ email: normalizeEmail(email), ...set })
     .onConflictDoUpdate({ target: schema.applicants.email, set });
+  // The same person's Contact record (Admin → Accounts) carries the link too.
+  const owner = db.select({ id: schema.contactEmails.contactId }).from(schema.contactEmails).where(eq(schema.contactEmails.email, normalizeEmail(email)));
+  await db.update(schema.contacts).set({ ghlContactId: contactId, updatedAt: now }).where(inArray(schema.contacts.id, owner));
 }
 
 /** Applicant emails with no Lead Alchemist contact saved yet (for "Link all to Lead Alchemist"). */

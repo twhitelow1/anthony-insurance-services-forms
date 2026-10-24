@@ -6,6 +6,290 @@ import type { ApplicationStatus } from "@/lib/applications/status";
 import type { AiReview } from "@/lib/ai/review";
 
 /**
+ * An Account: the business behind one or more applications (an individual instructor's
+ * Account is named after them). Its people are Contacts (below), and each application
+ * records the Account it's for and the Contact who filled it out. Holds the IDs that link
+ * it to the Salesforce Account and the Lead Alchemist Company. The table keeps its original
+ * name, "clients".
+ */
+export const clients = pgTable(
+  "clients",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    /** Business name, else the person's name. */
+    name: text("name").notNull(),
+    /** Superseded by contacts; kept for older rows. */
+    contactName: text("contact_name"),
+    /** The main contact's email, for display and search. Empty for Accounts imported without one. */
+    primaryEmail: text("primary_email"),
+    /** A person applying for themselves (no business name). */
+    isIndividual: boolean("is_individual").notNull().default(false),
+    /** Lower-cased business name without punctuation or LLC/Inc, for matching. */
+    nameKey: text("name_key").notNull().default(""),
+    website: text("website"),
+    /** Set when a new Account shares a name with this one but nothing else: staff confirm or merge. */
+    possibleDuplicateOf: uuid("possible_duplicate_of"),
+    /** As typed on the applications, newest first. */
+    phones: jsonb("phones").$type<string[]>().notNull().default([]),
+    address: jsonb("address").$type<ClientAddress>(),
+    /** Lower-cased name, business, emails and phone digits, for the Clients search. */
+    searchText: text("search_text").notNull().default(""),
+
+    sfAccountId: text("sf_account_id"),
+    /** Superseded by contacts.sf_contact_id; kept for older rows. */
+    sfContactId: text("sf_contact_id"),
+    /** not_synced · linked · needs_review · error */
+    sfStatus: text("sf_status").$type<SalesforceStatus>().notNull().default("not_synced"),
+    sfSyncedAt: timestamp("sf_synced_at", { withTimezone: true }),
+    sfLastError: text("sf_last_error"),
+    /** Lead Alchemist Company (Business). Only set once Companies are connected. */
+    ghlCompanyId: text("ghl_company_id"),
+    /** Unsynced on the Salesforce screen: stays linked, but nothing syncs either way until synced again. */
+    sfSyncPaused: boolean("sf_sync_paused").notNull().default(false),
+    /** Last time the automatic sync pulled this Account's Salesforce details. */
+    sfPulledAt: timestamp("sf_pulled_at", { withTimezone: true }),
+
+    /** Set when this record was merged into another; it no longer shows in lists. */
+    mergedInto: uuid("merged_into"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("clients_updated_idx").on(t.updatedAt),
+    index("clients_sf_account_idx").on(t.sfAccountId),
+    index("clients_name_key_idx").on(t.nameKey),
+    index("clients_ghl_company_idx").on(t.ghlCompanyId),
+  ],
+);
+
+export interface ClientAddress {
+  street?: string;
+  city?: string;
+  state?: string;
+  postalCode?: string;
+}
+/** create_confirmed: staff chose "create new" on the mapping screen, so the next sync creates the Account without matching. */
+export type SalesforceStatus = "not_synced" | "linked" | "needs_review" | "error" | "create_confirmed";
+
+/**
+ * A person at an Account: whoever fills out an application, or a Contact imported from
+ * Salesforce. One record per person (by email); their home Account is client_id, and
+ * they can also have filled out applications for other Accounts.
+ */
+export const contacts = pgTable(
+  "contacts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    clientId: uuid("client_id")
+      .notNull()
+      .references(() => clients.id, { onDelete: "cascade" }),
+    firstName: text("first_name"),
+    lastName: text("last_name"),
+    name: text("name").notNull(),
+    title: text("title"),
+    primaryEmail: text("primary_email"),
+    phones: jsonb("phones").$type<string[]>().notNull().default([]),
+    sfContactId: text("sf_contact_id"),
+    /** Unsynced on the Salesforce screen: stays linked, but isn't updated from Salesforce. */
+    sfSyncPaused: boolean("sf_sync_paused").notNull().default(false),
+    /** The Lead Alchemist contact. */
+    ghlContactId: text("ghl_contact_id"),
+    searchText: text("search_text").notNull().default(""),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("contacts_client_idx").on(t.clientId), index("contacts_sf_idx").on(t.sfContactId), index("contacts_ghl_idx").on(t.ghlContactId)],
+);
+
+/** Every email that belongs to a contact (lower-cased). An email belongs to one contact. */
+export const contactEmails = pgTable(
+  "contact_emails",
+  {
+    email: text("email").primaryKey(),
+    contactId: uuid("contact_id")
+      .notNull()
+      .references(() => contacts.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("contact_emails_contact_idx").on(t.contactId)],
+);
+
+/**
+ * The visual mapping screens: one row per record to map, with the app's proposal and the
+ * staff decision. Nothing is written until staff confirm a run.
+ * - salesforce_import: a Salesforce Account → an app Account (link, create or skip).
+ * - la_companies: an app Account → a Lead Alchemist Company (link, create or skip).
+ * - salesforce_push: an app Account with submitted applications → a Salesforce Account.
+ */
+export const mappingRows = pgTable(
+  "mapping_rows",
+  {
+    id: serial("id").primaryKey(),
+    runId: text("run_id").notNull(),
+    kind: text("kind").$type<MappingKind>().notNull(),
+    /** Salesforce Account ID, or the app Account ID. */
+    sourceId: text("source_id").notNull(),
+    sourceName: text("source_name").notNull(),
+    /** Phone, website, contacts and so on, as shown on the mapping screen. */
+    sourceDetail: jsonb("source_detail").$type<MappingDetail>().notNull().default({}),
+    /** What the app suggests. */
+    proposal: text("proposal").$type<MappingAction>().notNull(),
+    /** exact · strong · name_only · none */
+    confidence: text("confidence").$type<MappingConfidence>().notNull(),
+    targetId: text("target_id"),
+    targetName: text("target_name"),
+    reason: text("reason"),
+    /** Other possible targets for the dropdown. */
+    candidates: jsonb("candidates").$type<{ id: string; name: string; note?: string }[]>().notNull().default([]),
+    /** Staff choice; null means "use the proposal". */
+    decision: text("decision").$type<MappingAction>(),
+    decisionTargetId: text("decision_target_id"),
+    /** pending · applied · error */
+    status: text("status").$type<"pending" | "applied" | "error">().notNull().default("pending"),
+    result: text("result"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("mapping_rows_run_idx").on(t.runId, t.id), index("mapping_rows_kind_idx").on(t.kind, t.createdAt)],
+);
+export type MappingKind = "salesforce_import" | "la_companies" | "salesforce_push";
+export type MappingAction = "link" | "create" | "skip";
+export type MappingConfidence = "exact" | "strong" | "name_only" | "none";
+export interface MappingDetail {
+  phone?: string | null;
+  website?: string | null;
+  city?: string | null;
+  state?: string | null;
+  street?: string | null;
+  postalCode?: string | null;
+  contacts?: {
+    name: string;
+    email: string | null;
+    sfId?: string | null;
+    firstName?: string | null;
+    lastName?: string | null;
+    phone?: string | null;
+    title?: string | null;
+    /** Already a Lead Alchemist contact (linked in the app). */
+    inLa?: boolean;
+  }[];
+  applications?: number;
+  sfAccountId?: string | null;
+  ghlCompanyId?: string | null;
+}
+export type MappingRow = typeof mappingRows.$inferSelect;
+
+/**
+ * Salesforce records removed from this dashboard (never from Salesforce). The import and the
+ * automatic sync leave them out until staff sync them again.
+ */
+export const salesforceHidden = pgTable("salesforce_hidden", {
+  sfId: text("sf_id").primaryKey(),
+  kind: text("kind").$type<"account" | "contact">().notNull(),
+  name: text("name").notNull(),
+  removedBy: text("removed_by").notNull(),
+  removedAt: timestamp("removed_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** Superseded by contact_emails (kept until the old rows are no longer needed). Every email that belonged to a client. */
+export const clientEmails = pgTable(
+  "client_emails",
+  {
+    email: text("email").primaryKey(),
+    clientId: uuid("client_id")
+      .notNull()
+      .references(() => clients.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("client_emails_client_idx").on(t.clientId)],
+);
+
+export type ClientEventType =
+  | "created"
+  | "merged"
+  | "split"
+  | "staff_note"
+  | "sf_synced"
+  | "sf_sync_failed"
+  | "sf_needs_review"
+  | "sf_linked"
+  | "contact_added"
+  | "contact_moved"
+  | "imported"
+  | "la_company_linked"
+  | "duplicate_resolved"
+  | "sf_sync_paused"
+  | "sf_sync_resumed"
+  | "sf_pulled"
+  | "contact_removed"
+  | "la_contact_linked";
+
+/** Audit log and notes for a client (merges, splits, syncs, staff notes). */
+export const clientEvents = pgTable(
+  "client_events",
+  {
+    id: serial("id").primaryKey(),
+    clientId: uuid("client_id")
+      .notNull()
+      .references(() => clients.id, { onDelete: "cascade" }),
+    type: text("type").$type<ClientEventType>().notNull(),
+    /** "system" or "staff:<email>" */
+    actor: text("actor").notNull(),
+    message: text("message"),
+    data: jsonb("data").$type<Record<string, unknown>>(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("client_events_client_idx").on(t.clientId, t.createdAt)],
+);
+
+/**
+ * Background work that must not hold up an applicant (Salesforce sync for now).
+ * Retried with backoff; failures stay visible in the admin with a retry button.
+ */
+export const syncJobs = pgTable(
+  "sync_jobs",
+  {
+    id: serial("id").primaryKey(),
+    /** "salesforce_application" (target = application ID) */
+    kind: text("kind").$type<SyncJobKind>().notNull(),
+    targetId: text("target_id").notNull(),
+    /** pending · running · done · failed */
+    status: text("status").$type<"pending" | "running" | "done" | "failed">().notNull().default("pending"),
+    attempts: integer("attempts").notNull().default(0),
+    nextAttemptAt: timestamp("next_attempt_at", { withTimezone: true }).notNull().defaultNow(),
+    lastError: text("last_error"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("sync_jobs_due_idx").on(t.status, t.nextAttemptAt), index("sync_jobs_target_idx").on(t.kind, t.targetId)],
+);
+export type SyncJobKind = "salesforce_application";
+
+/**
+ * The one-time Salesforce backfill's report: one row per Salesforce Account per run
+ * (matched, new, ambiguous, skipped), downloaded as CSV for review before applying.
+ */
+export const salesforceBackfillRows = pgTable(
+  "salesforce_backfill_rows",
+  {
+    id: serial("id").primaryKey(),
+    runId: text("run_id").notNull(),
+    mode: text("mode").$type<"dry_run" | "apply">().notNull(),
+    accountId: text("account_id").notNull(),
+    accountName: text("account_name"),
+    /** Contact emails on the Account (lower-cased). */
+    emails: jsonb("emails").$type<string[]>().notNull().default([]),
+    /** matched · new · ambiguous · skipped · error */
+    outcome: text("outcome").$type<BackfillOutcome>().notNull(),
+    clientId: uuid("client_id"),
+    note: text("note"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("sf_backfill_run_idx").on(t.runId, t.id)],
+);
+export type BackfillOutcome = "matched" | "new" | "ambiguous" | "skipped" | "error";
+
+/**
  * The application itself lives here — Lead Alchemist only gets the contact plus a link back.
  */
 export const applications = pgTable(
@@ -35,6 +319,23 @@ export const applications = pgTable(
 
     ghlContactId: text("ghl_contact_id"),
     ghlOpportunityId: text("ghl_opportunity_id"),
+    /** The Account (business) this application is for. */
+    clientId: uuid("client_id").references(() => clients.id, { onDelete: "set null" }),
+    /** The Contact who filled it out. */
+    contactId: uuid("contact_id").references(() => contacts.id, { onDelete: "set null" }),
+
+    /** Salesforce: this application's Opportunity (one per application / policy year). */
+    sfOpportunityId: text("sf_opportunity_id"),
+    /** not_synced · pending · synced · needs_review · error · skipped */
+    sfSyncStatus: text("sf_sync_status").$type<ApplicationSfStatus>().notNull().default("not_synced"),
+    sfSyncedAt: timestamp("sf_synced_at", { withTimezone: true }),
+    sfLastError: text("sf_last_error"),
+    /** SHA-256 of the PDF last uploaded to the Account, so the same file isn't uploaded twice. */
+    sfPdfHash: text("sf_pdf_hash"),
+    sfContentVersionId: text("sf_content_version_id"),
+    sfFeedItemId: text("sf_feed_item_id"),
+    /** When the "links" note went onto the Lead Alchemist contact (once per application). */
+    ghlLinksNotedAt: timestamp("ghl_links_noted_at", { withTimezone: true }),
     /** Submitted by staff in testing mode (required fields skipped). Labeled TEST; tagged `test` in Lead Alchemist. */
     isTest: boolean("is_test").notNull().default(false),
     submittedIp: text("submitted_ip"),
@@ -44,6 +345,8 @@ export const applications = pgTable(
   },
   (t) => [
     index("applications_email_idx").on(t.applicantEmail),
+    index("applications_client_idx").on(t.clientId),
+    index("applications_contact_idx").on(t.contactId),
     index("applications_status_idx").on(t.status),
     index("applications_created_idx").on(t.createdAt),
     index("applications_search_idx").using("gin", sql`to_tsvector('english', ${t.searchText})`),
@@ -63,7 +366,13 @@ export type EventType =
   | "carrier_email_prepared"
   | "pdf_created"
   | "pdf_failed"
-  | "answers_edited";
+  | "answers_edited"
+  | "sf_synced"
+  | "sf_sync_failed"
+  | "sf_needs_review"
+  | "sf_dry_run";
+
+export type ApplicationSfStatus = "not_synced" | "pending" | "synced" | "needs_review" | "error" | "skipped";
 
 /** Append-only history: status timeline for the client, audit log for staff. */
 export const applicationEvents = pgTable(
@@ -146,6 +455,8 @@ export const drafts = pgTable(
     status: text("status").$type<"started" | "submitted">().notNull().default("started"),
     applicationId: uuid("application_id").references(() => applications.id, { onDelete: "set null" }),
     ghlContactId: text("ghl_contact_id"),
+    clientId: uuid("client_id").references(() => clients.id, { onDelete: "set null" }),
+    contactId: uuid("contact_id").references(() => contacts.id, { onDelete: "set null" }),
     resumeEmailedAt: timestamp("resume_emailed_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -215,3 +526,7 @@ export type ApplicationDocument = typeof applicationDocuments.$inferSelect;
 export type Applicant = typeof applicants.$inferSelect;
 export type Draft = typeof drafts.$inferSelect;
 export type LibraryFile = typeof libraryFiles.$inferSelect;
+export type Client = typeof clients.$inferSelect;
+export type Contact = typeof contacts.$inferSelect;
+export type ClientEvent = typeof clientEvents.$inferSelect;
+export type SyncJob = typeof syncJobs.$inferSelect;

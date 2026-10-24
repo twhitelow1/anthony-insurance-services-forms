@@ -16,7 +16,7 @@ Status key: ✅ built · 🟡 partly built · ⬜ not started.
 | 8 | Click-to-type signature | ✅ draw or type, switchable |
 | 9 | Conditional carrier routing based on answers | ⬜ |
 | 10 | Embeddable, branded forms for the websites | ✅ |
-| 11 | Salesforce sync, including PDFs on account records | ⬜ |
+| 11 | Salesforce sync, including PDFs on account records | 🟡 built (accounts, contacts, mapping, Salesforce screen, keys in the admin); Salesforce set up 2026-10-24, waiting on the keys and a test |
 | 12 | Ask AI for querying application data | ✅ |
 | 13 | Carrier-submission portal with multiple carriers | 🟡 Outlook draft only |
 | 14 | Automated follow-up and reactivation for unconverted leads | 🟡 app-started trigger ready; workflows still to build in Lead Alchemist |
@@ -126,7 +126,33 @@ Example: an Aerial Yoga Studio with height over 10 ft can only go to two specifi
 - Each form's admin page has a **"Copy embed code"** button.
 - The iframe resizes to fit its content automatically, with no inner scrollbars.
 
-## ⬜ 11. Salesforce sync
+## 🟡 11. Salesforce sync
+**Built (2026-10-23, branch feature/salesforce-sync), off until the keys are entered and tested.** Salesforce itself was set up on 2026-10-24 (`docs/salesforce-setup.md`; SharePoint file 7):
+- **Every submitted application** (never test ones) syncs to Salesforce.
+  - The business's Account is matched by exact name and phone (an individual: their Contact's email first).
+  - An uncertain match is marked **Needs review** and nothing is created.
+  - A new client gets an Account (Type Customer, Legal Entity, address, phone), a Contact, and an Opportunity named "<Account Name> - <year>" in an open stage.
+  - The person who filled it out is the Opportunity's primary contact role (2026-10-24).
+  - The application PDF goes to the Account's Files, and a Chatter note is posted.
+  - Mapped Account fields (Program, participants, GL aggregate, effective date) are filled only while empty. Picklist values are checked against the org.
+- **Three-way links**: on the Salesforce Account, Contact and Opportunity; on the Lead Alchemist contact and opportunity (fields created automatically, plus a note); and buttons on the app's Client page.
+- **Reliability**: queued after the submission is saved, retried 5 times with backoff, with failures and a retry button in the admin. It's idempotent, has dry-run mode, an on/off switch and stage mapping in Settings, and a Health panel that lists missing fields.
+- **Admin → Accounts** (replaces Applicants; organised by business since 2026-10-24):
+  - an **Account per business** (individuals get one in their own name) with its **Contacts**;
+  - each application shows **who filled it out**, and Applications can be grouped by account;
+  - same business = same name plus the same phone, business email domain or website; a name-only match is flagged **Possible duplicate** for staff to merge or keep separate;
+  - search, CSV export, merge accounts, split a contact off, an audit log, notes, and Salesforce and Lead Alchemist buttons;
+  - the account page's address is never an email.
+- **Data mapping** (Settings → Data mapping, 2026-10-24): visual mapping screens. Each scans read-only, shows every record next to its proposed match (link, create, skip, or "Check" for a name-only match), lets staff change any row, and writes nothing until staff confirm:
+  - **Salesforce Accounts → app**: imports every Salesforce Account and its Contacts (replaces the one-time backfill);
+  - **App → Lead Alchemist Companies**: links or creates Companies and puts the contacts in them;
+  - **Past applications → Salesforce**: picks each account's Salesforce Account and queues its applications.
+- **Settings → Integrations** (2026-10-24): enter and test the Salesforce and Lead Alchemist keys in the admin. Encrypted, secrets write-only, and they take the place of the Vercel variables.
+- **Admin → Salesforce** (2026-10-24): every Salesforce Account with Sync, Unsync, Remove from this app (local only, blocked while it has applications) and View in Salesforce; the same for each Contact; and Lead Alchemist matching by email or phone with Link, Unlink here and Create in Lead Alchemist.
+- **No deletes** (2026-10-24): the app can't delete anything in Salesforce or Lead Alchemist (a guard refuses it on every request).
+- ⬜ **Automatic sync**: Synced accounts pull Salesforce changes (Salesforce wins) and pass them to Lead Alchemist, daily and with "Sync now", with a run log.
+- **Lead Alchemist Companies**: built (2026-10-24). Linked accounts add new applicants to their Company; a setting creates Companies for new businesses. The token needs the Businesses scopes (`docs/lead-alchemist-companies-plan.md`).
+
 **Decided**
 - Anthony Insurance uses Salesforce. The goal is to **bridge all three**: this app, Lead Alchemist and Salesforce, with data moving in and out.
 - Sync **Accounts, their Contacts, and the PDFs** to Files on the account. Anthony has a Salesforce admin who can create the API connection.
@@ -240,5 +266,6 @@ This needs a Lead Alchemist webhook pointed at the app, and a stage ↔ status m
 ### F. Carrier replies into the app
 Part of #13: carrier replies and quotes are attached to the application automatically.
 
-### G. Three-way bridge: app, Lead Alchemist and Salesforce
-The long-term shape of #11 and D: one record of each client and application, kept in step across all three systems.
+### G. 🟡 Three-way bridge: app, Lead Alchemist and Salesforce
+The long-term shape of #11 and D: one record of each business, person and application, kept in step across all three systems.
+**Built (2026-10-24):** Accounts and Contacts in the app mirror Salesforce; Salesforce Accounts can be pulled in and app accounts pushed to Lead Alchemist Companies through the mapping screens; Admin → Salesforce picks what syncs and matches people to Lead Alchemist contacts. **In progress:** the automatic sync of later Salesforce edits (defaults in the decisions log).

@@ -30,7 +30,11 @@ Applicants fill in an online application. The app then:
 
 Staff work in the **admin**:
 - **Applications:** status, notes, PDFs, edit answers, activity log.
-- **Applicants:** grouped by email, linked to their Lead Alchemist contact.
+- **Accounts:** every business (or individual) with its contacts and applications, each application showing who filled it out. Searchable by business, person, email or phone, with CSV export, merge and split, and a "possible duplicate" check. Buttons open the account in Salesforce and Lead Alchemist.
+- **Data mapping:** pull every Salesforce Account into the app, link accounts to Lead Alchemist Companies, and send past applications to Salesforce. Each shows the proposed matches side by side and writes nothing until staff confirm.
+- **Salesforce screen (Admin → Salesforce):** every Salesforce Account and Contact with Sync, Unsync and Remove from this app, and matching people to Lead Alchemist contacts by email or phone. The app never deletes anything in Salesforce or Lead Alchemist.
+- **Integrations (Settings → Integrations):** enter and test the Salesforce and Lead Alchemist keys (encrypted; secrets are never shown again).
+- **Salesforce (built 2026-10-23; Salesforce set up 2026-10-24, waiting on the keys):** each submitted application creates or links the client's Account and Contact, adds an Opportunity, the PDF and a Chatter note, and links all three systems to each other. Setup: `docs/salesforce-setup.md`.
 - **Ask AI:** questions about application data in plain English.
 - **Lead Alchemist setup:** shows the connection and every pipeline and stage.
 - **Settings:** admins, notifications, sender, carrier email, pipeline.
@@ -70,7 +74,7 @@ Staff also have:
 | Claude (Anthropic API) | AI pre-review and Ask AI |
 | pdf-lib | Filling carrier PDFs and building the Anthony-format PDFs |
 
-Secrets stay in Vercel: API keys, the database URL and the session secret. Everything else is in **Admin → Settings**.
+Secrets stay in Vercel: API keys, the database URL and the session secret. The Salesforce and Lead Alchemist keys can instead be entered in **Settings → Integrations** (encrypted; a value saved there takes the place of the Vercel one). Everything else is in **Admin → Settings**.
 In Vercel, Lead Alchemist settings use the `LA_` prefix (e.g. `LA_API_TOKEN`); the older names still work until they are renamed. "Open in Lead Alchemist" links go to https://app.leadalchemist.io.
 In everything staff or clients see, it is called **Lead Alchemist**.
 

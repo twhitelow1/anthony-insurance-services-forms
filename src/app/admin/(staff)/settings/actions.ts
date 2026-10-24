@@ -43,6 +43,18 @@ export async function saveSettingsAction(formData: FormData) {
     if (v) stageMap[k] = v;
   }
 
+  const sfStageMap: Partial<Record<ApplicationStatus, string>> = {};
+  for (const k of STATUS_KEYS) {
+    const v = str(formData, `sfstage_${k}`);
+    if (v) sfStageMap[k] = v;
+  }
+  const ghlAppUrl = str(formData, "ghlAppUrl").replace(/\/+$/, "");
+  if (ghlAppUrl && !/^https:\/\/[a-z0-9.-]+(:\d+)?$/i.test(ghlAppUrl)) fail("Lead Alchemist web address must look like https://app.example.com (no path).");
+  const onOff = (name: string, on: string, off: string) => {
+    const v = str(formData, name);
+    return v === on ? true : v === off ? false : null;
+  };
+
   const patch: { [K in keyof Settings]?: Settings[K] | null } = {
     staffEmails: listField(formData, "staffEmails", "Admins", EMAIL_RE),
     staffEmailDomains: listField(formData, "staffEmailDomains", "Staff email domains", DOMAIN_RE),
@@ -55,6 +67,11 @@ export async function saveSettingsAction(formData: FormData) {
     ghlLeadPipeline: str(formData, "ghlLeadPipeline") || null,
     ghlLeadStage: str(formData, "ghlLeadStage") || null,
     ghlStageMap: Object.keys(stageMap).length ? stageMap : null,
+    ghlAppUrl: ghlAppUrl || null,
+    ghlCompaniesSync: onOff("ghlCompaniesSync", "on", "off"),
+    salesforceEnabled: onOff("salesforceEnabled", "on", "off"),
+    salesforceDryRun: onOff("salesforceDryRun", "dry", "live"),
+    salesforceStageMap: Object.keys(sfStageMap).length ? sfStageMap : null,
   };
   if (patch.ghlLeadStage && !patch.ghlLeadPipeline) fail("Pick the lead pipeline the lead stage belongs to.");
 

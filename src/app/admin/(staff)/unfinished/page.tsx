@@ -3,7 +3,7 @@ import { forms } from "@/forms";
 import { fmtDate } from "@/components/portal";
 import { requireStaff } from "@/lib/auth/session";
 import { listUnfinished } from "@/lib/applications/drafts";
-import { applicantPath } from "@/lib/applications/links";
+import { clientPath } from "@/lib/applications/links";
 import { deleteDraftAction } from "@/app/admin/actions";
 
 export const metadata = { title: "Unfinished applications | Anthony Insurance Services" };
@@ -37,7 +37,7 @@ export default async function Unfinished() {
               return (
                 <tr key={d.id}>
                   <td>
-                    <Link className="row-link font-medium" href={applicantPath(d.email!)}>{d.name ?? d.email}</Link>
+                    <Link className="row-link font-medium" href={clientPath(d.clientId, d.email!)}>{d.name ?? d.email}</Link>
                     <div className="text-xs text-[var(--muted)]">
                       <a className="btn-link" href={`mailto:${d.email}`}>{d.email}</a>
                       {d.businessName && <> · {d.businessName}</>}

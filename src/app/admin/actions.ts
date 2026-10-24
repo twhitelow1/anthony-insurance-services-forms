@@ -20,6 +20,7 @@ import { makePdf, onStatusChanged, pushToGhl, runAiReview } from "@/lib/applicat
 import { aiClient } from "@/lib/ai/client";
 import { type AssistantReply, type ChatTurn, askAssistant } from "@/lib/ai/assistant";
 import { isStatus } from "@/lib/applications/status";
+import { ensureClient, getClientIdForEmail } from "@/lib/clients/repo";
 
 // Every action re-checks the staff session: server actions are reachable by direct POST.
 
@@ -51,7 +52,7 @@ export async function resyncGhlAction(formData: FormData) {
   const app = await getApplication(String(formData.get("id") ?? ""));
   const form = app && getForm(app.formSlug);
   if (!app || !form) throw new Error("Application not found");
-  await pushToGhl(form, app);
+  await pushToGhl(form, app, app.clientId);
   revalidatePath(`/admin/applications/${app.id}`);
 }
 
@@ -119,8 +120,14 @@ export async function deleteApplicationAction(formData: FormData) {
   redirect(`/admin?deleted=${encodeURIComponent(app.reference)}`);
 }
 
-const applicantHref = (email: string, msg: string) =>
-  `/admin/applicants/${encodeURIComponent(email)}?la=${encodeURIComponent(msg)}`;
+/**
+ * Back to the client's page with a short result code (shown as text there). Emails, names
+ * and phones never go in the address.
+ */
+async function clientHref(email: string, code: string) {
+  const clientId = (await getClientIdForEmail(email)) ?? (await ensureClient({ email }));
+  return `/admin/clients/${clientId}?la=${code}`;
+}
 
 /**
  * Link an applicant to their Lead Alchemist contact: the contact ID staff pasted, or else
@@ -131,44 +138,43 @@ export async function linkGhlContactAction(formData: FormData) {
   const email = normalizeEmail(String(formData.get("email") ?? ""));
   const pasted = String(formData.get("contactId") ?? "").trim();
   if (!email) throw new Error("Missing email");
-  if (!ghlConfig()) redirect(applicantHref(email, "Lead Alchemist isn't connected yet (LA_API_TOKEN / LA_LOCATION_ID)."));
+  if (!(await ghlConfig())) redirect(await clientHref(email, "not_connected"));
 
   // Accept a full Lead Alchemist contact URL as well as a bare ID.
   const id = pasted.match(/contacts\/detail\/([A-Za-z0-9]+)/)?.[1] ?? pasted;
-  if (id && !/^[A-Za-z0-9]{6,64}$/.test(id)) redirect(applicantHref(email, `"${id.slice(0, 80)}" isn't a Lead Alchemist contact ID.`));
+  if (id && !/^[A-Za-z0-9]{6,64}$/.test(id)) redirect(await clientHref(email, "bad_id"));
 
-  let msg: string;
+  let code: string;
   try {
     const contact = id ? await getContact(id) : await findContactByEmail(email);
     if (contact) {
       await linkApplicantGhl(email, contact.id);
-      msg = `Linked to Lead Alchemist contact ${[contact.firstName, contact.lastName].filter(Boolean).join(" ") || contact.email || contact.id}.`;
-    } else {
-      msg = id ? `No Lead Alchemist contact with ID ${id}.` : `No Lead Alchemist contact has the email ${email}. It will be created on the next sync.`;
-    }
+      code = "linked";
+    } else code = id ? "no_contact_id" : "no_contact_email";
   } catch (err) {
-    msg = `Lead Alchemist lookup failed: ${err instanceof Error ? err.message : String(err)}`;
+    console.error("[admin] Lead Alchemist lookup failed", err);
+    code = "lookup_failed";
   }
-  revalidatePath("/admin/applicants");
-  redirect(applicantHref(email, msg));
+  revalidatePath("/admin/clients");
+  redirect(await clientHref(email, code));
 }
 
 export async function unlinkGhlContactAction(formData: FormData) {
   await requireStaff();
   const email = normalizeEmail(String(formData.get("email") ?? ""));
   await linkApplicantGhl(email, null);
-  revalidatePath("/admin/applicants");
-  redirect(applicantHref(email, "Unlinked. The next sync will match the Lead Alchemist contact by email."));
+  revalidatePath("/admin/clients");
+  redirect(await clientHref(email, "unlinked"));
 }
 
 /** Look up every not-yet-linked applicant in Lead Alchemist by email (50 per click). */
 export async function linkAllGhlAction() {
   await requireStaff();
-  if (!ghlConfig()) redirect(`/admin/applicants?la=${encodeURIComponent("Lead Alchemist isn't connected yet.")}`);
+  if (!(await ghlConfig())) redirect("/admin/clients?la=not_connected");
   const emails = await unlinkedApplicantEmails(50);
   let linked = 0;
   let missing = 0;
-  let failed = "";
+  let failed = false;
   for (const email of emails) {
     try {
       const contact = await findContactByEmail(email);
@@ -177,15 +183,13 @@ export async function linkAllGhlAction() {
         linked++;
       } else missing++;
     } catch (err) {
-      failed = err instanceof Error ? err.message : String(err);
+      console.error("[admin] Lead Alchemist lookup failed", err);
+      failed = true;
       break;
     }
   }
-  const msg = failed
-    ? `Stopped after ${linked} linked: ${failed}`
-    : `Linked ${linked} applicant${linked === 1 ? "" : "s"} to Lead Alchemist.${missing ? ` ${missing} have no Lead Alchemist contact yet.` : ""}`;
-  revalidatePath("/admin/applicants");
-  redirect(`/admin/applicants?la=${encodeURIComponent(msg)}`);
+  revalidatePath("/admin/clients");
+  redirect(`/admin/clients?la=${failed ? "bulk_failed" : "bulk"}&linked=${linked}&missing=${missing}`);
 }
 
 /** Remove an unfinished application (e.g. a duplicate or a test). */

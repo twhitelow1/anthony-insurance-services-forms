@@ -22,7 +22,6 @@ import {
   updateContact,
   upsertContact,
 } from "./client";
-import { applicantPath } from "@/lib/applications/links";
 import { getSettings } from "@/lib/settings";
 
 /**
@@ -35,6 +34,16 @@ export const PORTAL_FIELDS = {
   status: "Application Status",
   link: "Application Link",
   pdf: "Application PDF",
+} as const;
+
+/** Three-way link fields on Lead Alchemist contacts and opportunities (single-line text, created automatically). */
+export const CONTACT_LINK_FIELDS = {
+  salesforceAccount: "Salesforce Account Link",
+  clientPage: "Client Page Link",
+} as const;
+export const OPPORTUNITY_LINK_FIELDS = {
+  salesforceOpportunity: "Salesforce Opportunity Link",
+  application: PORTAL_FIELDS.link,
 } as const;
 
 /**
@@ -169,6 +178,8 @@ export function applicationNote(
   form: Pick<FormDefinition, "title">,
   app: Pick<Application, "id" | "reference" | "status" | "businessName" | "applicantName" | "applicantEmail" | "state" | "values" | "createdAt" | "isTest">,
   pdfUrl?: string,
+  /** The app's Client page (all of this client's applications). Never an email in the address. */
+  clientPageUrl?: string | null,
 ) {
   const effective = str(app.values.requested_effective_date);
   const submitted = new Intl.DateTimeFormat("en-US", {
@@ -187,45 +198,54 @@ export function applicationNote(
     "",
     `Open the application: ${adminUrl(app)}`,
     pdfUrl ? `Application PDF (staff sign-in required): ${pdfUrl}` : null,
-    `All applications from ${app.applicantEmail}: ${appBase()}${applicantPath(app.applicantEmail)}`,
+    clientPageUrl ? `All of this client's applications: ${clientPageUrl}` : null,
   ]
     .filter((l) => l !== null)
     .join("\n");
 }
 
 /**
- * The opportunity custom fields that carry each application's reference, status, link and
- * PDF on its card. Missing ones are created once (needs the "Edit Custom Fields" scope);
- * anything still missing is reported so staff can add it by hand.
+ * Custom fields the app needs on a Lead Alchemist object: the opportunity fields that carry each
+ * application's reference, status, link and PDF on its card, and the link fields (Salesforce,
+ * Client page) on contacts and opportunities. Missing ones are created once (needs the "Edit
+ * Custom Fields" scope); anything still missing is reported so staff can add it by hand.
  */
-let opportunityFieldsOnce: Promise<{ fields: GhlCustomField[]; missing: string[] }> | null = null;
-export const resetOpportunityFieldCache = () => (opportunityFieldsOnce = null);
+const ensureOnce = new Map<string, Promise<{ fields: GhlCustomField[]; missing: string[] }>>();
+export const resetOpportunityFieldCache = () => ensureOnce.clear();
 
-async function opportunityFields(): Promise<{ fields: GhlCustomField[]; missing: string[] }> {
-  const fields = await listCustomFields("opportunity").catch((err) => {
-    console.warn("[ghl] couldn't list opportunity custom fields", err);
+export async function ensureCustomFields(model: "contact" | "opportunity", names: string[]): Promise<{ fields: GhlCustomField[]; missing: string[] }> {
+  const fields = await listCustomFields(model).catch((err) => {
+    console.warn(`[ghl] couldn't list ${model} custom fields`, err);
     return [] as GhlCustomField[];
   });
-  const absent = Object.values(PORTAL_FIELDS).filter((n) => !findField(fields, n));
+  const absent = names.filter((n) => !findField(fields, n));
   if (!absent.length) return { fields, missing: [] };
-  opportunityFieldsOnce ??= (async () => {
-    const created: GhlCustomField[] = [];
-    const missing: string[] = [];
-    for (const name of absent) {
-      try {
-        created.push(await createCustomField(name, "opportunity"));
-      } catch (err) {
-        console.warn(`[ghl] couldn't create the opportunity field "${name}"`, err);
-        missing.push(name);
-      }
-    }
-    return { fields: created, missing };
-  })();
-  const made = await opportunityFieldsOnce;
+  const key = `${model}:${absent.join("|")}`;
+  if (!ensureOnce.has(key)) {
+    ensureOnce.set(
+      key,
+      (async () => {
+        const created: GhlCustomField[] = [];
+        const missing: string[] = [];
+        for (const name of absent) {
+          try {
+            created.push(await createCustomField(name, model));
+          } catch (err) {
+            console.warn(`[ghl] couldn't create the ${model} field "${name}"`, err);
+            missing.push(name);
+          }
+        }
+        return { fields: created, missing };
+      })(),
+    );
+  }
+  const made = await ensureOnce.get(key)!;
   // A failed attempt is retried on a later submission (the token's scopes may have been fixed).
-  if (made.missing.length) opportunityFieldsOnce = null;
+  if (made.missing.length) ensureOnce.delete(key);
   return { fields: [...fields, ...made.fields], missing: made.missing };
 }
+
+const opportunityFields = () => ensureCustomFields("opportunity", Object.values(PORTAL_FIELDS));
 
 export function portalCustomFields(
   app: Pick<Application, "id" | "reference" | "status">,
@@ -322,6 +342,8 @@ export async function syncNewApplication(
   pdfUrl?: string,
   /** Lead Alchemist contact ID saved for this applicant's email (applicants table), if any. */
   savedContactId?: string | null,
+  /** The app's Client page for this applicant, put on the contact and in the note. */
+  clientPageUrl?: string | null,
 ): Promise<{
   contactId: string;
   matchedBy: "saved_id" | "email";
@@ -334,6 +356,11 @@ export async function syncNewApplication(
   const fields = await listCustomFields();
   const custom = portalCustomFields(app, fields, pdfUrl);
   const missingFields = Object.values(PORTAL_FIELDS).filter((n) => !findField(fields, n));
+  if (clientPageUrl) {
+    const { fields: linkFields } = await ensureCustomFields("contact", [CONTACT_LINK_FIELDS.clientPage]);
+    const f = findField(linkFields, CONTACT_LINK_FIELDS.clientPage);
+    if (f) custom.push({ id: f.id, field_value: clientPageUrl });
+  }
 
   const { contactId, matchedBy } = await syncContact(
     form,
@@ -346,7 +373,7 @@ export async function syncNewApplication(
   // They finished: stop the "started but not submitted" follow-ups.
   await removeTags(contactId, startedTags(form)).catch((err) => console.warn("[ghl] couldn't remove started tags", err));
 
-  await addContactNote(contactId, applicationNote(form, app, pdfUrl));
+  await addContactNote(contactId, applicationNote(form, app, pdfUrl, clientPageUrl));
 
   let opportunityId: string | undefined;
   let movedFromLead = false;

@@ -29,6 +29,10 @@ const EVENT_LABEL: Record<string, string> = {
   pdf_created: "PDF",
   pdf_failed: "PDF failed",
   answers_edited: "Answers edited",
+  sf_synced: "Salesforce",
+  sf_sync_failed: "Salesforce sync failed",
+  sf_needs_review: "Salesforce: needs review",
+  sf_dry_run: "Salesforce dry run",
 };
 
 export function Timeline({ events, audience }: { events: ApplicationEvent[]; audience: "staff" | "client" }) {

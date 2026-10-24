@@ -9,25 +9,76 @@ import { emailLayout, sendMail } from "@/lib/mail";
 import { aiClient } from "@/lib/ai/client";
 import { reviewApplication } from "@/lib/ai/review";
 import { applicationPdfUrl, createApplicationPdf, createCarrierPdf, mainDocument } from "./documents";
-import { addEvent, getApplicant, linkApplicantGhl, saveAiReview, setGhlIds } from "./repo";
+import { addEvent, getApplicant, getApplication, linkApplicantGhl, saveAiReview, setGhlIds } from "./repo";
 import { STATUSES, type ApplicationStatus } from "./status";
 import { libraryForForm, libraryUrl } from "@/lib/library";
 import { getForm } from "@/forms";
 import { complianceAttachments } from "@/lib/compliance";
 import { confirmationEmail, statusEmail } from "@/lib/mail/templates";
 import { missingUploads } from "@/lib/forms/validate";
+import { standardContactFields } from "@/lib/ghl/sync";
+import { assignApplicationClient, assignDraftClient, setContactGhl } from "@/lib/clients/repo";
+import { companyForApplicant } from "@/lib/ghl/companies";
+import { links } from "@/lib/integrations/links";
+import { salesforceConfig } from "@/lib/salesforce/config";
+import { enqueueSalesforceSync, runJob } from "@/lib/salesforce/jobs";
 
 const appUrl = () => (process.env.APP_URL ?? "http://localhost:3000").replace(/\/$/, "");
 const describe = (err: unknown) => (err instanceof Error ? err.message : String(err));
 
 /** Everything that happens after a submission is safely stored. Never throws. */
 export async function onApplicationSubmitted(form: FormDefinition, app: Application) {
-  // The PDF comes first so its link can go onto the Lead Alchemist contact.
+  // The client record first: its page is linked from Lead Alchemist and Salesforce.
+  const clientId = await linkClient(form, app);
+  // The PDF comes next so its link can go onto the Lead Alchemist contact; Salesforce goes last so
+  // it can carry the Lead Alchemist links (and Lead Alchemist gets the Salesforce ones back).
   await Promise.allSettled([
-    makePdf(form, app).then(() => Promise.allSettled([pushToGhl(form, app), notifyStaff(form, app)])),
+    makePdf(form, app).then(() =>
+      Promise.allSettled([pushToGhl(form, app, clientId).then(() => pushToSalesforce(app)), notifyStaff(form, app)]),
+    ),
     sendConfirmation(form, app),
     runAiReview(form, app),
   ]);
+}
+
+const clientDetails = (form: FormDefinition, values: Application["values"], email: string, name: string | null, business: string | null) => {
+  const c = standardContactFields(form, values);
+  return {
+    email,
+    firstName: c.firstName,
+    lastName: c.lastName,
+    contactName: name,
+    businessName: business,
+    phone: c.phone,
+    website: c.website,
+    address: { street: c.address1, city: c.city, state: c.state, postalCode: c.postalCode },
+  };
+};
+
+/** Attach the application to its Account and the Contact who filled it out (created when new). Never throws. */
+async function linkClient(form: FormDefinition, app: Application): Promise<string | null> {
+  try {
+    return await assignApplicationClient(app.id, clientDetails(form, app.values, app.applicantEmail, app.applicantName, app.businessName));
+  } catch (err) {
+    console.error("[pipeline] client record failed", app.reference, err);
+    return null;
+  }
+}
+
+/**
+ * Queue the Salesforce sync and run it once now. Never throws, never blocks the applicant:
+ * a failure stays queued and is retried with backoff (src/lib/salesforce/jobs.ts).
+ * Test submissions never go to Salesforce.
+ */
+export async function pushToSalesforce(app: Pick<Application, "id" | "isTest" | "reference">) {
+  if (app.isTest || !(await salesforceConfig())) return;
+  try {
+    if (!(await getSettings()).salesforceEnabled) return;
+    const jobId = await enqueueSalesforceSync(app.id);
+    await runJob(jobId);
+  } catch (err) {
+    console.error("[pipeline] Salesforce sync couldn't be queued", app.reference, err);
+  }
 }
 
 /** Fill the carrier's application and create the answer summary, then store both. Never throws. */
@@ -87,15 +138,19 @@ export async function runAiReview(form: FormDefinition, app: Application) {
   }
 }
 
-export async function pushToGhl(form: FormDefinition, app: Application) {
-  if (!ghlConfig()) return;
+export async function pushToGhl(form: FormDefinition, app: Application, clientId?: string | null) {
+  if (!(await ghlConfig())) return;
   try {
     const pdf = await mainDocument(app.id);
     // Same email → same Lead Alchemist contact: use the contact ID saved from earlier syncs.
     const saved = await getApplicant(app.applicantEmail);
-    const r = await syncNewApplication(form, app, pdf ? applicationPdfUrl(app) : undefined, saved?.ghlContactId);
+    const clientPage = clientId ? (await links()).appClient(clientId) : null;
+    const r = await syncNewApplication(form, app, pdf ? applicationPdfUrl(app) : undefined, saved?.ghlContactId, clientPage);
     await setGhlIds(app.id, { contactId: r.contactId, opportunityId: r.opportunityId });
     await linkApplicantGhl(app.applicantEmail, r.contactId);
+    const contactId = app.contactId ?? (await getApplication(app.id))?.contactId;
+    if (contactId) await setContactGhl(contactId, r.contactId);
+    const company = await companyForApplicant(clientId ?? app.clientId, r.contactId).catch((err) => `Lead Alchemist Company: ${describe(err)}`);
     const missing = [
       r.missingFields.length ? `contact fields: ${r.missingFields.join(", ")}` : null,
       r.missingOpportunityFields?.length ? `opportunity fields: ${r.missingOpportunityFields.join(", ")}` : null,
@@ -109,6 +164,7 @@ export async function pushToGhl(form: FormDefinition, app: Application) {
             : "created this application's opportunity"
           : null,
         missing.length ? `create these Lead Alchemist custom fields to fill them in: ${missing.join("; ")}` : null,
+        company,
       ]
         .filter(Boolean)
         .join("; ")}`,
@@ -179,7 +235,7 @@ async function sendConfirmation(form: FormDefinition, app: Application) {
 export async function onStatusChanged(app: Application, previous: ApplicationStatus, opts: { note?: string; notifyClient: boolean }) {
   const { note, notifyClient } = opts;
   const tasks: Promise<unknown>[] = [];
-  if (ghlConfig() && app.ghlContactId) {
+  if ((await ghlConfig()) && app.ghlContactId) {
     tasks.push(
       syncStatus(app, previous).catch(async (err) => {
         console.error("[pipeline] Lead Alchemist status sync failed", app.reference, err);
@@ -187,6 +243,8 @@ export async function onStatusChanged(app: Application, previous: ApplicationSta
       }),
     );
   }
+  // Keep the Salesforce Opportunity's stage in step (only once it's been synced).
+  if (app.sfOpportunityId) tasks.push(pushToSalesforce(app));
   if (notifyClient) tasks.push(
     sendMail({
       to: app.applicantEmail,
@@ -199,9 +257,19 @@ export async function onStatusChanged(app: Application, previous: ApplicationSta
   await Promise.allSettled(tasks);
 }
 
+/** An applicant started a form and gave an email: they're a prospect (Admin → Clients). Never throws. */
+export async function linkDraftClient(form: FormDefinition, draft: Draft) {
+  if (!draft.email) return;
+  try {
+    await assignDraftClient(draft.id, clientDetails(form, draft.values, draft.email, draft.name, draft.businessName));
+  } catch (err) {
+    console.error("[pipeline] prospect client record failed", draft.id, err);
+  }
+}
+
 /** An applicant started a form and gave an email: tell Lead Alchemist ("app-started"). Never throws. */
 export async function syncDraftStarted(form: FormDefinition, draft: Draft) {
-  if (!ghlConfig() || !draft.email) return;
+  if (!(await ghlConfig()) || !draft.email) return;
   try {
     const saved = await getApplicant(draft.email);
     const { contactId } = await syncStartedApplication(form, draft.values, saved?.ghlContactId);

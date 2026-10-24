@@ -1,10 +1,11 @@
+import { Fragment } from "react";
 import Link from "next/link";
 import { forms } from "@/forms";
 import { fmtDate, StatusBadge } from "@/components/portal";
 import { requireStaff } from "@/lib/auth/session";
 import { searchApplications } from "@/lib/applications/repo";
 import { STATUSES, STATUS_KEYS, isStatus } from "@/lib/applications/status";
-import { applicantPath } from "@/lib/applications/links";
+import { clientPath } from "@/lib/applications/links";
 
 export const metadata = { title: "Applications | Anthony Insurance Services" };
 
@@ -13,7 +14,8 @@ export default async function AdminHome({ searchParams }: PageProps<"/admin">) {
   const sp = await searchParams;
   const q = typeof sp.q === "string" ? sp.q : "";
   const status = isStatus(sp.status) ? sp.status : undefined;
-  const results = await searchApplications({ q, status, limit: 100 });
+  const order = sp.view === "accounts" ? "account" : "latest";
+  const results = await searchApplications({ q, status, limit: order === "account" ? 200 : 100, order });
 
   return (
     <div>
@@ -27,7 +29,7 @@ export default async function AdminHome({ searchParams }: PageProps<"/admin">) {
       {typeof sp.deleted === "string" && (
         <p className="callout mb-6 text-sm" role="status">Application {sp.deleted} was deleted.</p>
       )}
-      <form className="card mb-6 grid gap-3 !p-4 sm:grid-cols-[1fr_220px_auto]" role="search">
+      <form className="card mb-6 grid gap-3 !p-4 sm:grid-cols-[1fr_220px_220px_auto]" role="search">
         <label className="sr-only" htmlFor="q">Search applications</label>
         <input id="q" name="q" defaultValue={q} className="input" placeholder='e.g. "trampoline" Austin, AIS-7K3Q, jane@…' />
         <label className="sr-only" htmlFor="status">Status</label>
@@ -37,6 +39,11 @@ export default async function AdminHome({ searchParams }: PageProps<"/admin">) {
             <option key={s} value={s}>{STATUSES[s].label}</option>
           ))}
         </select>
+        <label className="sr-only" htmlFor="view">View</label>
+        <select id="view" name="view" defaultValue={order === "account" ? "accounts" : ""} className="input">
+          <option value="">Newest first</option>
+          <option value="accounts">Grouped by account</option>
+        </select>
         <button className="btn-primary">Search</button>
       </form>
 
@@ -45,23 +52,33 @@ export default async function AdminHome({ searchParams }: PageProps<"/admin">) {
           <thead>
             <tr>
               <th>Reference</th>
-              <th>Business / applicant</th>
+              <th>Account / filled out by</th>
               <th>Form</th>
               <th>Status</th>
               <th>Submitted</th>
             </tr>
           </thead>
           <tbody>
-            {results.map((a) => (
-              <tr key={a.id}>
+            {results.map((a, i) => (
+              <Fragment key={a.id}>
+              {order === "account" && (i === 0 || results[i - 1].clientId !== a.clientId || results[i - 1].accountName !== a.accountName) && (
+                <tr className="bg-[var(--track)]">
+                  <td colSpan={5} className="text-sm font-semibold">
+                    {a.clientId ? <Link className="hover:underline" href={`/admin/clients/${a.clientId}`}>{a.accountName}</Link> : a.accountName}
+                  </td>
+                </tr>
+              )}
+              <tr>
                 <td>
                   <Link className="row-link font-mono" href={`/admin/applications/${a.id}`}>{a.reference}</Link>
                 </td>
                 <td>
-                  <div className="font-medium">{a.businessName ?? a.applicantName}</div>
+                  <div className="font-medium">
+                    {a.clientId ? <Link className="hover:underline" href={`/admin/clients/${a.clientId}`}>{a.accountName}</Link> : a.accountName}
+                  </div>
                   <div className="text-xs text-[var(--muted)]">
-                    {a.applicantName} ·{" "}
-                    <Link className="hover:underline" href={applicantPath(a.applicantEmail)}>{a.applicantEmail}</Link>
+                    {a.contactName ?? a.applicantName} ·{" "}
+                    <Link className="hover:underline" href={clientPath(a.clientId, a.applicantEmail)}>{a.applicantEmail}</Link>
                     {a.state ? ` · ${a.state}` : ""}
                   </div>
                 </td>
@@ -79,6 +96,7 @@ export default async function AdminHome({ searchParams }: PageProps<"/admin">) {
                 </td>
                 <td className="whitespace-nowrap text-sm">{fmtDate(a.createdAt)}</td>
               </tr>
+              </Fragment>
             ))}
             {!results.length && (
               <tr>
