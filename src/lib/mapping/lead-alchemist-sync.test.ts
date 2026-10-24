@@ -82,3 +82,33 @@ describe("accounts → Lead Alchemist Companies and contacts", () => {
     expect(leadAlchemistErrorMessage("GET", "/contacts/abc", 500)).toBe("Lead Alchemist GET /contacts/abc failed: 500");
   });
 });
+
+describe("finding Lead Alchemist matches for unlinked contacts", () => {
+  it("saves exact matches as suggestions, filters by them, and links them on sync", async () => {
+    la.scope = true;
+    const { findLaMatches, laMatchProgress } = await import("./la-matches");
+    const { listAccountMap, listContactMap, syncAccountsToLeadAlchemist } = await import("./database");
+    const tag = uniq();
+    const withMatch = await ensureClient({ email: `m.${tag}@gmail.com`, contactName: `Mo ${tag}`, businessName: `Match Gym ${tag}` });
+    const noMatch = await ensureClient({ email: `n.${tag}@gmail.com`, contactName: `No ${tag}`, businessName: `Lonely Gym ${tag}` });
+    la.contacts.set(`la-${tag}`, { id: `la-${tag}`, email: `m.${tag}@gmail.com` });
+
+    // Run until everything unlinked has been checked (other tests' contacts included).
+    for (let i = 0; i < 50 && !(await findLaMatches({ timeBudgetMs: 5_000 })).done; i++);
+    const progress = await laMatchProgress();
+    expect(progress.remaining).toBe(0);
+    expect(progress.suggested).toBeGreaterThan(0);
+
+    const person = (await getContactByEmail(`m.${tag}@gmail.com`))!;
+    expect(person).toMatchObject({ ghlContactId: null, laMatchId: `la-${tag}`, laMatchHow: "email" });
+    expect((await getContactByEmail(`n.${tag}@gmail.com`))!.laMatchId).toBeNull();
+
+    expect((await listAccountMap({ q: tag, filter: "la_suggested" })).rows.map((r) => r.id)).toEqual([withMatch]);
+    expect((await listAccountMap({ q: tag, filter: "la_suggested" })).rows[0].laSuggested).toBe(1);
+    expect((await listContactMap({ q: tag, filter: "la_suggested" })).rows.map((r) => r.contact.id)).toEqual([person.id]);
+
+    await syncAccountsToLeadAlchemist([withMatch, noMatch], ACTOR, { sf: null, links: LINKS });
+    expect((await getContactByEmail(`m.${tag}@gmail.com`))!.ghlContactId).toBe(`la-${tag}`);
+    expect((await listAccountMap({ q: tag, filter: "la_suggested" })).rows).toHaveLength(0);
+  });
+});
