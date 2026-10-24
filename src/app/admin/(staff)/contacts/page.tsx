@@ -4,6 +4,9 @@ import { AutoSubmit } from "@/components/AutoSubmit";
 import { SystemLink, LA_COMPANY_HINT } from "@/components/clients";
 import { ListSummary, pageHref, pageState, Pagination } from "@/components/Pagination";
 import { SelectAll } from "@/components/SelectAll";
+import { SelectAllMatching } from "@/components/SelectAllMatching";
+import { SelectionRunPanel } from "@/components/SelectionRunPanel";
+import { getSelectionRun, showSelectionRun } from "@/lib/bulk/selection-run";
 import { SubmitButton } from "@/components/SubmitButton";
 import { requireStaff } from "@/lib/auth/session";
 import { directoryBreakdown, directoryCounts, getImport, listDirectory, type DirectoryFilter, type DirectoryImport, type DirectorySource, type Presence } from "@/lib/contacts/directory";
@@ -12,7 +15,16 @@ import { ghlConfig } from "@/lib/ghl/client";
 import { links } from "@/lib/integrations/links";
 import { salesforceConfig } from "@/lib/salesforce/config";
 import { FlashMessage } from "../salesforce/ui";
-import { addToAppAction, importAction, searchContactsAction, sendToLeadAlchemistAction, sendToSalesforceAction, updateLaDetailsAction } from "./actions";
+import {
+  addToAppAction,
+  importAction,
+  searchContactsAction,
+  sendToLeadAlchemistAction,
+  sendToSalesforceAction,
+  stepContactsRunAction,
+  stopContactsRunAction,
+  updateLaDetailsAction,
+} from "./actions";
 import { CONTACT_SEARCH_COOKIE } from "./search-cookie";
 
 export const metadata = { title: "Contacts | AIS Connect" };
@@ -69,7 +81,8 @@ export default async function Contacts({ searchParams }: PageProps<"/admin/conta
     getImport("lead_alchemist"),
     listDirectory({ q, filter, presence, limit: paging.pageSize, offset: paging.offset }),
   ]);
-  const breakdown = await directoryBreakdown(q);
+  const [breakdown, selectionRun] = await Promise.all([directoryBreakdown(q), getSelectionRun("contacts")]);
+  const runActive = selectionRun?.phase === "running";
   const params = { filter: filter !== "all" ? filter : undefined, app: presence.app, sf: presence.sf, la: presence.la };
   const href = pageHref("/admin/contacts", params);
   const comboHref = (c: Record<SystemKey, boolean>) => `/admin/contacts?${new URLSearchParams({ app: c.app ? "yes" : "no", sf: c.sf ? "yes" : "no", la: c.la ? "yes" : "no" })}`;
@@ -174,6 +187,8 @@ export default async function Contacts({ searchParams }: PageProps<"/admin/conta
         </section>
       )}
 
+      {showSelectionRun(selectionRun) && <SelectionRunPanel run={selectionRun} back={back} stepAction={stepContactsRunAction} stopAction={stopContactsRunAction} />}
+
       <form id="bulk" className="mb-3 flex flex-wrap items-center gap-2 text-sm">
         <input type="hidden" name="back" value={back} />
         <SubmitButton formAction={addToAppAction} className="btn-secondary">Add selected to AIS Connect</SubmitButton>
@@ -200,6 +215,7 @@ export default async function Contacts({ searchParams }: PageProps<"/admin/conta
         they go under their account&apos;s Salesforce Account.
       </p>
 
+      {!runActive && <SelectAllMatching form="bulk" onPage={list.rows.length} total={list.total} noun="people" />}
       <ListSummary total={list.total} state={paging} noun="person" />
       <div className="overflow-x-auto">
         <table className="data-table">
