@@ -13,6 +13,7 @@ import {
   startImport,
   stepImport,
   updateLeadAlchemistForSelected,
+  type CompanyState,
   type DirectoryFilter,
   type DirectorySource,
   type Presence,
@@ -69,21 +70,26 @@ const WORK: Record<string, { verb: string; options: string[]; work: Work }> = {
   },
 };
 
-const FILTERS: DirectoryFilter[] = ["all", "app_only", "sf_only", "la_only", "not_app", "not_sf", "not_la", "everywhere", "la_outdated"];
-const yesNo = (v: string | null) => (v === "yes" || v === "no" ? v : undefined);
+const FILTERS: DirectoryFilter[] = ["all", "app_only", "sf_only", "la_only", "not_app", "not_sf", "not_la", "everywhere", "la_outdated", "possible_dup"];
+const COMPANY: CompanyState[] = ["linked", "suggested", "none"];
+const yesNo = (v: string | null): "yes" | "no" | undefined => (v === "yes" || v === "no" ? v : undefined);
 
 /** The list's filters, read from the page address the form came from (plus the search cookie). */
 async function listFilters(formData: FormData) {
   const p = new URL(backTo(formData), "http://x").searchParams;
   const filter = FILTERS.find((f) => f === p.get("filter")) ?? "all";
   const presence: Presence = { app: yesNo(p.get("app")), sf: yesNo(p.get("sf")), la: yesNo(p.get("la")) };
+  const account = yesNo(p.get("account"));
+  const company = COMPANY.find((c) => c === p.get("company"));
   const q = (await cookies()).get(CONTACT_SEARCH_COOKIE)?.value ?? "";
   const words = [
     q && `matching "${q}"`,
     filter !== "all" && `filter: ${filter.replace(/_/g, " ")}`,
     ...(["app", "sf", "la"] as const).filter((k) => presence[k]).map((k) => `${{ app: "AIS Connect", sf: "Salesforce", la: "Lead Alchemist" }[k]}: ${presence[k]}`),
+    account && `account in AIS Connect: ${account}`,
+    company && `Lead Alchemist Company: ${company}`,
   ].filter(Boolean);
-  return { q, filter, presence, text: words.length ? `Contacts ${words.join(", ")}` : "All contacts" };
+  return { q, filter, presence, account, company, text: words.length ? `Contacts ${words.join(", ")}` : "All contacts" };
 }
 
 async function bulk(formData: FormData, key: keyof typeof WORK): Promise<never> {

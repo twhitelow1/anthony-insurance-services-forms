@@ -9,7 +9,7 @@ import { SelectionRunPanel } from "@/components/SelectionRunPanel";
 import { getSelectionRun, showSelectionRun } from "@/lib/bulk/selection-run";
 import { SubmitButton } from "@/components/SubmitButton";
 import { requireStaff } from "@/lib/auth/session";
-import { directoryBreakdown, directoryCounts, getImport, listDirectory, type DirectoryFilter, type DirectoryImport, type DirectorySource, type Presence } from "@/lib/contacts/directory";
+import { directoryBreakdown, directoryCounts, getImport, listDirectory, type CompanyState, type DirectoryFilter, type DirectoryImport, type DirectoryRow, type DirectorySource, type Presence } from "@/lib/contacts/directory";
 import { readFlash } from "@/lib/flash";
 import { ghlConfig } from "@/lib/ghl/client";
 import { links } from "@/lib/integrations/links";
@@ -40,6 +40,13 @@ const FILTERS: { value: DirectoryFilter; label: string }[] = [
   { value: "not_la", label: "Not in Lead Alchemist" },
   { value: "everywhere", label: "In all three" },
   { value: "la_outdated", label: "Lead Alchemist details missing or different" },
+  { value: "possible_dup", label: "Possible duplicate (same name somewhere else)" },
+];
+
+const COMPANY_STATES: { value: CompanyState; label: string }[] = [
+  { value: "linked", label: "Has one" },
+  { value: "suggested", label: "Suggested match" },
+  { value: "none", label: "None found" },
 ];
 
 const fmt = (n: number) => n.toLocaleString("en-US");
@@ -62,12 +69,49 @@ function comboLabel(c: Record<SystemKey, boolean>) {
 }
 const Missing = () => <span className="badge badge-neutral">Not there</span>;
 
+/** Their Lead Alchemist Company: the one they're in or their account is linked to, else a suggested match. */
+function CompanyInfo({ r, companyHref }: { r: DirectoryRow; companyHref: (id: string) => string | null }) {
+  if (r.company) {
+    return (
+      <div className="mt-1 text-xs">
+        {r.inLa && r.laCompanyId === r.company.id ? "Company: " : "Account's Company: "}
+        <SystemLink title={LA_COMPANY_HINT} className="btn-link" href={companyHref(r.company.id)} missing="">
+          {r.company.name ?? r.laCompany ?? "Company"}
+        </SystemLink>
+      </div>
+    );
+  }
+  if (r.suggestedCompany) {
+    const byName = r.suggestedCompany.how === "same name";
+    return (
+      <div className="mt-1 text-xs">
+        <span
+          className={`badge ${byName ? "badge-success" : "badge-warning"}`}
+          title={
+            byName
+              ? "Same name as their account: syncing joins this Company (no new one is made)"
+              : "Same phone, different name: link it on the account page (or Mapping → Lead Alchemist Companies) before syncing, or syncing makes a new Company"
+          }
+        >
+          Matching Company ({r.suggestedCompany.how}){byName ? ": sync uses it" : ": link before syncing"}
+        </span>{" "}
+        <SystemLink title={LA_COMPANY_HINT} className="btn-link" href={companyHref(r.suggestedCompany.id)} missing="">
+          {r.suggestedCompany.name}
+        </SystemLink>
+      </div>
+    );
+  }
+  return <div className="mt-1 text-xs text-[var(--muted)]">No Company found (syncing creates one)</div>;
+}
+
 export default async function Contacts({ searchParams }: PageProps<"/admin/contacts">) {
   await requireStaff("/admin/contacts");
   const sp = await searchParams;
   const str = (k: string) => (typeof sp[k] === "string" ? (sp[k] as string) : "");
   const filter = FILTERS.some((f) => f.value === str("filter")) ? (str("filter") as DirectoryFilter) : "all";
   const presence: Presence = { app: yesNo(str("app")), sf: yesNo(str("sf")), la: yesNo(str("la")) };
+  const account = yesNo(str("account"));
+  const company = COMPANY_STATES.find((c) => c.value === str("company"))?.value;
   const paging = pageState(sp);
   const q = (await cookies()).get(CONTACT_SEARCH_COOKIE)?.value ?? "";
   const importing = str("importing");
@@ -79,14 +123,14 @@ export default async function Contacts({ searchParams }: PageProps<"/admin/conta
     directoryCounts(),
     getImport("salesforce"),
     getImport("lead_alchemist"),
-    listDirectory({ q, filter, presence, limit: paging.pageSize, offset: paging.offset }),
+    listDirectory({ q, filter, presence, account, company, limit: paging.pageSize, offset: paging.offset }),
   ]);
   const [breakdown, selectionRun] = await Promise.all([directoryBreakdown(q), getSelectionRun("contacts")]);
   const runActive = selectionRun?.phase === "running";
-  const params = { filter: filter !== "all" ? filter : undefined, app: presence.app, sf: presence.sf, la: presence.la };
+  const params = { filter: filter !== "all" ? filter : undefined, app: presence.app, sf: presence.sf, la: presence.la, account, company };
   const href = pageHref("/admin/contacts", params);
   const comboHref = (c: Record<SystemKey, boolean>) => `/admin/contacts?${new URLSearchParams({ app: c.app ? "yes" : "no", sf: c.sf ? "yes" : "no", la: c.la ? "yes" : "no" })}`;
-  const isCombo = (c: Record<SystemKey, boolean>) => filter === "all" && SYSTEMS.every((x) => presence[x.key] === (c[x.key] ? "yes" : "no"));
+  const isCombo = (c: Record<SystemKey, boolean>) => filter === "all" && !account && !company && SYSTEMS.every((x) => presence[x.key] === (c[x.key] ? "yes" : "no"));
   const back = href(paging.page, paging.pageSize);
 
   return (
@@ -125,6 +169,23 @@ export default async function Contacts({ searchParams }: PageProps<"/admin/conta
               </select>
             </label>
           ))}
+          <label className="text-sm" title="Their account: their own, or the one linked to their Salesforce Account or Lead Alchemist Company">
+            <span className="field-label !mb-1">Account in AIS Connect</span>
+            <select name="account" defaultValue={account ?? ""} className="input">
+              <option value="">Either</option>
+              <option value="yes">Yes</option>
+              <option value="no">No</option>
+            </select>
+          </label>
+          <label className="text-sm" title="The Lead Alchemist Company they're in or their account is linked to, else a Company with the same name or phone">
+            <span className="field-label !mb-1">Lead Alchemist Company</span>
+            <select name="company" defaultValue={company ?? ""} className="input">
+              <option value="">Any</option>
+              {COMPANY_STATES.map((c) => (
+                <option key={c.value} value={c.value}>{c.label}</option>
+              ))}
+            </select>
+          </label>
           <label className="text-sm">
             <span className="field-label !mb-1">Also</span>
             <select name="filter" defaultValue={filter} className="input">
@@ -134,7 +195,7 @@ export default async function Contacts({ searchParams }: PageProps<"/admin/conta
             </select>
           </label>
           <button className="btn-secondary">Filter</button>
-          {(presence.app || presence.sf || presence.la || filter !== "all") && (
+          {(presence.app || presence.sf || presence.la || account || company || filter !== "all") && (
             <Link className="btn-link text-sm" href="/admin/contacts">Clear filters</Link>
           )}
         </form>
@@ -247,7 +308,25 @@ export default async function Contacts({ searchParams }: PageProps<"/admin/conta
                   {r.inApp ? (
                     r.accountId ? <Link className="btn-link" href={`/admin/clients/${r.accountId}`}>{r.accountName ?? "Account"}</Link> : "In AIS Connect"
                   ) : (
-                    <Missing />
+                    <>
+                      <Missing />
+                      {r.account ? (
+                        <div className="mt-1 text-xs">
+                          <span className="badge badge-success" title="Adding this person puts them under this account (no new account)">Account already here</span>{" "}
+                          <Link className="btn-link" href={`/admin/clients/${r.account.id}`}>{r.account.name}</Link>
+                        </div>
+                      ) : (
+                        <div className="mt-1 text-xs text-[var(--muted)]">
+                          {r.inSf && r.sfAccountId ? "Adding brings in their Salesforce Account as a new account" : "Adding creates a new account"}
+                        </div>
+                      )}
+                    </>
+                  )}
+                  {r.sameName.app && (
+                    <div className="mt-1 text-xs">
+                      <span className="badge badge-warning" title="Someone with the same full name is already in AIS Connect, under a different email or phone">Same name here</span>{" "}
+                      <Link className="btn-link" href={`/admin/clients/${r.sameName.app.accountId}`}>{r.sameName.app.account}</Link>
+                    </div>
                   )}
                 </td>
                 <td className="text-sm">
@@ -261,7 +340,23 @@ export default async function Contacts({ searchParams }: PageProps<"/admin/conta
                       )}
                     </>
                   ) : (
-                    <Missing />
+                    <>
+                      <Missing />
+                      {r.account?.sfAccountId && (
+                        <div className="mt-1 text-xs">
+                          Their account is{" "}
+                          <SystemLink className="btn-link" href={l.salesforce("Account", r.account.sfAccountId)} missing="">
+                            in Salesforce
+                          </SystemLink>
+                        </div>
+                      )}
+                    </>
+                  )}
+                  {r.sameName.sf && (
+                    <div className="mt-1 text-xs">
+                      <span className="badge badge-warning" title="A Salesforce Contact with the same full name, under a different email or phone">Same name in Salesforce</span>{" "}
+                      <SystemLink className="btn-link" href={l.salesforce("Contact", r.sameName.sf.id)} missing="">{r.sameName.sf.company ?? "Contact"}</SystemLink>
+                    </div>
                   )}
                 </td>
                 <td className="text-sm">
@@ -273,16 +368,18 @@ export default async function Contacts({ searchParams }: PageProps<"/admin/conta
                           <span className="badge badge-warning" title="Lead Alchemist is missing (or has a different) name, email or phone">Details to update</span>
                         </div>
                       )}
-                      {r.laCompany ? (
-                        <div className="text-xs">
-                          <SystemLink title={LA_COMPANY_HINT} className="btn-link" href={r.laCompanyId ? l.ghlCompany(r.laCompanyId) : null} missing="">{r.laCompany}</SystemLink>
-                        </div>
-                      ) : (
-                        <div className="text-xs text-[var(--muted)]">No Company</div>
-                      )}
                     </>
                   ) : (
                     <Missing />
+                  )}
+                  <CompanyInfo r={r} companyHref={l.ghlCompany} />
+                  {r.sameName.la && (
+                    <div className="mt-1 text-xs">
+                      <span className="badge badge-warning" title="A Lead Alchemist contact with the same full name, under a different email or phone: syncing would add a second one">
+                        Same name in Lead Alchemist
+                      </span>{" "}
+                      <SystemLink className="btn-link" href={l.ghlContact(r.sameName.la.id)} missing="">{r.sameName.la.company ?? "Contact"}</SystemLink>
+                    </div>
                   )}
                 </td>
               </tr>

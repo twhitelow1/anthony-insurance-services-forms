@@ -2,9 +2,9 @@ import "server-only";
 import { and, eq, inArray, isNull, lt, sql } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
 import type { DirectoryContact } from "@/lib/db/schema";
-import { phoneDigits } from "@/lib/clients/text";
+import { nameKey, phoneDigits } from "@/lib/clients/text";
 import { addClientEvent, createAccount, ensureContact, refreshSearch } from "@/lib/clients/repo";
-import { ghlConfig, isScopeError, listBusinesses, listContactsPage, type GhlContact } from "@/lib/ghl/client";
+import { ghlConfig, isScopeError, listBusinesses, listContactsPage, type GhlBusiness, type GhlContact } from "@/lib/ghl/client";
 import { laName } from "@/lib/ghl/match";
 import type { Links } from "@/lib/integrations/urls";
 import { soqlString, type SalesforceApi } from "@/lib/salesforce/api";
@@ -72,7 +72,7 @@ export async function startImport(source: DirectorySource, actor: string) {
   return saveImport({ source, phase: "running", cursor: null, imported: 0, total: null, startedAt: new Date().toISOString(), startedBy: actor });
 }
 
-type Row = Omit<DirectoryContact, "id" | "appContactId" | "matchHow" | "fetchedAt">;
+type Row = Omit<DirectoryContact, "id" | "appContactId" | "matchHow" | "fetchedAt" | "companyKey">;
 
 async function upsert(rows: Row[]) {
   if (!rows.length) return;
@@ -80,7 +80,7 @@ async function upsert(rows: Row[]) {
   const d = schema.directoryContacts;
   await db
     .insert(d)
-    .values(rows.map((r) => ({ ...r, fetchedAt: new Date() })))
+    .values(rows.map((r) => ({ ...r, companyKey: r.companyName ? nameKey(r.companyName) || null : null, fetchedAt: new Date() })))
     .onConflictDoUpdate({
       target: [d.source, d.externalId],
       set: {
@@ -89,9 +89,44 @@ async function upsert(rows: Row[]) {
         phone: sql`excluded.phone`,
         companyId: sql`excluded.company_id`,
         companyName: sql`excluded.company_name`,
+        companyKey: sql`excluded.company_key`,
         fetchedAt: sql`excluded.fetched_at`,
       },
     });
+}
+
+/** Keep the copy of Lead Alchemist's Companies current (the list suggests a Company for each person from it). */
+export async function saveCompanies(businesses: GhlBusiness[]) {
+  const db = await getDb();
+  const t = schema.directoryCompanies;
+  const now = new Date();
+  for (let i = 0; i < businesses.length; i += 500) {
+    await db
+      .insert(t)
+      .values(
+        businesses.slice(i, i + 500).map((b) => ({ id: b.id, name: b.name ?? "", nameKey: nameKey(b.name), phone: last10(b.phone), website: b.website ?? null, fetchedAt: now })),
+      )
+      .onConflictDoUpdate({
+        target: t.id,
+        set: { name: sql`excluded.name`, nameKey: sql`excluded.name_key`, phone: sql`excluded.phone`, website: sql`excluded.website`, fetchedAt: sql`excluded.fetched_at` },
+      });
+  }
+  await db.delete(t).where(lt(t.fetchedAt, now));
+}
+
+/** Rows saved before company names were keyed get their key (nameKey is code, not SQL). */
+async function fillCompanyKeys() {
+  const db = await getDb();
+  const d = schema.directoryContacts;
+  const missing = await db
+    .select({ id: d.id, companyName: d.companyName })
+    .from(d)
+    .where(and(isNull(d.companyKey), sql`${d.companyName} is not null`))
+    .limit(20_000);
+  for (let i = 0; i < missing.length; i += 2000) {
+    const keyed = JSON.stringify(missing.slice(i, i + 2000).map((r) => ({ id: r.id, k: nameKey(r.companyName) })));
+    await db.execute(sql`update directory_contacts d set company_key = j.k from jsonb_to_recordset(${keyed}::jsonb) as j(id uuid, k text) where d.id = j.id`);
+  }
 }
 
 /**
@@ -101,6 +136,7 @@ async function upsert(rows: Row[]) {
  */
 export async function rematch() {
   const db = await getDb();
+  await fillCompanyKeys();
   await db.execute(sql`
     update directory_contacts d set app_contact_id = c.id, match_how = 'linked'
     from contacts c
@@ -182,7 +218,10 @@ export async function stepImport(source: DirectorySource, deps: { sf: Salesforce
     const companies = new Map<string, string>();
     if (source === "lead_alchemist") {
       if (!(await ghlConfig())) throw new Error("Lead Alchemist isn't connected.");
-      for (const b of await listBusinesses().catch((err) => (isScopeError(err) ? [] : Promise.reject(err)))) companies.set(b.id, b.name);
+      const businesses = await listBusinesses().catch((err) => (isScopeError(err) ? null : Promise.reject(err)));
+      for (const b of businesses ?? []) companies.set(b.id, b.name);
+      // The first batch of a refresh also refreshes the copy of Lead Alchemist's Companies.
+      if (businesses && run.cursor === null) await saveCompanies(businesses);
     } else if (!deps.sf) throw new Error("Salesforce isn't connected.");
     let finished = false;
     while (!finished && Date.now() - started < (deps.timeBudgetMs ?? 40_000)) {
@@ -206,7 +245,7 @@ export async function stepImport(source: DirectorySource, deps: { sf: Salesforce
 
 // ── The list ───────────────────────────────────────────────────────────
 
-export type DirectoryFilter = "all" | "app_only" | "sf_only" | "la_only" | "not_app" | "not_sf" | "not_la" | "everywhere" | "la_outdated";
+export type DirectoryFilter = "all" | "app_only" | "sf_only" | "la_only" | "not_app" | "not_sf" | "not_la" | "everywhere" | "la_outdated" | "possible_dup";
 
 export interface DirectoryRow {
   key: string;
@@ -227,6 +266,25 @@ export interface DirectoryRow {
   sfAccountId: string | null;
   /** In the app and Lead Alchemist, but Lead Alchemist is missing (or has a different) name, email or phone. */
   laOutdated: boolean;
+  /** Their AIS Connect account: their own, or (not in AIS Connect yet) the one linked to their Salesforce Account or Lead Alchemist Company. */
+  account: { id: string; name: string; sfAccountId: string | null } | null;
+  /** The Lead Alchemist Company they're in, or their account is linked to. */
+  company: { id: string; name: string | null } | null;
+  /** Otherwise, a Lead Alchemist Company that's probably theirs. */
+  suggestedCompany: { id: string; name: string; how: string } | null;
+  /** Someone with the same full name in a system they're not in yet. */
+  sameName: { app: { accountId: string; account: string } | null; sf: { id: string; company: string | null } | null; la: { id: string; company: string | null } | null };
+}
+
+/** Whether their account is in AIS Connect, and their Lead Alchemist Company: linked, suggested or none. */
+export type CompanyState = "linked" | "suggested" | "none";
+
+export interface DirectoryQuery {
+  q?: string;
+  filter?: DirectoryFilter;
+  presence?: Presence;
+  account?: "yes" | "no";
+  company?: CompanyState;
 }
 
 const FILTER_SQL: Record<DirectoryFilter, string> = {
@@ -239,7 +297,20 @@ const FILTER_SQL: Record<DirectoryFilter, string> = {
   not_la: "not in_la",
   everywhere: "in_app and in_sf and in_la",
   la_outdated: "la_outdated",
+  possible_dup: "(dup_app_account_id is not null or dup_sf_id is not null or dup_la_id is not null)",
 };
+
+const COMPANY_SQL: Record<CompanyState, string> = {
+  linked: "co_id is not null",
+  suggested: "co_id is null and sug_id is not null",
+  none: "co_id is null and sug_id is null",
+};
+
+/** The WHERE clause for the list (over `enriched p`). */
+function whereSql({ q, filter = "all", presence, account, company }: DirectoryQuery) {
+  const parts = [FILTER_SQL[filter], presenceSql(presence), account ? `acct_id is ${account === "yes" ? "not " : ""}null` : "true", company ? COMPANY_SQL[company] : "true"];
+  return sql`${sql.raw(parts.join(" and "))} ${searchSql(q)}`;
+}
 
 /** In (yes) or not in (no) a system; leave a system out for "either". */
 export type Presence = Partial<Record<"app" | "sf" | "la", "yes" | "no">>;
@@ -271,13 +342,14 @@ const peopleSql = () => sql`
     rows as (
       select 'a:' || c.id::text as pkey, c.id as app_id, c.client_id, c.name, c.primary_email as email,
         right(regexp_replace(coalesce(c.phones->>0, ''), '[^0-9]', '', 'g'), 10) as phone,
-        c.sf_contact_id as sf_id, c.ghl_contact_id as la_id, null::text as sf_company, null::text as sf_company_id,
+        c.sf_contact_id as sf_id, c.ghl_contact_id as la_id, null::text as sf_company, null::text as sf_company_id, null::text as sf_key,
         null::text as la_company, null::text as la_company_id, null::uuid as dir_id, true as from_app, 'app' as src
       from contacts c
       union all
       select pkey, app_contact_id, null, name, email, phone,
         case when source = 'salesforce' then external_id end, case when source = 'lead_alchemist' then external_id end,
         case when source = 'salesforce' then company_name end, case when source = 'salesforce' then company_id end,
+        case when source = 'salesforce' then company_key end,
         case when source = 'lead_alchemist' then company_name end, case when source = 'lead_alchemist' then company_id end,
         id, false, source
       from ext
@@ -289,7 +361,7 @@ const peopleSql = () => sql`
         coalesce(max(email) filter (where from_app), max(email)) as email,
         coalesce(max(nullif(phone, '')) filter (where from_app), max(nullif(phone, ''))) as phone,
         bool_or(from_app) as in_app, bool_or(sf_id is not null) as in_sf, bool_or(la_id is not null) as in_la,
-        max(sf_id) as sf_id, max(la_id) as la_id, max(sf_company) as sf_company, max(sf_company_id) as sf_company_id,
+        max(sf_id) as sf_id, max(la_id) as la_id, max(sf_company) as sf_company, max(sf_company_id) as sf_company_id, max(sf_key) as sf_key,
         max(la_company) as la_company, max(la_company_id) as la_company_id,
         string_agg(dir_id::text, '.') as dir_ids,
         max(email) filter (where src = 'lead_alchemist') as la_email,
@@ -311,28 +383,78 @@ const peopleSql = () => sql`
 `;
 
 /**
+ * peopleSql plus, for each person, what tells staff whether syncing would duplicate anything
+ * (the `enriched` CTE):
+ * - acct_*: their AIS Connect account: their own, or the one linked to their Salesforce Account
+ *   or Lead Alchemist Company (so someone not in AIS Connect yet may already have one);
+ * - co_*: the Lead Alchemist Company they're in, or their account is linked to;
+ * - sug_*: otherwise, a Lead Alchemist Company that's probably theirs (same name as their account
+ *   or Salesforce Account, or same phone), not linked to another account;
+ * - dup_*: someone with the same full name already in a system they're not in (likely the same
+ *   person under another email or phone).
+ */
+const enrichedSql = () => sql`
+    ${peopleSql()}
+    , enriched as (
+      select f.*,
+        acct.id as acct_id, acct.name as acct_name, acct.sf_account_id as acct_sf_id,
+        coalesce(acct.ghl_company_id, f.la_company_id) as co_id,
+        (select dc.name from directory_companies dc where dc.id = coalesce(acct.ghl_company_id, f.la_company_id)) as co_name,
+        sug.id as sug_id, sug.name as sug_name, sug.how as sug_how,
+        dup_app.client_id as dup_app_account_id, dup_app.account_name as dup_app_account,
+        dup_sf.external_id as dup_sf_id, dup_sf.company_name as dup_sf_company,
+        dup_la.external_id as dup_la_id, dup_la.company_name as dup_la_company
+      from flagged f
+      left join lateral (
+        -- Each step uses its own index: their account, else the one linked to their Salesforce Account, else to their Company.
+        select coalesce(
+          f.client_id::uuid,
+          (select c1.id from clients c1 where f.sf_company_id is not null and c1.sf_account_id = f.sf_company_id and c1.merged_into is null limit 1),
+          (select c2.id from clients c2 where f.la_company_id is not null and c2.ghl_company_id = f.la_company_id and c2.merged_into is null limit 1)
+        ) as id
+      ) aid on true
+      left join lateral (
+        select cl.id::text as id, cl.name, cl.name_key, cl.phones, cl.ghl_company_id, cl.sf_account_id from clients cl where cl.id = aid.id
+      ) acct on true
+      left join lateral (
+        select dc.id, dc.name, case when dc.name_key = coalesce(nullif(acct.name_key, ''), f.sf_key) then 'same name' else 'same phone' end as how
+        from directory_companies dc
+        where acct.ghl_company_id is null and f.la_company_id is null
+          and ((dc.name_key <> '' and dc.name_key = coalesce(nullif(acct.name_key, ''), f.sf_key))
+            or (dc.phone is not null and (dc.phone = f.phone or dc.phone = right(regexp_replace(coalesce(acct.phones->>0, ''), '[^0-9]', '', 'g'), 10))))
+          and not exists (select 1 from clients c2 where c2.ghl_company_id = dc.id and c2.merged_into is null)
+        order by (dc.name_key = coalesce(nullif(acct.name_key, ''), f.sf_key)) desc, dc.name limit 1
+      ) sug on true
+      left join lateral (
+        select c.client_id::text as client_id, cl.name as account_name from contacts c join clients cl on cl.id = c.client_id
+        where not f.in_app and f.name like '% %' and length(f.name) >= 5 and lower(c.name) = lower(f.name) limit 1
+      ) dup_app on true
+      left join lateral (
+        select d.external_id, d.company_name from directory_contacts d
+        where not f.in_sf and f.name like '% %' and length(f.name) >= 5 and d.source = 'salesforce' and lower(d.name) = lower(f.name) limit 1
+      ) dup_sf on true
+      left join lateral (
+        select d.external_id, d.company_name from directory_contacts d
+        where not f.in_la and f.name like '% %' and length(f.name) >= 5 and d.source = 'lead_alchemist' and lower(d.name) = lower(f.name) limit 1
+      ) dup_la on true
+    )
+`;
+
+/**
  * Everyone in the app, Salesforce and Lead Alchemist, one row per person, filtered by where they
  * are (`presence`, any combination), a preset `filter`, and a name / email / phone search.
  */
 export async function listDirectory({
-  q,
-  filter = "all",
-  presence,
   limit = 50,
   offset = 0,
-}: {
-  q?: string;
-  filter?: DirectoryFilter;
-  presence?: Presence;
-  limit?: number;
-  offset?: number;
-}): Promise<{ rows: DirectoryRow[]; total: number }> {
+  ...query
+}: DirectoryQuery & { limit?: number; offset?: number }): Promise<{ rows: DirectoryRow[]; total: number }> {
   const db = await getDb();
   const result = await db.execute(sql`
-    ${peopleSql()}
-    select p.*, cl.name as account_name, count(*) over () as total
-    from flagged p left join clients cl on cl.id::text = p.client_id
-    where ${sql.raw(FILTER_SQL[filter])} and ${sql.raw(presenceSql(presence))} ${searchSql(q)}
+    ${enrichedSql()}
+    select p.*, count(*) over () as total
+    from enriched p
+    where ${whereSql(query)}
     order by lower(p.name), p.pkey
     limit ${Math.min(limit, 200)} offset ${offset}`);
   const raw = rowsOf<Record<string, unknown>>(result);
@@ -343,7 +465,7 @@ export async function listDirectory({
     email: (r.email as string) ?? null,
     phone: (r.phone as string) || null,
     accountId: (r.client_id as string) ?? null,
-    accountName: (r.account_name as string) ?? null,
+    accountName: r.client_id ? ((r.acct_name as string) ?? null) : null,
     inApp: !!r.in_app,
     inSf: !!r.in_sf,
     inLa: !!r.in_la,
@@ -354,23 +476,31 @@ export async function listDirectory({
     laCompanyId: (r.la_company_id as string) ?? null,
     sfAccountId: (r.sf_company_id as string) ?? null,
     laOutdated: !!r.la_outdated,
+    account: r.acct_id ? { id: r.acct_id as string, name: (r.acct_name as string) ?? "Account", sfAccountId: (r.acct_sf_id as string) ?? null } : null,
+    company: r.co_id ? { id: r.co_id as string, name: (r.co_name as string) ?? (r.la_company as string) ?? null } : null,
+    suggestedCompany: r.sug_id ? { id: r.sug_id as string, name: r.sug_name as string, how: r.sug_how as string } : null,
+    sameName: {
+      app: r.dup_app_account_id ? { accountId: r.dup_app_account_id as string, account: (r.dup_app_account as string) ?? "Account" } : null,
+      sf: r.dup_sf_id ? { id: r.dup_sf_id as string, company: (r.dup_sf_company as string) ?? null } : null,
+      la: r.dup_la_id ? { id: r.dup_la_id as string, company: (r.dup_la_company as string) ?? null } : null,
+    },
   }));
-  return { rows, total: Number(raw[0]?.total ?? 0) || (offset > 0 ? await countDirectory({ q, filter, presence }) : 0) };
+  return { rows, total: Number(raw[0]?.total ?? 0) || (offset > 0 ? await countDirectory(query) : 0) };
 }
 
 /** Every row key the list shows for these filters (all pages), for "select all matching". */
-export async function directoryKeys({ q, filter = "all", presence }: { q?: string; filter?: DirectoryFilter; presence?: Presence }): Promise<string[]> {
+export async function directoryKeys(query: DirectoryQuery): Promise<string[]> {
   const db = await getDb();
   const result = await db.execute(sql`
-    ${peopleSql()}
-    select p.app_id, p.dir_ids from flagged p
-    where ${sql.raw(FILTER_SQL[filter])} and ${sql.raw(presenceSql(presence))} ${searchSql(q)}
+    ${enrichedSql()}
+    select p.app_id, p.dir_ids from enriched p
+    where ${whereSql(query)}
     order by lower(p.name), p.pkey`);
   return rowsOf<{ app_id: string | null; dir_ids: string | null }>(result).map((r) => (r.app_id ? `a:${r.app_id}` : `d:${r.dir_ids}`));
 }
 
 /** The total when a page past the end comes back empty (the window count needs a row). */
-async function countDirectory(opts: { q?: string; filter?: DirectoryFilter; presence?: Presence }): Promise<number> {
+async function countDirectory(opts: DirectoryQuery): Promise<number> {
   const { rows, total } = await listDirectory({ ...opts, limit: 1, offset: 0 });
   return rows.length ? total : 0;
 }

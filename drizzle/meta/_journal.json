@@ -141,6 +141,13 @@
       "when": 1792871591233,
       "tag": "0019_la_match_denied",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1792875917891,
+      "tag": "0020_la_company_directory",
+      "breakpoints": true
     }
   ]
 }
