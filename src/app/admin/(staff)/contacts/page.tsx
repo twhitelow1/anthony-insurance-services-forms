@@ -15,15 +15,15 @@ import { FlashMessage } from "../salesforce/ui";
 import { addToAppAction, importAction, searchContactsAction, sendToLeadAlchemistAction, sendToSalesforceAction, updateLaDetailsAction } from "./actions";
 import { CONTACT_SEARCH_COOKIE } from "./search-cookie";
 
-export const metadata = { title: "Contacts | Anthony Insurance Services" };
+export const metadata = { title: "Contacts | AIS Connect" };
 export const dynamic = "force-dynamic";
 
 const FILTERS: { value: DirectoryFilter; label: string }[] = [
   { value: "all", label: "Everyone" },
-  { value: "app_only", label: "Only in this app" },
+  { value: "app_only", label: "Only in AIS Connect" },
   { value: "sf_only", label: "Only in Salesforce" },
   { value: "la_only", label: "Only in Lead Alchemist" },
-  { value: "not_app", label: "Not in this app" },
+  { value: "not_app", label: "Not in AIS Connect" },
   { value: "not_sf", label: "Not in Salesforce" },
   { value: "not_la", label: "Not in Lead Alchemist" },
   { value: "everywhere", label: "In all three" },
@@ -58,7 +58,7 @@ export default async function Contacts({ searchParams }: PageProps<"/admin/conta
     <div>
       <h1 className="mb-2 text-2xl font-semibold">Contacts</h1>
       <p className="mb-4 max-w-3xl text-sm text-[var(--muted)]">
-        Everyone in this app, Salesforce and Lead Alchemist, one row per person, with their Account in each place (Company in Lead Alchemist). People
+        Everyone in AIS Connect, Salesforce and Lead Alchemist, one row per person, with their Account in each place (Company in Lead Alchemist). People
         are matched by their saved links, then email, then phone. Filter to who&apos;s missing somewhere, tick them and sync. Nothing is deleted
         anywhere.
       </p>
@@ -94,7 +94,7 @@ export default async function Contacts({ searchParams }: PageProps<"/admin/conta
 
       <form id="bulk" className="mb-3 flex flex-wrap items-center gap-2 text-sm">
         <input type="hidden" name="back" value={back} />
-        <SubmitButton formAction={addToAppAction} className="btn-secondary">Add selected to this app</SubmitButton>
+        <SubmitButton formAction={addToAppAction} className="btn-secondary">Add selected to AIS Connect</SubmitButton>
         <SubmitButton formAction={sendToLeadAlchemistAction} className="btn-primary" disabled={!laOn} title={laOn ? undefined : "Connect Lead Alchemist first"}>
           Sync selected to Lead Alchemist (and their Company)
         </SubmitButton>
@@ -112,7 +112,7 @@ export default async function Contacts({ searchParams }: PageProps<"/admin/conta
         </label>
       </form>
       <p className="mb-3 max-w-3xl text-xs text-[var(--muted)]">
-        Syncing someone who isn&apos;t in this app adds them first: a Salesforce Contact comes in with its Account, a Lead Alchemist contact joins the
+        Syncing someone who isn&apos;t in AIS Connect adds them first: a Salesforce Contact comes in with its Account, a Lead Alchemist contact joins the
         account linked to its Company (or a new account named after it). In Lead Alchemist they&apos;re put in their account&apos;s Company, their
         empty name, email, phone and address fields are filled in, and links to the account here and in Salesforce are added; in Salesforce,
         they go under their account&apos;s Salesforce Account.
@@ -125,7 +125,7 @@ export default async function Contacts({ searchParams }: PageProps<"/admin/conta
             <tr>
               <th className="w-8"><SelectAll form="bulk" /></th>
               <th>Person</th>
-              <th>This app</th>
+              <th>AIS Connect</th>
               <th>Salesforce</th>
               <th>Lead Alchemist</th>
             </tr>
@@ -147,7 +147,7 @@ export default async function Contacts({ searchParams }: PageProps<"/admin/conta
                 </td>
                 <td className="text-sm">
                   {r.inApp ? (
-                    r.accountId ? <Link className="btn-link" href={`/admin/clients/${r.accountId}`}>{r.accountName ?? "Account"}</Link> : "In this app"
+                    r.accountId ? <Link className="btn-link" href={`/admin/clients/${r.accountId}`}>{r.accountName ?? "Account"}</Link> : "In AIS Connect"
                   ) : (
                     <Missing />
                   )}

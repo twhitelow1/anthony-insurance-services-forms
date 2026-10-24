@@ -2,7 +2,7 @@ import { AssistantChat } from "@/components/AssistantChat";
 import { requireStaff } from "@/lib/auth/session";
 import { askAssistantAction } from "../../actions";
 
-export const metadata = { title: "Ask AI | Anthony Insurance Services" };
+export const metadata = { title: "Ask AI | AIS Connect" };
 
 export default async function AssistantPage() {
   await requireStaff("/admin/assistant");

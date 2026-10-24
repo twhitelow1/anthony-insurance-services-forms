@@ -6,7 +6,7 @@ import { testLeadAlchemist, testSalesforce, type Check } from "@/lib/integration
 import { getSettings } from "@/lib/settings";
 import { clearIntegrationAction, saveIntegrationAction } from "./actions";
 
-export const metadata = { title: "Integrations | Anthony Insurance Services" };
+export const metadata = { title: "Integrations | AIS Connect" };
 export const dynamic = "force-dynamic";
 
 const SOURCE: Record<CredentialSource, { label: string; tone: string }> = {

@@ -153,7 +153,7 @@ export const martialArtsInstructorApplication: FormDefinition = {
           id: "terms_agreement",
           label: "Terms & Conditions",
           options: opts(
-            "I agree to terms & conditions provided by the company. By providing my phone number, I agree to receive text messages from the business. The information provided in this application is true to the best of my ability.",
+            "I agree to terms & conditions provided by the company. By providing my phone number, I agree to receive text messages from the business. The information provided in AIS Connectlication is true to the best of my ability.",
           ),
           required: true,
         },

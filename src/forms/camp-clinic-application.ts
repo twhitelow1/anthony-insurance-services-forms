@@ -97,7 +97,7 @@ export const campClinicApplication: FormDefinition = {
           label: "Desired Effective Date",
           required: true,
           width: "half",
-          tooltip: "Camp and Clinic session dates will be obtained later in the application process.",
+          tooltip: "Camp and Clinic session dates will be obtained later in AIS Connectlication process.",
         },
         { type: "date", id: "desired_expiration_date", label: "Desired Expiration Date", required: true, width: "half" },
         {

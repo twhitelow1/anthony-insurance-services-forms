@@ -467,7 +467,7 @@ export async function updateLeadAlchemistForSelected(values: string[], actor: st
   const { updateLeadAlchemistDetails } = await import("./external");
   const { app, dir } = parseKeys(values);
   const result: BulkResult = { done: 0, notes: [] };
-  if (dir.length) result.notes.push(`${dir.length} ${dir.length === 1 ? "isn't" : "aren't"} in this app yet (add them first).`);
+  if (dir.length) result.notes.push(`${dir.length} ${dir.length === 1 ? "isn't" : "aren't"} in AIS Connect yet (add them first).`);
   const started = Date.now();
   let left = app.length;
   let unchanged = 0;

@@ -8,7 +8,7 @@
  */
 export class DeleteNotAllowedError extends Error {
   constructor(system: string, method: string, path: string) {
-    super(`${system}: ${method} ${path.split("?")[0]} is blocked. This app never deletes in ${system}; delete it there instead.`);
+    super(`${system}: ${method} ${path.split("?")[0]} is blocked. AIS Connect never deletes in ${system}; delete it there instead.`);
     this.name = "DeleteNotAllowedError";
   }
 }

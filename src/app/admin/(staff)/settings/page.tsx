@@ -8,7 +8,7 @@ import { saveSettingsAction, sendTestEmailAction } from "./actions";
 import { salesforceHealth } from "@/lib/salesforce/health";
 import { DEFAULT_GHL_APP_URL } from "@/lib/integrations/links";
 
-export const metadata = { title: "Settings | Anthony Insurance Services" };
+export const metadata = { title: "Settings | AIS Connect" };
 
 const lines = (v: string[] | undefined) => (v ?? []).join("\n");
 
@@ -209,7 +209,7 @@ export default async function SettingsPage({ searchParams }: PageProps<"/admin/s
         <section className="card !p-5" aria-labelledby="mapping">
           <h2 id="mapping" className="mb-1 font-semibold">Data mapping</h2>
           <p className="mb-3 text-sm text-[var(--muted)]">
-            Bring every Salesforce Account into the app, link the app&apos;s accounts to Lead Alchemist Companies, and send past applications to
+            Bring every Salesforce Account into AIS Connect, link its accounts to Lead Alchemist Companies, and send past applications to
             Salesforce. Each one shows its proposed matches side by side for you to check and change, and writes nothing until you confirm.
           </p>
           <Link className="btn-secondary" href="/admin/settings/mapping">Open data mapping</Link>

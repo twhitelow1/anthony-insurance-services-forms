@@ -246,7 +246,7 @@ export async function removeContactFromAccount(clientId: string, contactId: stri
   const db = await getDb();
   const contact = await getContact(contactId);
   await db.delete(schema.accountContacts).where(and(eq(schema.accountContacts.clientId, clientId), eq(schema.accountContacts.contactId, contactId)));
-  if (contact) await addClientEvent(clientId, "contact_removed", actor, { message: `${contact.name} taken off this account in the app` });
+  if (contact) await addClientEvent(clientId, "contact_removed", actor, { message: `${contact.name} taken off this account in AIS Connect` });
   await refreshSearch(clientId);
 }
 

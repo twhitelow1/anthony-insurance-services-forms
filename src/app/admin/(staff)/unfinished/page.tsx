@@ -7,7 +7,7 @@ import { countUnfinished, listUnfinished } from "@/lib/applications/drafts";
 import { clientPath } from "@/lib/applications/links";
 import { deleteDraftAction } from "@/app/admin/actions";
 
-export const metadata = { title: "Unfinished applications | Anthony Insurance Services" };
+export const metadata = { title: "Unfinished applications | AIS Connect" };
 
 export default async function Unfinished({ searchParams }: PageProps<"/admin/unfinished">) {
   await requireStaff("/admin/unfinished");

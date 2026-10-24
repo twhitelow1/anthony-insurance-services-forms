@@ -20,6 +20,8 @@ integrations or open questions:
    (all "Open in Lead Alchemist" links use it). Vercel variables use the `LA_` prefix (`LA_API_TOKEN`…);
    the old `GHL_` names are only read as a fallback. Some internal code identifiers still say `ghl`.
 
+4. The app is called **AIS Connect** in the UI, messages, docs and chat with Todd (not "this app").
+
 # Always give Todd a preview link
 
 Whenever you push to a PR branch, include the Vercel preview link in your reply (and in the PR body), pointing at

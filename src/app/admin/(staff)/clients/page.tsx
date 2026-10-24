@@ -11,7 +11,7 @@ import { searchClientsAction } from "./actions";
 import { linkAllGhlAction } from "@/app/admin/actions";
 import { ghlConfig } from "@/lib/ghl/client";
 
-export const metadata = { title: "Accounts | Anthony Insurance Services" };
+export const metadata = { title: "Accounts | AIS Connect" };
 
 const SORTS: { value: ClientSort; label: string }[] = [
   { value: "latest", label: "Latest activity" },

@@ -109,7 +109,7 @@ export async function refreshAccountFromSalesforce(clientId: string, sf: Salesfo
   for (const p of people) await refreshContactExternal(p.id).catch((err) => console.warn("[refresh] contact", err instanceof Error ? err.message : err));
 
   await addClientEvent(client.id, "sf_refreshed", actor, {
-    message: `Read from Salesforce${added ? `; ${added} new contact${added === 1 ? "" : "s"} added` : ""}. Nothing in the app was overwritten.`,
+    message: `Read from Salesforce${added ? `; ${added} new contact${added === 1 ? "" : "s"} added` : ""}. Nothing in AIS Connect was overwritten.`,
   });
   return { snapshot: read.snapshot, added };
 }

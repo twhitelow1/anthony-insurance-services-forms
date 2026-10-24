@@ -1,6 +1,6 @@
 import { verifyStaffLinkAction } from "../login-actions";
 
-export const metadata = { title: "Staff sign-in | Anthony Insurance Services", referrer: "no-referrer" };
+export const metadata = { title: "Staff sign-in | AIS Connect", referrer: "no-referrer" };
 
 /** The emailed staff link lands here; signing in takes a click (POST), so link scanners can't spend it. */
 export default async function StaffVerify({ searchParams }: PageProps<"/admin/verify">) {

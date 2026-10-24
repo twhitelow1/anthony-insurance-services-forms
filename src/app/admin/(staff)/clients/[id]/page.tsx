@@ -55,7 +55,7 @@ const SAVED: Record<string, string> = {
   split: "Split off into an account of its own.",
   primary: "Primary contact changed.",
   separate: "Kept as a separate account.",
-  refreshed: "Read from Salesforce. Its values are shown beside the app's; nothing in the app was overwritten.",
+  refreshed: "Read from Salesforce. Its values are shown beside AIS Connect's; nothing in AIS Connect was overwritten.",
   checked: "Checked Salesforce and Lead Alchemist for each contact's email and phone.",
   pushed: "Sent to the other system. It's on the account's activity log.",
 };
@@ -161,7 +161,7 @@ export default async function AccountPage({ params, searchParams }: PageProps<"/
         {client.sfAccountId && (
           <form action={refreshFromSalesforceAction}>
             <input type="hidden" name="id" value={client.id} />
-            <button className="btn-secondary" disabled={!sfConnected} title="Read the Salesforce Account and contacts. Nothing in the app is overwritten.">
+            <button className="btn-secondary" disabled={!sfConnected} title="Read the Salesforce Account and contacts. Nothing in AIS Connect is overwritten.">
               Refresh from Salesforce
             </button>
           </form>
@@ -232,7 +232,7 @@ export default async function AccountPage({ params, searchParams }: PageProps<"/
                 <dt className="text-xs text-[var(--muted)]">{label}</dt>
                 <dd>
                   {value || "—"}
-                  {differs && <span className="badge badge-warning ml-2" title="Different from this app">Differs</span>}
+                  {differs && <span className="badge badge-warning ml-2" title="Different from AIS Connect">Differs</span>}
                 </dd>
               </div>
             ))}
@@ -325,7 +325,7 @@ export default async function AccountPage({ params, searchParams }: PageProps<"/
                             <button className="btn-link text-xs" title="Fill the empty name, email, phone, company and address fields and add the links">
                               Update in Lead Alchemist
                             </button>
-                            <button name="replace" value="yes" className="btn-link text-xs text-[var(--muted)]" title="Also replace Lead Alchemist values that differ from this app's">
+                            <button name="replace" value="yes" className="btn-link text-xs text-[var(--muted)]" title="Also replace Lead Alchemist values that differ from AIS Connect's">
                               (replace differences)
                             </button>
                           </form>

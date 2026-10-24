@@ -438,7 +438,7 @@ export async function connectContactsToCompany(
       // Not linked (no match and not created) or Lead Alchemist refused: the notes above cover it.
     }
   }
-  if (filled) result.notes.push(`${filled} Lead Alchemist contact${filled === 1 ? "" : "s"} filled in from the app`);
+  if (filled) result.notes.push(`${filled} Lead Alchemist contact${filled === 1 ? "" : "s"} filled in from AIS Connect`);
   if (created) result.notes.push(`${created} contact${created === 1 ? "" : "s"} created in Lead Alchemist`);
   if (unmatched)
     result.notes.push(

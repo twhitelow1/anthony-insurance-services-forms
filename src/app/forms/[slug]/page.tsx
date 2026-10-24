@@ -58,7 +58,7 @@ export default async function FormPage({ params, searchParams }: PageProps<"/for
       )}
       {docs.length > 0 && (
         <aside className="callout mb-6 text-sm" aria-labelledby="form-docs">
-          <h2 id="form-docs" className="mb-1 font-semibold">Documents for this application</h2>
+          <h2 id="form-docs" className="mb-1 font-semibold">Documents for AIS Connectlication</h2>
           <ul className="space-y-1">
             {docs.map((d) => (
               <li key={d.id}>

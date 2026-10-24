@@ -202,7 +202,7 @@ export async function pushToGhl(form: FormDefinition, app: Application, clientId
         r.opportunityId
           ? r.movedFromLead
             ? "moved the lead's opportunity from the lead pipeline into the applications pipeline"
-            : "created this application's opportunity"
+            : "created AIS Connectlication's opportunity"
           : null,
         missing.length ? `create these Lead Alchemist custom fields to fill them in: ${missing.join("; ")}` : null,
         company,

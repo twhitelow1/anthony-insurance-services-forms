@@ -80,7 +80,7 @@ export default async function Status() {
         : (process.env.SESSION_SECRET?.length ?? 0) >= 32
           ? "SESSION_SECRET is set."
           : process.env.OPEN_ACCESS !== undefined
-            ? `OPEN_ACCESS is set, but to a value this app doesn't recognise (${JSON.stringify(process.env.OPEN_ACCESS.slice(0, 20))}). Change it to 1 and redeploy.`
+            ? `OPEN_ACCESS is set, but to a value AIS Connect doesn't recognise (${JSON.stringify(process.env.OPEN_ACCESS.slice(0, 20))}). Change it to 1 and redeploy.`
             : `This deployment doesn't see OPEN_ACCESS or SESSION_SECRET. Add OPEN_ACCESS = 1 for the ${process.env.VERCEL_ENV ?? "current"} environment in Vercel, then redeploy.`,
     },
     {

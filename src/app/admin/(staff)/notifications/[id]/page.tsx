@@ -11,7 +11,7 @@ import { pushContactValueAction } from "../../clients/actions";
 import { FlashMessage } from "../../salesforce/ui";
 import { addNotificationNoteAction, assignToMeAction, setNotificationStatusAction } from "../actions";
 
-export const metadata = { title: "Notification | Anthony Insurance Services" };
+export const metadata = { title: "Notification | AIS Connect" };
 export const dynamic = "force-dynamic";
 
 const who = (actor: string | null | undefined) => (actor ? actor.replace(/^staff:/, "") : "system");

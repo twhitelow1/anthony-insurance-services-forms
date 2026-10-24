@@ -94,7 +94,7 @@ export async function proposeForAccount(account: AccountRow): Promise<NewMapping
 
   const linked = await clientsForAccount(account.Id);
   if (linked[0]?.deactivatedAt) {
-    return { ...base, proposal: "skip", confidence: "exact", targetId: linked[0].id, targetName: linked[0].name, reason: "Deactivated in this app: reactivate it to sync" };
+    return { ...base, proposal: "skip", confidence: "exact", targetId: linked[0].id, targetName: linked[0].name, reason: "Deactivated in AIS Connect: reactivate it to sync" };
   }
   if (linked.length) return { ...base, proposal: "link", confidence: "exact", targetId: linked[0].id, targetName: linked[0].name, reason: "Already linked to this Salesforce Account" };
 
@@ -121,7 +121,7 @@ export async function proposeForAccount(account: AccountRow): Promise<NewMapping
   const emailSameName = [...byEmail.values()].filter((a) => a.nameKey === key || a.isIndividual);
   if (emailSameName.length === 1) {
     const a = emailSameName[0];
-    return { ...base, proposal: "link", confidence: "strong", targetId: a.id, targetName: a.name, reason: "A Contact's email belongs to this app Account", candidates };
+    return { ...base, proposal: "link", confidence: "strong", targetId: a.id, targetName: a.name, reason: "A Contact's email belongs to AIS Connect account", candidates };
   }
   if (strongByName.length === 1) {
     const a = strongByName[0];
@@ -136,7 +136,7 @@ export async function proposeForAccount(account: AccountRow): Promise<NewMapping
       candidates,
     };
   }
-  return { ...base, proposal: "create", confidence: "none", reason: "Not in the app yet" };
+  return { ...base, proposal: "create", confidence: "none", reason: "Not in AIS Connect yet" };
 }
 
 /** Read the next Salesforce Accounts and add their proposed rows. Time-boxed; call again until review. */
@@ -197,7 +197,7 @@ export async function applyAccount(
   if (action === "link") {
     const target = targetId ? await getClient(targetId) : undefined;
     if (!target) throw new Error("The app Account to link to no longer exists");
-    if (target.deactivatedAt) throw new Error(`"${target.name}" is deactivated in this app. Reactivate it first.`);
+    if (target.deactivatedAt) throw new Error(`"${target.name}" is deactivated in AIS Connect. Reactivate it first.`);
     if (target.sfAccountId && target.sfAccountId !== row.sourceId) throw new Error(`"${target.name}" is already linked to a different Salesforce Account`);
     await setClientSalesforce(target.id, { sfAccountId: row.sourceId, sfStatus: "linked", sfLastError: null, sfSyncPaused: false });
     // Fill in what the app doesn't have yet.

@@ -5,7 +5,7 @@ import { requireStaff } from "@/lib/auth/session";
 import { libraryPath, listLibrary } from "@/lib/library";
 import { deleteLibraryFileAction, updateLibraryFileAction, uploadLibraryFileAction } from "./actions";
 
-export const metadata = { title: "Documents | Anthony Insurance Services" };
+export const metadata = { title: "Documents | AIS Connect" };
 
 const allForms = Object.values(forms).sort((a, b) => a.title.localeCompare(b.title));
 const kb = (n: number) => (n < 1024 * 1024 ? `${Math.round(n / 1024)} KB` : `${(n / 1024 / 1024).toFixed(1)} MB`);

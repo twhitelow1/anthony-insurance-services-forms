@@ -149,7 +149,7 @@ export async function resumeBulkSyncAction(formData: FormData) {
 export async function unsyncAccountAction(formData: FormData) {
   return run(formData, async (actor) => {
     const c = await unsyncAccount(id(formData, "clientId"), actor);
-    return `Stopped syncing "${c.name}". It's unchanged in Salesforce and stays in this app.`;
+    return `Stopped syncing "${c.name}". It's unchanged in Salesforce and stays in AIS Connect.`;
   });
 }
 
@@ -162,7 +162,7 @@ export async function deactivateAccountAction(formData: FormData) {
   return run(formData, async (actor) => {
     if (formData.get("confirm") !== "yes") throw new Error("Tick the box to confirm.");
     const c = await deactivateAccount(id(formData, "clientId"), actor, String(formData.get("reason") ?? ""));
-    return `Deactivated "${c.name}" in this app. It's still in Salesforce, keeps its history, and can be reactivated.`;
+    return `Deactivated "${c.name}" in AIS Connect. It's still in Salesforce, keeps its history, and can be reactivated.`;
   });
 }
 
@@ -193,7 +193,7 @@ export async function removeContactAction(formData: FormData) {
   return run(formData, async (actor) => {
     if (formData.get("confirm") !== "yes") throw new Error("Tick the box to confirm.");
     const c = await removeContactFromDashboard(id(formData, "contactId"), actor);
-    return `Removed ${c.name} from this app. They're still in Salesforce and Lead Alchemist; delete them there if they should go.`;
+    return `Removed ${c.name} from AIS Connect. They're still in Salesforce and Lead Alchemist; delete them there if they should go.`;
   });
 }
 
@@ -207,7 +207,7 @@ export async function linkLaContactAction(formData: FormData) {
 }
 
 export async function unlinkLaContactAction(formData: FormData) {
-  return run(formData, async (actor) => `Unlinked ${(await unlinkLaContact(id(formData, "contactId"), actor)).name} in this app. Nothing changed in Lead Alchemist.`);
+  return run(formData, async (actor) => `Unlinked ${(await unlinkLaContact(id(formData, "contactId"), actor)).name} in AIS Connect. Nothing changed in Lead Alchemist.`);
 }
 
 /** Create the Lead Alchemist contact when none was found by email or phone, then link it. */

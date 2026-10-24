@@ -64,7 +64,7 @@ export async function detectContactChanges(input: { email: string; phone?: strin
 export const describeChanges = (changes: ContactChange[]) =>
   changes.map(
     (c) =>
-      `${c.field === "phone" ? "Phone" : "Email"} on this application (${c.value}) differs from ${c.differsFrom
+      `${c.field === "phone" ? "Phone" : "Email"} on AIS Connectlication (${c.value}) differs from ${c.differsFrom
         .map((d) => `${SOURCE_LABEL[d.source]} (${d.value})`)
         .join(" and ")}.`,
   );
@@ -124,7 +124,7 @@ export async function pushContactValue(contactId: string, target: "salesforce" |
   if (!contact) throw new Error("That contact no longer exists.");
   const v = field === "email" ? normalizeEmail(value) : value.trim();
   const known = field === "email" ? await contactEmailsOf(contact.id) : contact.phones;
-  if (!known.some((k) => (field === "email" ? sameEmail(k, v) : samePhone(k, v)))) throw new Error("That value isn't on this contact in the app.");
+  if (!known.some((k) => (field === "email" ? sameEmail(k, v) : samePhone(k, v)))) throw new Error("That value isn't on this contact in AIS Connect.");
   if (target === "salesforce") {
     if (!contact.sfContactId) throw new Error("This contact isn't linked to a Salesforce Contact.");
     const sf = await salesforceClient();
@@ -141,7 +141,7 @@ export async function pushContactValue(contactId: string, target: "salesforce" |
     .set(target === "salesforce" ? (field === "phone" ? { sfPhone: v } : { sfEmail: v }) : field === "phone" ? { laPhone: v } : { laEmail: v })
     .where(eq(schema.contacts.id, contact.id));
   const where = target === "salesforce" ? "Salesforce" : "Lead Alchemist";
-  await addClientEvent(contact.clientId, "contact_pushed", actor, { message: `${contact.name}: ${field} sent to ${where} from the app` });
+  await addClientEvent(contact.clientId, "contact_pushed", actor, { message: `${contact.name}: ${field} sent to ${where} from AIS Connect` });
   return { contact, where };
 }
 
@@ -249,7 +249,7 @@ export async function updateLeadAlchemistDetails(contactId: string, actor: strin
     .set({ updatedAt: new Date(), ...(changes.email ? { laEmail: changes.email } : {}), ...(changes.phone ? { laPhone: changes.phone } : {}) })
     .where(eq(schema.contacts.id, contact.id));
   await addClientEvent(contact.clientId, "contact_pushed", actor, {
-    message: `${contact.name}: Lead Alchemist contact updated from the app (${fields.map((f) => FIELD_LABEL[f]).join(", ")})`,
+    message: `${contact.name}: Lead Alchemist contact updated from AIS Connect (${fields.map((f) => FIELD_LABEL[f]).join(", ")})`,
   });
   return { contact, fields };
 }

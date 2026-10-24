@@ -52,7 +52,7 @@ export async function searchContactsAction(formData: FormData) {
 }
 
 export async function addToAppAction(formData: FormData) {
-  return bulk(formData, "Added to this app", async (values, actor) => addSelectedToApp(values, actor, { sf: await salesforceClient(), links: await links() }));
+  return bulk(formData, "Added to AIS Connect", async (values, actor) => addSelectedToApp(values, actor, { sf: await salesforceClient(), links: await links() }));
 }
 
 export async function sendToLeadAlchemistAction(formData: FormData) {
