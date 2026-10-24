@@ -1,3 +1,4 @@
+import { selectList } from "@/lib/salesforce/fields";
 import { nameKey, phoneDigits } from "@/lib/clients/text";
 import { soqlString, type SalesforceApi } from "./api";
 
@@ -55,7 +56,7 @@ export async function matchSalesforce(api: SalesforceApi, input: MatchInput): Pr
   }
 
   if (!name) return { kind: "new" };
-  const accounts = await api.query<AccountRow>(`SELECT Id, Name, Phone FROM Account WHERE Name = ${soqlString(name)} LIMIT 10`);
+  const accounts = await api.query<AccountRow>(`SELECT ${await selectList(api, "Account", ["Name", "Phone"])} FROM Account WHERE Name = ${soqlString(name)} LIMIT 10`);
   if (accounts.length) {
     const digits = phoneDigits(input.phone);
     const samePhone = digits ? accounts.filter((a) => phoneDigits(a.Phone) === digits) : [];

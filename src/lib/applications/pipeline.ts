@@ -17,7 +17,9 @@ import { complianceAttachments } from "@/lib/compliance";
 import { confirmationEmail, statusEmail } from "@/lib/mail/templates";
 import { missingUploads } from "@/lib/forms/validate";
 import { standardContactFields } from "@/lib/ghl/sync";
-import { assignApplicationClient, assignDraftClient, setContactGhl } from "@/lib/clients/repo";
+import { addClientEvent, assignApplicationClient, assignDraftClient, isIndividualForm, setContactGhl } from "@/lib/clients/repo";
+import { describeChanges, detectContactChanges } from "@/lib/contacts/external";
+import { raiseNotification } from "@/lib/notifications/repo";
 import { companyForApplicant } from "@/lib/ghl/companies";
 import { links } from "@/lib/integrations/links";
 import { salesforceConfig } from "@/lib/salesforce/config";
@@ -28,14 +30,15 @@ const describe = (err: unknown) => (err instanceof Error ? err.message : String(
 
 /** Everything that happens after a submission is safely stored. Never throws. */
 export async function onApplicationSubmitted(form: FormDefinition, app: Application) {
+  // Before the application's details are saved onto the contact: did their phone or email change?
+  const changes = await checkContactChanges(form, app);
   // The client record first: its page is linked from Lead Alchemist and Salesforce.
   const clientId = await linkClient(form, app);
-  // The PDF comes next so its link can go onto the Lead Alchemist contact; Salesforce goes last so
-  // it can carry the Lead Alchemist links (and Lead Alchemist gets the Salesforce ones back).
+  const changeLines = await flagContactChanges(app, clientId, changes);
+  // The PDF comes next so its link can go onto the Lead Alchemist contact. Nothing goes to
+  // Salesforce on submit: staff send it from the application ("Send to" / "Create in Salesforce").
   await Promise.allSettled([
-    makePdf(form, app).then(() =>
-      Promise.allSettled([pushToGhl(form, app, clientId).then(() => pushToSalesforce(app)), notifyStaff(form, app)]),
-    ),
+    makePdf(form, app).then(() => Promise.allSettled([pushToGhl(form, app, clientId), notifyStaff(form, app, changeLines)])),
     sendConfirmation(form, app),
     runAiReview(form, app),
   ]);
@@ -52,8 +55,45 @@ const clientDetails = (form: FormDefinition, values: Application["values"], emai
     phone: c.phone,
     website: c.website,
     address: { street: c.address1, city: c.city, state: c.state, postalCode: c.postalCode },
+    individual: isIndividualForm(form.slug),
   };
 };
+
+/** A phone or email on this application that differs from what's on file. Never throws. */
+async function checkContactChanges(form: FormDefinition, app: Application) {
+  if (app.isTest) return null;
+  try {
+    return await detectContactChanges({ email: app.applicantEmail, phone: standardContactFields(form, app.values).phone });
+  } catch (err) {
+    console.error("[pipeline] contact change check failed", app.reference, describe(err));
+    return null;
+  }
+}
+
+/** Raise a notification for the team and note it on the account. Returns lines for the staff email. Never throws. */
+async function flagContactChanges(app: Application, clientId: string | null, found: Awaited<ReturnType<typeof checkContactChanges>>) {
+  if (!found?.changes.length) return [];
+  const lines = describeChanges(found.changes);
+  try {
+    const accountId = clientId ?? found.contact.clientId;
+    for (const c of found.changes) {
+      await raiseNotification({
+        kind: "contact_changed",
+        title: `${c.field === "phone" ? "Phone" : "Email"} changed: ${found.contact.name}`,
+        detail: describeChanges([c])[0],
+        data: { change: c, reference: app.reference },
+        clientId: accountId,
+        contactId: found.contact.id,
+        applicationId: app.id,
+        dedupeKey: `contact_changed:${found.contact.id}:${c.field}:${c.value.toLowerCase()}`,
+      });
+    }
+    await addClientEvent(accountId, "contact_changed", "system", { message: `${found.contact.name}: ${lines.join(" ")} (application ${app.reference})` });
+  } catch (err) {
+    console.error("[pipeline] contact change notification failed", app.reference, describe(err));
+  }
+  return lines;
+}
 
 /** Attach the application to its Account and the Contact who filled it out (created when new). Never throws. */
 async function linkClient(form: FormDefinition, app: Application): Promise<string | null> {
@@ -66,7 +106,8 @@ async function linkClient(form: FormDefinition, app: Application): Promise<strin
 }
 
 /**
- * Queue the Salesforce sync and run it once now. Never throws, never blocks the applicant:
+ * Queue the Salesforce sync and run it once now (after a status change on an application that's
+ * already in Salesforce; new ones are sent by staff). Never throws, never blocks anyone:
  * a failure stays queued and is retried with backoff (src/lib/salesforce/jobs.ts).
  * Test submissions never go to Salesforce.
  */
@@ -179,7 +220,7 @@ export async function pushToGhl(form: FormDefinition, app: Application, clientId
 /** Staff told about every new application (Admin → Settings, else NOTIFY_EMAILS). */
 export const staffNotifyList = async () => (await getSettings()).notifyEmails;
 
-async function notifyStaff(form: FormDefinition, app: Application) {
+async function notifyStaff(form: FormDefinition, app: Application, changeLines: string[] = []) {
   const to = await staffNotifyList();
   if (!to.length) return;
   try {
@@ -193,6 +234,7 @@ async function notifyStaff(form: FormDefinition, app: Application) {
         paragraphs: [
           `${form.title} from ${app.applicantName} (${app.applicantEmail})${app.state ? `, ${app.state}` : ""}.`,
           ...(effective ? [`Requested effective date: ${effective}.`] : []),
+          ...(changeLines.length ? [`Contact details changed: ${changeLines.join(" ")} See Admin → Notifications.`] : []),
           pdf ? `The application PDF is ready: ${appUrl()}/applications/${app.id}/pdf` : "The PDF is still being created.",
         ],
         button: { label: "Open the application", url: `${appUrl()}/admin/applications/${app.id}` },

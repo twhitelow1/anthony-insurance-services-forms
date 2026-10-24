@@ -20,6 +20,7 @@ import {
 import { nameKey } from "@/lib/clients/text";
 import type { Links } from "@/lib/integrations/urls";
 import { soqlString, type SalesforceApi } from "@/lib/salesforce/api";
+import { accountSelect } from "@/lib/salesforce/fields";
 import { hiddenSet, isHidden, unhide } from "@/lib/salesforce/hidden";
 import { LINK_FIELDS, prepareFields } from "@/lib/salesforce/mapping";
 import { addRows, applyBatch, finalChoice, saveRun, type MappingRun, type NewMappingRow } from "./runs";
@@ -50,10 +51,7 @@ export type AccountRow = {
 
 const PAGE = 200;
 
-/** The Account fields (and its Contacts) the import and the Salesforce screen read. */
-export const ACCOUNT_SELECT =
-  "SELECT Id, Name, Phone, Website, BillingStreet, BillingCity, BillingState, BillingPostalCode, LastModifiedDate, " +
-  "(SELECT Id, Email, FirstName, LastName, Phone, Title FROM Contacts ORDER BY CreatedDate) FROM Account";
+export { accountSelect } from "@/lib/salesforce/fields";
 
 export interface SalesforceImportDeps {
   sf: SalesforceApi;
@@ -141,7 +139,7 @@ export async function scanSalesforceBatch(run: MappingRun, deps: SalesforceImpor
   const budget = deps.timeBudgetMs ?? 40_000;
   while (Date.now() - started < budget) {
     const where = run.cursor ? `WHERE Id > ${soqlString(run.cursor)} ` : "";
-    const soql = `${ACCOUNT_SELECT} ${where}ORDER BY Id LIMIT ${PAGE}`;
+    const soql = `${await accountSelect(deps.sf)} ${where}ORDER BY Id LIMIT ${PAGE}`;
     const { records } = await deps.sf.queryPage<AccountRow>(soql);
     if (!records.length) {
       run.phase = "review";

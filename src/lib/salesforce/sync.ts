@@ -7,7 +7,7 @@ import { getForm } from "@/forms";
 import { STATUSES } from "@/lib/applications/status";
 import { addEvent, getApplication } from "@/lib/applications/repo";
 import { mainDocument } from "@/lib/applications/documents";
-import { addClientEvent, assignApplicationClient, clientGhlContactId, getClient, getContact, setClientSalesforce, setContactSalesforce } from "@/lib/clients/repo";
+import { addClientEvent, assignApplicationClient, clientGhlContactId, getClient, getContact, setClientSalesforce, setContactSalesforce, isIndividualForm } from "@/lib/clients/repo";
 import { standardContactFields } from "@/lib/ghl/sync";
 import { ghlLinks, type GhlLinkWriter } from "@/lib/ghl/links";
 import { links as configuredLinks } from "@/lib/integrations/links";
@@ -115,6 +115,7 @@ export async function syncApplicationToSalesforce(applicationId: string, deps: S
     phone: contactFields.phone,
     website: contactFields.website,
     address: { street: contactFields.address1, city: contactFields.city, state: contactFields.state, postalCode: contactFields.postalCode },
+    individual: isIndividualForm(app.formSlug),
   };
   let clientId = app.clientId;
   let appContactId = app.contactId;

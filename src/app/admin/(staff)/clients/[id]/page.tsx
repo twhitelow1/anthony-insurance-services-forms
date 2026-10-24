@@ -19,6 +19,8 @@ import { ghlConfig } from "@/lib/ghl/client";
 import { salesforceConfig } from "@/lib/salesforce/config";
 import { getSettings } from "@/lib/settings";
 import { linkGhlContactAction, userModeAction } from "@/app/admin/actions";
+import { externalDifferences, SOURCE_LABEL } from "@/lib/contacts/external";
+import { ACTIVE, listNotifications } from "@/lib/notifications/repo";
 import {
   addClientNoteAction,
   keepSeparateAction,
@@ -27,6 +29,9 @@ import {
   setPrimaryContactAction,
   splitContactAction,
   syncClientAction,
+  refreshFromSalesforceAction,
+  refreshContactsAction,
+  pushContactValueAction,
 } from "../actions";
 
 const GHL_MESSAGES: Record<string, string> = {
@@ -43,6 +48,9 @@ const SAVED: Record<string, string> = {
   split: "Split off into an account of its own.",
   primary: "Primary contact changed.",
   separate: "Kept as a separate account.",
+  refreshed: "Read from Salesforce. Its values are shown beside the app's; nothing in the app was overwritten.",
+  checked: "Checked Salesforce and Lead Alchemist for each contact's email and phone.",
+  pushed: "Sent to the other system. It's on the account's activity log.",
 };
 const SF_RESULT: Record<string, string> = {
   done: "Salesforce sync finished. See the activity below.",
@@ -75,6 +83,10 @@ export default async function AccountPage({ params, searchParams }: PageProps<"/
   const appsBy = (contactId: string) => apps.filter((a) => a.contactId === contactId).length;
   const sfReady = !!(await salesforceConfig()) && settings.salesforceEnabled;
   const laConnected = !!(await ghlConfig());
+  const sfConnected = !!(await salesforceConfig());
+  const alerts = await listNotifications({ clientId: client.id, status: ACTIVE, limit: 20 });
+  const diffs = new Map(await Promise.all(people.map(async (p) => [p.id, await externalDifferences(p)] as const)));
+  const snap = client.sfSnapshot;
   const lastSfEvent = events.find((e) => e.type.startsWith("sf_"));
   const address = [client.address?.street, client.address?.city, [client.address?.state, client.address?.postalCode].filter(Boolean).join(" ")]
     .filter(Boolean)
@@ -136,17 +148,79 @@ export default async function AccountPage({ params, searchParams }: PageProps<"/
         <SystemLink href={l.ghlContact(ghlContactId)} missing="Not linked to a Lead Alchemist contact yet.">
           View primary contact in Lead Alchemist
         </SystemLink>
+        {client.sfAccountId && (
+          <form action={refreshFromSalesforceAction}>
+            <input type="hidden" name="id" value={client.id} />
+            <button className="btn-secondary" disabled={!sfConnected} title="Read the Salesforce Account and contacts. Nothing in the app is overwritten.">
+              Refresh from Salesforce
+            </button>
+          </form>
+        )}
+        {laConnected && people.some((p) => p.ghlContactId) && (
+          <form action={refreshContactsAction}>
+            <input type="hidden" name="id" value={client.id} />
+            <button className="btn-secondary" title="Read each linked contact's email and phone from Salesforce and Lead Alchemist">Check contact details</button>
+          </form>
+        )}
         <form action={syncClientAction}>
           <input type="hidden" name="id" value={client.id} />
           <button
-            className="btn-primary"
+            className="btn-secondary"
             disabled={!sfReady}
-            title={sfReady ? "Sync every submitted application to Salesforce now" : "Salesforce sync is off or not connected (Admin → Settings)"}
+            title={sfReady ? "Send every submitted application to Salesforce now" : "Salesforce sync is off or not connected (Admin → Settings)"}
           >
-            Sync to Salesforce
+            Send applications to Salesforce
           </button>
         </form>
       </div>
+
+      {alerts.length > 0 && (
+        <div className="mb-4 rounded-lg border border-[var(--notice-border)] bg-[var(--notice-bg)] p-3 text-sm" role="alert">
+          <p className="mb-1 font-semibold">Needs attention ({alerts.length})</p>
+          <ul className="list-disc space-y-1 pl-5">
+            {alerts.map(({ n }) => (
+              <li key={n.id}>
+                <Link className="btn-link" href={`/admin/notifications/${n.id}`}>{n.title}</Link>
+                {n.detail && <span className="text-[var(--muted)]"> {n.detail}</span>}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {snap && (
+        <section className="card mb-6 !p-5" aria-labelledby="sf-snap">
+          <h2 id="sf-snap" className="mb-1 font-semibold">In Salesforce</h2>
+          <p className="mb-3 text-xs text-[var(--muted)]">
+            As read {client.sfPulledAt ? fmtDate(client.sfPulledAt) : ""}. Shown for comparison; edit these in Salesforce.
+          </p>
+          <dl className="grid gap-x-6 gap-y-2 text-sm sm:grid-cols-2 lg:grid-cols-3">
+            {(
+              [
+                ["Name", snap.name, snap.name !== client.name],
+                ["Phone", snap.phone, !!snap.phone && !client.phones.some((ph) => ph.replace(/\D/g, "").endsWith(snap.phone!.replace(/\D/g, "").slice(-10)))],
+                ["Website", snap.website, false],
+                ["Address", snap.address, false],
+                ["Program", snap.program, false],
+                ["Legal entity", snap.legalEntity, false],
+                ["Policy effective", snap.effectiveDate, false],
+                ["Policy expires", snap.expirationDate, false],
+                ["Renewal status", snap.renewalStatus, false],
+                ["Annual premium", snap.annualPremium != null ? `$${snap.annualPremium.toLocaleString("en-US")}` : null, false],
+                ["Account owner", snap.ownerName, false],
+              ] as [string, string | null, boolean][]
+            ).map(([label, value, differs]) => (
+              <div key={label}>
+                <dt className="text-xs text-[var(--muted)]">{label}</dt>
+                <dd>
+                  {value || "—"}
+                  {differs && <span className="badge badge-warning ml-2" title="Different from this app">Differs</span>}
+                </dd>
+              </div>
+            ))}
+          </dl>
+        </section>
+      )}
 
       {message && <p className="callout mb-4 text-sm" role="status">{message}</p>}
       {duplicateOf && (
@@ -196,7 +270,7 @@ export default async function AccountPage({ params, searchParams }: PageProps<"/
             {people.map((p) => {
               const mails = contactEmails.get(p.id) ?? [];
               const primary = !!p.primaryEmail && p.primaryEmail === client.primaryEmail;
-              return (
+              return [
                 <tr key={p.id}>
                   <td>
                     <span className="font-medium">{p.name}</span>
@@ -214,11 +288,13 @@ export default async function AccountPage({ params, searchParams }: PageProps<"/
                   </td>
                   <td className="text-sm">{appsBy(p.id) || "—"}</td>
                   <td className="text-sm">
+                    <ExternalValues email={p.sfEmail} phone={p.sfPhone} />
                     <SystemLink className="btn-link text-xs" href={l.salesforce("Contact", p.sfContactId)} missing="Not linked to a Salesforce Contact yet">
                       View Contact
                     </SystemLink>
                   </td>
                   <td className="text-sm">
+                    {p.ghlContactId && <ExternalValues email={p.laEmail} phone={p.laPhone} />}
                     {p.ghlContactId ? (
                       <SystemLink className="btn-link text-xs" href={l.ghlContact(p.ghlContactId)} missing="">
                         View Contact
@@ -251,7 +327,34 @@ export default async function AccountPage({ params, searchParams }: PageProps<"/
                     )}
                   </td>
                 </tr>
-              );
+              ,
+                (diffs.get(p.id) ?? []).length > 0 && (
+                  <tr key={`${p.id}-diff`}>
+                    <td colSpan={6} className="!pt-0">
+                      <div className="rounded-lg border border-[var(--notice-border)] bg-[var(--notice-bg)] p-2 text-xs">
+                        {(diffs.get(p.id) ?? []).map((d) => (
+                          <div key={d.field} className="flex flex-wrap items-center gap-2 py-1">
+                            <span>
+                              <strong>{d.field === "phone" ? "Phone" : "Email"}</strong> here is {d.value}; {d.differsFrom.map((x) => `${SOURCE_LABEL[x.source]} has ${x.value}`).join(", ")}.
+                            </span>
+                            {d.differsFrom.map((x) =>
+                              x.source === "app" ? null : (
+                                <form key={x.source} action={pushContactValueAction}>
+                                  <input type="hidden" name="contactId" value={p.id} />
+                                  <input type="hidden" name="target" value={x.source} />
+                                  <input type="hidden" name="field" value={d.field} />
+                                  <input type="hidden" name="value" value={d.value} />
+                                  <button className="btn-secondary !px-2 !py-1 text-xs">Send {d.value} to {SOURCE_LABEL[x.source]}</button>
+                                </form>
+                              ),
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </td>
+                  </tr>
+                ),
+              ];
             })}
             {!people.length && (
               <tr><td colSpan={6} className="py-6 text-center text-[var(--muted)]">No contacts yet.</td></tr>
@@ -362,6 +465,17 @@ export default async function AccountPage({ params, searchParams }: PageProps<"/
           </ol>
         </section>
       </div>
+    </div>
+  );
+}
+
+/** A contact's email and phone as another system has them (read with "Refresh" / "Check contact details"). */
+function ExternalValues({ email, phone }: { email: string | null; phone: string | null }) {
+  if (!email && !phone) return null;
+  return (
+    <div className="mb-1 text-xs">
+      {email && <div>{email}</div>}
+      {phone && <div>{phone}</div>}
     </div>
   );
 }

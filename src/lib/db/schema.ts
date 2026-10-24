@@ -1,6 +1,6 @@
 import { sql } from "drizzle-orm";
 import { customType } from "drizzle-orm/pg-core";
-import { boolean, index, integer, jsonb, pgTable, serial, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { boolean, index, integer, jsonb, pgTable, primaryKey, serial, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import type { FormValues } from "@/lib/forms/types";
 import type { ApplicationStatus } from "@/lib/applications/status";
 import type { AiReview } from "@/lib/ai/review";
@@ -46,8 +46,10 @@ export const clients = pgTable(
     ghlCompanyId: text("ghl_company_id"),
     /** Unsynced on the Salesforce screen: stays linked, but nothing syncs either way until synced again. */
     sfSyncPaused: boolean("sf_sync_paused").notNull().default(false),
-    /** Last time the automatic sync pulled this Account's Salesforce details. */
+    /** Last time this Account's Salesforce details were read (Refresh from Salesforce). */
     sfPulledAt: timestamp("sf_pulled_at", { withTimezone: true }),
+    /** What Salesforce says about this Account, as last read. Shown beside the app's values, never copied over them. */
+    sfSnapshot: jsonb("sf_snapshot").$type<SfAccountSnapshot>(),
 
     /** Set when this record was merged into another; it no longer shows in lists. */
     mergedInto: uuid("merged_into"),
@@ -61,6 +63,21 @@ export const clients = pgTable(
     index("clients_ghl_company_idx").on(t.ghlCompanyId),
   ],
 );
+
+/** The Salesforce Account as last read: contact details and the policy fields used for renewals. */
+export interface SfAccountSnapshot {
+  name: string;
+  phone: string | null;
+  website: string | null;
+  address: string | null;
+  program: string | null;
+  legalEntity: string | null;
+  effectiveDate: string | null;
+  expirationDate: string | null;
+  renewalStatus: string | null;
+  annualPremium: number | null;
+  ownerName: string | null;
+}
 
 export interface ClientAddress {
   street?: string;
@@ -92,6 +109,14 @@ export const contacts = pgTable(
     sfContactId: text("sf_contact_id"),
     /** Unsynced on the Salesforce screen: stays linked, but isn't updated from Salesforce. */
     sfSyncPaused: boolean("sf_sync_paused").notNull().default(false),
+    /** The linked Salesforce Contact's email and phone as last read. Shown beside the app's, never copied over them. */
+    sfEmail: text("sf_email"),
+    sfPhone: text("sf_phone"),
+    /** The linked Lead Alchemist contact's email and phone as last read. */
+    laEmail: text("la_email"),
+    laPhone: text("la_phone"),
+    /** When the Salesforce / Lead Alchemist values above were last read. */
+    externalCheckedAt: timestamp("external_checked_at", { withTimezone: true }),
     /** The Lead Alchemist contact. */
     ghlContactId: text("ghl_contact_id"),
     searchText: text("search_text").notNull().default(""),
@@ -99,6 +124,27 @@ export const contacts = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [index("contacts_client_idx").on(t.clientId), index("contacts_sf_idx").on(t.sfContactId), index("contacts_ghl_idx").on(t.ghlContactId)],
+);
+
+/**
+ * A person who also works with another Account besides their home one (e.g. an instructor who
+ * teaches at several studios). Added by staff, or by an application for that Account. In Lead
+ * Alchemist a contact sits in one Company; the others go on the contact as "company:" tags.
+ */
+export const accountContacts = pgTable(
+  "account_contacts",
+  {
+    clientId: uuid("client_id")
+      .notNull()
+      .references(() => clients.id, { onDelete: "cascade" }),
+    contactId: uuid("contact_id")
+      .notNull()
+      .references(() => contacts.id, { onDelete: "cascade" }),
+    role: text("role"),
+    addedBy: text("added_by").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.clientId, t.contactId] }), index("account_contacts_contact_idx").on(t.contactId)],
 );
 
 /** Every email that belongs to a contact (lower-cased). An email belongs to one contact. */
@@ -222,7 +268,10 @@ export type ClientEventType =
   | "sf_sync_resumed"
   | "sf_pulled"
   | "contact_removed"
-  | "la_contact_linked";
+  | "la_contact_linked"
+  | "contact_pushed"
+  | "contact_changed"
+  | "sf_refreshed";
 
 /** Audit log and notes for a client (merges, splits, syncs, staff notes). */
 export const clientEvents = pgTable(
@@ -519,6 +568,55 @@ export const loginTokens = pgTable("login_tokens", {
   usedAt: timestamp("used_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+/**
+ * Admin notifications (the board at Admin → Notifications): things staff should look at, such as
+ * a phone or email on an application that differs from Salesforce or Lead Alchemist. Never
+ * deleted; dismissing is a status. Every change is in notification_log with who and when.
+ */
+export type NotificationKind = "contact_changed" | "sf_new_contact" | "unmapped" | "renewal_due" | "other";
+export type NotificationStatus = "open" | "in_progress" | "done" | "dismissed";
+export const notifications = pgTable(
+  "notifications",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    kind: text("kind").$type<NotificationKind>().notNull(),
+    status: text("status").$type<NotificationStatus>().notNull().default("open"),
+    title: text("title").notNull(),
+    detail: text("detail"),
+    data: jsonb("data").$type<Record<string, unknown>>(),
+    clientId: uuid("client_id").references(() => clients.id, { onDelete: "set null" }),
+    contactId: uuid("contact_id").references(() => contacts.id, { onDelete: "set null" }),
+    applicationId: uuid("application_id").references(() => applications.id, { onDelete: "set null" }),
+    /** One open card per situation: the same key isn't raised twice while it's still open. */
+    dedupeKey: text("dedupe_key"),
+    assignedTo: text("assigned_to"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedBy: text("updated_by"),
+  },
+  (t) => [index("notifications_status_idx").on(t.status, t.updatedAt), index("notifications_client_idx").on(t.clientId), index("notifications_dedupe_idx").on(t.dedupeKey)],
+);
+
+export const notificationLog = pgTable(
+  "notification_log",
+  {
+    id: serial("id").primaryKey(),
+    notificationId: uuid("notification_id")
+      .notNull()
+      .references(() => notifications.id, { onDelete: "cascade" }),
+    /** "system" or "staff:<email>" */
+    actor: text("actor").notNull(),
+    action: text("action").$type<"created" | "status" | "note" | "pushed" | "assigned">().notNull(),
+    fromStatus: text("from_status"),
+    toStatus: text("to_status"),
+    note: text("note"),
+    at: timestamp("at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("notification_log_notification_idx").on(t.notificationId, t.at)],
+);
+export type Notification = typeof notifications.$inferSelect;
+export type NotificationLogEntry = typeof notificationLog.$inferSelect;
 
 export type Application = typeof applications.$inferSelect;
 export type ApplicationEvent = typeof applicationEvents.$inferSelect;
