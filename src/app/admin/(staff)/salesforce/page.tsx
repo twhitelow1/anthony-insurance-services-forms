@@ -235,6 +235,12 @@ function BulkSyncPanel({ run, back }: { run: BulkSyncRun; back: string }) {
         {new Date(run.startedAt).toLocaleString("en-US", { timeZone: process.env.APP_TIMEZONE ?? "America/Chicago" })}
       </p>
       {run.pausedReason && <p className="mt-1">{run.pausedReason}</p>}
+      {run.report && (
+        <p className={`mt-1 font-medium ${run.report.clean ? "text-[var(--success)]" : ""}`}>
+          {run.report.clean ? "✓ " : "⚠ "}
+          {run.report.text} <a className="btn-link" href={`/admin/sync-reports/${run.report.id}`}>See the full report</a>
+        </p>
+      )}
       {pct !== null && (
         <div className="mt-2 h-2 w-full overflow-hidden rounded bg-[var(--border)]" aria-hidden>
           <div className="h-full bg-[var(--accent)]" style={{ width: `${pct}%` }} />

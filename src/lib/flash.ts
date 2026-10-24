@@ -10,8 +10,11 @@ import { cookies } from "next/headers";
 const COOKIE = "ais_flash";
 
 export interface Flash {
-  tone: "ok" | "error";
+  /** "warn": it ran, but something needs attention (a sync with conflicts or errors). */
+  tone: "ok" | "warn" | "error";
   text: string;
+  /** An admin page with the details, e.g. the sync report. */
+  href?: string;
 }
 
 /** For server actions: store the message and return the ?f= value for the redirect. */
@@ -33,7 +36,9 @@ export async function readFlash(id: string | string[] | undefined): Promise<Flas
   try {
     const raw = (await cookies()).get(COOKIE)?.value;
     const v = raw ? (JSON.parse(raw) as Flash & { id: string }) : null;
-    return v && v.id === id && (v.tone === "ok" || v.tone === "error") ? { tone: v.tone, text: String(v.text) } : null;
+    if (!v || v.id !== id || !["ok", "warn", "error"].includes(v.tone)) return null;
+    const href = typeof v.href === "string" && v.href.startsWith("/admin/") && !v.href.includes("//") ? v.href : undefined;
+    return { tone: v.tone, text: String(v.text), ...(href ? { href } : {}) };
   } catch {
     return null;
   }

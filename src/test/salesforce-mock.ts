@@ -105,6 +105,10 @@ export function mockSalesforce(
         .sort((a, b) => a.Id.localeCompare(b.Id))
         .slice(0, limit);
     }
+    if ((m = soql.match(/FROM (Account|Contact) WHERE Id IN \(([^)]*)\)/))) {
+      const ids = [...m[2].matchAll(/'((?:[^'\\]|\\.)*)'/g)].map((x) => unq(x[1]));
+      return records[m[1]].filter((r) => ids.includes(r.Id));
+    }
     if ((m = soql.match(/FROM Account WHERE Name = '((?:[^'\\]|\\.)*)'/))) return records.Account.filter((a) => a.Name === unq(m![1]));
     if ((m = soql.match(/FROM (Account|Contact) WHERE Id = '((?:[^'\\]|\\.)*)'/))) {
       const found = records[m[1]].filter((a) => a.Id === unq(m![2]));

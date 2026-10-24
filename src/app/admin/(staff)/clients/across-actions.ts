@@ -17,6 +17,7 @@ import {
   type AccountSource,
   type AccountSyncOptions,
 } from "@/lib/accounts/directory";
+import { saveSyncReport } from "@/lib/bulk/report";
 import { startSelectionRun, stepSelectionRun, stopSelectionRun, type BatchResult } from "@/lib/bulk/selection-run";
 import { CLIENT_SEARCH_COOKIE } from "@/lib/clients/search-cookie";
 import { setFlash } from "@/lib/flash";
@@ -31,9 +32,9 @@ const backTo = (formData: FormData) => {
   return b.startsWith("/admin/clients") && !b.includes("//") ? b : "/admin/clients?view=all";
 };
 
-async function finish(to: string, tone: "ok" | "error", text: string): Promise<never> {
+async function finish(to: string, tone: "ok" | "warn" | "error", text: string, href?: string): Promise<never> {
   const back = to.replace(/([?&])(f|importing)=[^&]*&?/g, "$1").replace(/[?&]$/, "");
-  const f = await setFlash({ tone, text });
+  const f = await setFlash({ tone, text, href });
   revalidatePath("/admin/clients");
   redirect(`${back}${back.includes("?") ? "&" : "?"}f=${f}`);
 }
@@ -80,7 +81,7 @@ const WORK: Record<string, { verb: string; options: string[]; work: Work }> = {
   linkSuggested: { verb: "Linked to suggested matches", options: [], work: async (k, a) => linkSuggestedMatches(k, a, await deps()) },
 };
 
-const KEY_RE = /^[asl]:[A-Za-z0-9-]{6,64}$/;
+const KEY_RE = /^[asl]:[A-Za-z0-9-]{3,64}$/;
 const yesNo = (v: string | null): "yes" | "no" | undefined => (v === "yes" || v === "no" ? v : undefined);
 
 async function listFilters(formData: FormData) {
@@ -122,7 +123,8 @@ async function bulk(formData: FormData, key: keyof typeof WORK): Promise<never> 
     console.error("[accounts] bulk action failed:", message);
     return finish(backTo(formData), "error", message);
   }
-  return finish(backTo(formData), "ok", `${verb}: ${r.done} of ${keys.length}.${r.notes.length ? ` ${r.notes.slice(0, 6).join(" ")}` : ""}`);
+  const report = await saveSyncReport({ title: verb, scope: `${keys.length} ticked on Accounts → Across all three`, page: backTo(formData), actor, total: keys.length, done: r.done, notes: r.notes });
+  return finish(backTo(formData), report.clean ? "ok" : "warn", report.text, report.href);
 }
 
 export async function addAccountsToAppAction(formData: FormData) {

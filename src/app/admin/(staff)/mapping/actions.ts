@@ -7,6 +7,7 @@ import { requireStaff } from "@/lib/auth/session";
 import { setFlash } from "@/lib/flash";
 import { ghlConfig } from "@/lib/ghl/client";
 import { links } from "@/lib/integrations/links";
+import { saveSyncReport } from "@/lib/bulk/report";
 import { startSelectionRun, stepSelectionRun, stopSelectionRun } from "@/lib/bulk/selection-run";
 import { findLaMatches, resetLaMatches } from "@/lib/mapping/la-matches";
 import type { CompanyFilter } from "@/lib/mapping/company-match";
@@ -42,13 +43,13 @@ const backTo = (formData: FormData) => {
   return b.startsWith("/admin/mapping") && !b.includes("//") ? b : "/admin/mapping";
 };
 
-async function finish(formData: FormData, tone: "ok" | "error", text: string): Promise<never> {
-  return finishTo(backTo(formData), tone, text);
+async function finish(formData: FormData, tone: "ok" | "warn" | "error", text: string, href?: string): Promise<never> {
+  return finishTo(backTo(formData), tone, text, href);
 }
 
-async function finishTo(to: string, tone: "ok" | "error", text: string): Promise<never> {
+async function finishTo(to: string, tone: "ok" | "warn" | "error", text: string, href?: string): Promise<never> {
   const back = to.replace(/([?&])f=[^&]*&?/, "$1").replace(/[?&]$/, "");
-  const f = await setFlash({ tone, text });
+  const f = await setFlash({ tone, text, href });
   revalidatePath("/admin/mapping");
   redirect(`${back}${back.includes("?") ? "&" : "?"}f=${f}`);
 }
@@ -179,7 +180,9 @@ async function bulk(formData: FormData, key: keyof typeof WORK): Promise<never> 
     console.error("[mapping] bulk action failed:", message);
     return finish(formData, "error", message);
   }
-  return finish(formData, "ok", `${verb}: ${r.done} of ${ids.length}.${r.notes.length ? ` ${r.notes.join(" ")}` : ""}`);
+  const tab = new URL(backTo(formData), "http://x").searchParams.get("tab") ?? "accounts";
+  const report = await saveSyncReport({ title: verb, scope: `${ids.length} ticked on Mapping → ${tab}`, page: backTo(formData), actor, total: ids.length, done: r.done, notes: r.notes });
+  return finish(formData, report.clean ? "ok" : "warn", report.text, report.href);
 }
 
 /** One batch of a "select all matching" run; the progress panel submits this again until it's done. */

@@ -561,6 +561,7 @@ export async function addToApp(groups: string[][], actor: string, deps: { sf: Sa
     const linked = rows.find((r) => r.appContactId);
     if (linked?.appContactId) {
       result.contactIds.push(linked.appContactId);
+      result.done++; // already in AIS Connect
       continue;
     }
     const sfRow = rows.find((r) => r.source === "salesforce");
@@ -639,9 +640,10 @@ export async function sendToSalesforce(values: string[], actor: string, deps: { 
 }
 
 export async function addSelectedToApp(values: string[], actor: string, deps: { sf: SalesforceApi | null; links: Links }) {
-  const { dir } = parseKeys(values);
+  const { app, dir } = parseKeys(values);
   const r = await addToApp(dir, actor, deps);
-  return { done: r.done, notes: r.notes };
+  // People already in AIS Connect are already where this puts them.
+  return { done: r.done + app.length, notes: r.notes };
 }
 
 /** "Update in Lead Alchemist" for the selected people who are in the app and linked to Lead Alchemist. */
@@ -658,8 +660,8 @@ export async function updateLeadAlchemistForSelected(values: string[], actor: st
     left--;
     try {
       const r = await updateLeadAlchemistDetails(id, actor, { replace });
-      if (r.fields.length) result.done++;
-      else unchanged++;
+      result.done++; // updated, or already matched (in step either way)
+      if (!r.fields.length) unchanged++;
     } catch (err) {
       result.notes.push(err instanceof Error ? err.message : String(err));
     }

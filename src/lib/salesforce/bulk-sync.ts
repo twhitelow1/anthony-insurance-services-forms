@@ -8,6 +8,7 @@ import { soqlString, type SalesforceApi } from "./api";
 import { accountSelect, visibleFields } from "./fields";
 import { hiddenSet } from "./hidden";
 import { NO_TYPE, syncAccount } from "./manager";
+import { saveSyncReport } from "@/lib/bulk/report";
 
 /**
  * "Select all N matching → Sync": brings every Salesforce Account that matches the search and
@@ -32,6 +33,8 @@ export interface BulkSyncRun {
   errors: { name: string; error: string }[];
   phase: "running" | "paused" | "done" | "stopped";
   pausedReason?: string;
+  /** Set when it finishes or is stopped: its sync report (Admin → Sync reports). */
+  report?: { id: string; text: string; clean: boolean };
   startedBy: string;
   startedAt: string;
   updatedAt: string;
@@ -98,7 +101,7 @@ export async function startBulkSync(sf: SalesforceApi, opts: { q: string; type: 
 export async function stopBulkSync(actor: string) {
   const run = await getBulkSync();
   if (!run || run.phase === "done" || run.phase === "stopped") return run;
-  return save({ ...run, phase: "stopped", pausedReason: `Stopped by ${actor.replace(/^staff:/, "")}` });
+  return save(await withReport({ ...run, phase: "stopped", pausedReason: `Stopped by ${actor.replace(/^staff:/, "")}` }));
 }
 
 export async function resumeBulkSync() {
@@ -160,5 +163,31 @@ export async function stepBulkSync(deps: { sf: SalesforceApi; links: Links; time
       break;
     }
   }
-  return save(run);
+  return save(run.phase === "done" ? await withReport(run) : run);
+}
+
+/** The run's sync report: synced, skipped (deactivated or removed here), each failure, and rows not reached if stopped. */
+async function withReport(run: BulkSyncRun): Promise<BulkSyncRun> {
+  const notes = [
+    ...(run.phase === "stopped" && run.total !== null && run.done < run.total ? [`${run.total - run.done} weren't reached: the run was stopped.`] : []),
+    ...(run.skipped ? [`${run.skipped} skipped: deactivated or removed in AIS Connect.`] : []),
+    ...run.errors.map((e) => `${e.name} failed: ${e.error}`),
+    ...(run.failed > run.errors.length ? [`${run.failed - run.errors.length} more failed (only the latest ${run.errors.length} errors are kept).`] : []),
+  ];
+  const scope = ["All matching Salesforce Accounts", run.q && `name contains "${run.q}"`, run.type && `Type: ${run.type === NO_TYPE ? "no type" : run.type}`].filter(Boolean).join(", ");
+  try {
+    const r = await saveSyncReport({
+      title: "Synced into AIS Connect",
+      scope,
+      page: "/admin/salesforce",
+      actor: run.startedBy,
+      total: run.total ?? run.done,
+      done: run.created + run.linked + run.skipped,
+      notes,
+    });
+    return { ...run, report: { id: r.report.id, text: r.text, clean: r.clean } };
+  } catch (err) {
+    console.error("[bulk sync] couldn't save the report:", err instanceof Error ? err.message : err);
+    return run;
+  }
 }

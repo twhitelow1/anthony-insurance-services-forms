@@ -217,6 +217,30 @@ export const directoryContacts = pgTable(
 export type DirectoryContact = typeof directoryContacts.$inferSelect;
 
 /**
+ * Records staff said are different businesses despite looking alike ("Not the same business" on
+ * the merge screen), so they aren't suggested as a match again. `pair` is the two row keys
+ * (e.g. "a:<id>" and "s:<id>"), sorted and joined with "|".
+ */
+export const notDuplicates = pgTable("not_duplicates", {
+  pair: text("pair").primaryKey(),
+  decidedBy: text("decided_by").notNull(),
+  decidedAt: timestamp("decided_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/**
+ * Lead Alchemist Companies hidden in AIS Connect after a merge picked another Company (their
+ * contacts were moved to the kept one). They stay in Lead Alchemist; nothing is deleted there.
+ */
+export const leadAlchemistHidden = pgTable("lead_alchemist_hidden", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull().default(""),
+  /** The Company kept instead. */
+  keptId: text("kept_id"),
+  hiddenBy: text("hidden_by").notNull(),
+  hiddenAt: timestamp("hidden_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/**
  * Salesforce Accounts, copied by Refresh on the Accounts page ("Across all three"), so it can list
  * and match Accounts that aren't in AIS Connect without calling Salesforce. Read-only copy.
  */
@@ -687,8 +711,36 @@ export const loginTokens = pgTable("login_tokens", {
  * a phone or email on an application that differs from Salesforce or Lead Alchemist. Never
  * deleted; dismissing is a status. Every change is in notification_log with who and when.
  */
-export type NotificationKind = "contact_changed" | "sf_new_contact" | "unmapped" | "renewal_due" | "possible_duplicate" | "other";
+export type NotificationKind = "contact_changed" | "sf_new_contact" | "unmapped" | "renewal_due" | "possible_duplicate" | "sync_issues" | "other";
 export type NotificationStatus = "open" | "in_progress" | "done" | "dismissed";
+
+/**
+ * The result of one bulk sync (a button on a list, or a "select all matching" run): how many
+ * were done, and every error, conflict and skipped item, so staff can see whether everything
+ * synced. Shown at Admin → Sync reports.
+ */
+export const syncReports = pgTable(
+  "sync_reports",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    /** What ran, e.g. "Synced to Lead Alchemist". */
+    title: text("title").notNull(),
+    /** Which rows, e.g. "3 ticked on Contacts" or the filters of a select-all run. */
+    scope: text("scope").notNull().default(""),
+    /** The list page it ran from. */
+    page: text("page"),
+    actor: text("actor").notNull(),
+    total: integer("total").notNull().default(0),
+    done: integer("done").notNull().default(0),
+    errors: jsonb("errors").$type<string[]>().notNull().default([]),
+    conflicts: jsonb("conflicts").$type<string[]>().notNull().default([]),
+    skipped: jsonb("skipped").$type<string[]>().notNull().default([]),
+    notes: jsonb("notes").$type<string[]>().notNull().default([]),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("sync_reports_created_idx").on(t.createdAt)],
+);
+export type SyncReport = typeof syncReports.$inferSelect;
 export const notifications = pgTable(
   "notifications",
   {

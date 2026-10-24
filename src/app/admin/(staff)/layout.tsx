@@ -31,6 +31,7 @@ export default async function StaffLayout({ children }: LayoutProps<"/admin">) {
           <Link href="/admin/notifications" className="hover:underline">
             Notifications{alerts > 0 && <span className="badge badge-warning ml-1">{alerts}</span>}
           </Link>
+          <Link href="/admin/sync-reports" className="hover:underline">Sync reports</Link>
           <Link href="/admin/assistant" className="hover:underline">Ask AI</Link>
           <Link href="/admin/lead-alchemist" className="hover:underline">Lead Alchemist setup</Link>
           <Link href="/admin/forms" className="hover:underline">Forms</Link>

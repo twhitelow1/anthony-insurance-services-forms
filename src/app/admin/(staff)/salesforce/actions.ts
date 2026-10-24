@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { requireStaff } from "@/lib/auth/session";
+import { saveSyncReport } from "@/lib/bulk/report";
 import { getClient, getContact } from "@/lib/clients/repo";
 import { laCompanyName } from "@/lib/clients/text";
 import { setFlash } from "@/lib/flash";
@@ -33,9 +34,9 @@ const backTo = (formData: FormData) => {
   return /^\/admin\/(salesforce|clients)(\/|\?|$)/.test(b) && !b.includes("//") ? b : "/admin/salesforce";
 };
 
-async function done(formData: FormData, tone: "ok" | "error", text: string): Promise<never> {
+async function done(formData: FormData, tone: "ok" | "warn" | "error", text: string, href?: string): Promise<never> {
   const back = backTo(formData);
-  const f = await setFlash({ tone, text });
+  const f = await setFlash({ tone, text, href });
   revalidatePath("/admin/salesforce");
   redirect(`${back}${back.includes("?") ? "&" : "?"}f=${f}`);
 }
@@ -80,31 +81,44 @@ export async function syncAccountAction(formData: FormData) {
   return run(formData, async (actor) => (await syncAccount(id(formData, "sfAccountId"), { sf: await sf(), links: await links() }, actor)).result);
 }
 
-/** "Sync selected": pull each ticked Salesforce Account into the app (up to 50 at a time; stops near the time limit and says how many are left). */
+/**
+ * "Sync selected": pull each ticked Salesforce Account into the app (up to 50 at a time; stops near
+ * the time limit). Ends with a sync report: everything synced, or each conflict and error.
+ */
 export async function syncSelectedAccountsAction(formData: FormData) {
-  return run(formData, async (actor) => {
-    const ids = formData
-      .getAll("ids")
-      .map(String)
-      .filter((v) => /^[A-Za-z0-9]{15,18}$/.test(v));
-    if (!ids.length) throw new Error("Tick at least one Account first.");
-    if (ids.length > 50) throw new Error("Sync up to 50 Accounts at a time.");
-    const deps = { sf: await sf(), links: await links() };
-    const started = Date.now();
-    let done = 0;
-    const failed: string[] = [];
-    for (const id of ids) {
-      if (Date.now() - started > 45_000) break;
-      try {
-        await syncAccount(id, deps, actor);
-        done++;
-      } catch (err) {
-        failed.push(err instanceof Error ? err.message : String(err));
-      }
+  const staff = await requireStaff();
+  const actor = `staff:${staff.email}`;
+  const ids = formData
+    .getAll("ids")
+    .map(String)
+    .filter((v) => /^[A-Za-z0-9]{15,18}$/.test(v));
+  if (!ids.length) return done(formData, "error", "Tick at least one Account first.");
+  if (ids.length > 50) return done(formData, "error", "Sync up to 50 Accounts at a time, or use Select all matching.");
+  let deps: { sf: Awaited<ReturnType<typeof sf>>; links: Awaited<ReturnType<typeof links>> };
+  try {
+    deps = { sf: await sf(), links: await links() };
+  } catch (err) {
+    return done(formData, "error", err instanceof Error ? err.message : String(err));
+  }
+  const started = Date.now();
+  let synced = 0;
+  let reached = 0;
+  const notes: string[] = [];
+  for (const sfId of ids) {
+    if (Date.now() - started > 45_000) break;
+    reached++;
+    try {
+      const r = await syncAccount(sfId, deps, actor);
+      synced++;
+      // A same-name Account already in AIS Connect: synced, but flagged as a possible duplicate.
+      if (/same name/i.test(r.result)) notes.push(`${sfId}: ${r.result}`);
+    } catch (err) {
+      notes.push(`${sfId} failed: ${err instanceof Error ? err.message : String(err)}`);
     }
-    const left = ids.length - done - failed.length;
-    return `Synced ${done} of ${ids.length} Accounts.${left ? ` ${left} not reached in time: tick them again.` : ""}${failed.length ? ` ${failed.length} failed: ${failed[0]}` : ""}`;
-  });
+  }
+  if (reached < ids.length) notes.unshift(`${ids.length - reached} weren't reached in time: tick them again.`);
+  const report = await saveSyncReport({ title: "Synced into AIS Connect", scope: `${ids.length} ticked on Salesforce`, page: backTo(formData), actor, total: ids.length, done: synced, notes });
+  return done(formData, report.clean ? "ok" : "warn", report.text, report.href);
 }
 
 /** "Select all N matching → Sync all": starts a run over every Account matching the search and Type. */

@@ -31,6 +31,7 @@ import {
   stepAccountsRunAction,
   stopAccountsRunAction,
 } from "./across-actions";
+import { openMergeAction } from "./merge/actions";
 
 const fmt = (n: number) => n.toLocaleString("en-US");
 const SYSTEMS = [
@@ -203,6 +204,9 @@ export async function AcrossView({ sp, q, flash }: { sp: Record<string, string |
         <SubmitButton formAction={linkSuggestedAction} className="btn-secondary" title="Only links to the suggested matches; nothing is created anywhere">
           Link suggested matches only
         </SubmitButton>
+        <SubmitButton formAction={openMergeAction} className="btn-secondary" title="Tick 2 to 4 rows that are the same business: compare them side by side and pick what stays">
+          Compare &amp; merge selected
+        </SubmitButton>
         <label className="flex items-center gap-2" title="Without this, a suggested match is ignored and a new record is made when nothing has the same name">
           <input type="checkbox" name="useSuggested" value="yes" defaultChecked /> Use suggested matches (link instead of creating)
         </label>
@@ -257,6 +261,17 @@ function Suggestion({ label, how, href, name, title }: { label: string; how?: st
   );
 }
 
+/** This row and its suggested matches, for "Compare & merge". */
+function mergeKeys(r: AccountDirRow) {
+  return [
+    r.key,
+    r.suggested.app && `a:${r.suggested.app.id}`,
+    r.suggested.duplicate && `a:${r.suggested.duplicate.id}`,
+    r.suggested.sf && `s:${r.suggested.sf.id}`,
+    r.suggested.la && `l:${r.suggested.la.id}`,
+  ].filter((k): k is string => !!k);
+}
+
 function Row({ r, l }: { r: AccountDirRow; l: Awaited<ReturnType<typeof links>> }) {
   return (
     <tr>
@@ -264,6 +279,11 @@ function Row({ r, l }: { r: AccountDirRow; l: Awaited<ReturnType<typeof links>> 
       <td>
         <span className="font-medium">{r.name}</span>
         {r.isIndividual && <span className="badge badge-neutral ml-1">Individual</span>}
+        {mergeKeys(r).length > 1 && (
+          <div className="mt-1 text-xs">
+            <Link className="btn-link" href={`/admin/clients/merge?${new URLSearchParams({ keys: mergeKeys(r).join(",") })}`}>Compare &amp; merge</Link>
+          </div>
+        )}
       </td>
       <td className="text-sm">
         {r.appId ? (
@@ -272,6 +292,7 @@ function Row({ r, l }: { r: AccountDirRow; l: Awaited<ReturnType<typeof links>> 
             <div className="text-xs text-[var(--muted)]">
               {contactsText(r.counts.appContacts)} · {fmt(r.counts.applications)} application{r.counts.applications === 1 ? "" : "s"}
             </div>
+            {r.suggested.duplicate && <Suggestion label="Same name, another account" href={`/admin/clients/${r.suggested.duplicate.id}`} name={r.suggested.duplicate.name} />}
           </>
         ) : (
           <>
