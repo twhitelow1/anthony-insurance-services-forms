@@ -4,10 +4,25 @@ import { useEffect, useState, type ReactNode } from "react";
 
 /**
  * Gmail-style "All 50 on this page are selected. Select all 3,665 matching". Shown once the
- * header SelectAll for `form` is ticked; choosing it reveals `children` (the form that acts on
- * every match, across all pages). Unticking any row on the page hides it again.
+ * header SelectAll for `form` is ticked. Choosing it either reveals `children` (a separate form
+ * that acts on every match), or, without children, adds `allMatching=yes` to `form` so its own bulk
+ * buttons act on every match across all pages (after a confirmation tick). Unticking any row on
+ * the page goes back to just the ticked rows.
  */
-export function SelectAllMatching({ form, onPage, total, children }: { form: string; onPage: number; total: number; children: ReactNode }) {
+export function SelectAllMatching({
+  form,
+  onPage,
+  total,
+  noun = "Accounts",
+  children,
+}: {
+  form: string;
+  onPage: number;
+  total: number;
+  /** Plural, e.g. "people". */
+  noun?: string;
+  children?: ReactNode;
+}) {
   const [pageSelected, setPageSelected] = useState(false);
   const [all, setAll] = useState(false);
 
@@ -40,12 +55,25 @@ export function SelectAllMatching({ form, onPage, total, children }: { form: str
       {all ? (
         <>
           <p>
-            <strong>All {fmt(total)} matching Accounts are selected</strong> (every page).{" "}
+            <strong>
+              All {fmt(total)} matching {noun} are selected
+            </strong>{" "}
+            (every page{children ? "" : "; the buttons above now act on all of them"}).{" "}
             <button type="button" className="btn-link" onClick={() => setAll(false)}>
               Select only this page
             </button>
           </p>
-          <div className="mt-2">{children}</div>
+          {children ? (
+            <div className="mt-2">{children}</div>
+          ) : (
+            <>
+              <input type="hidden" name="allMatching" value="yes" form={form} />
+              <label className="mt-2 flex items-center gap-2">
+                <input type="checkbox" name="confirmAll" value="yes" form={form} required /> Yes, run it on all {fmt(total)} {noun}. It runs in batches
+                while this page is open, and can be stopped.
+              </label>
+            </>
+          )}
         </>
       ) : (
         <p>

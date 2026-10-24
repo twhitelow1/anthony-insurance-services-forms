@@ -3,7 +3,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { forms } from "@/forms";
 import { fmtDate, StatusBadge } from "@/components/portal";
-import { SalesforceBadge, SystemLink } from "@/components/clients";
+import { SalesforceBadge, SystemLink, LA_COMPANY_HINT } from "@/components/clients";
 import { requireStaff } from "@/lib/auth/session";
 import { defaultBrand } from "@/lib/brands";
 import {
@@ -156,7 +156,7 @@ export default async function AccountPage({ params, searchParams }: PageProps<"/
           View Account in Salesforce
         </SystemLink>
         {client.ghlCompanyId ? (
-          <SystemLink href={l.ghlCompany(client.ghlCompanyId)} missing="">
+          <SystemLink title={LA_COMPANY_HINT} href={l.ghlCompany(client.ghlCompanyId)} missing="">
             View Company in Lead Alchemist
           </SystemLink>
         ) : (
@@ -187,7 +187,7 @@ export default async function AccountPage({ params, searchParams }: PageProps<"/
                   )}
                   <label className="block">
                     <span className="field-label">{companySuggestions.length ? "Or paste" : "Paste"} the Company&apos;s Lead Alchemist address or ID</span>
-                    <input name="business" className="input" placeholder="https://app.leadalchemist.io/v2/location/…/businesses/detail/…" maxLength={300} />
+                    <input name="business" className="input" placeholder="The Company’s Lead Alchemist address or ID" maxLength={300} />
                   </label>
                   <p className="text-xs text-[var(--muted)]">Links this account to it; contacts already in Lead Alchemist are added to the Company. Nothing else changes.</p>
                   <button className="btn-primary">Link</button>

@@ -40,9 +40,8 @@ export async function accountTypesInApp(): Promise<string[]> {
 
 export const NO_TYPE = "__none__";
 
-export async function listAccountMap({ q, filter = "all", page = 1, type, pageSize = PAGE }: { q?: string; filter?: AccountMapFilter; page?: number; type?: string | null; pageSize?: number }) {
-  const size = Math.min(Math.max(pageSize, 1), 200);
-  const db = await getDb();
+/** The Accounts list's filters as a WHERE clause (shared by the list and "select all matching"). */
+function accountMapWhere({ q, filter = "all", type }: { q?: string; filter?: AccountMapFilter; type?: string | null }) {
   const c = schema.clients;
   const f =
     filter === "sf_not_la"
@@ -57,7 +56,14 @@ export async function listAccountMap({ q, filter = "all", page = 1, type, pageSi
               ? sql`exists (select 1 from ${schema.contacts} ct where ct.client_id = ${sql.raw(`"clients"."id"`)} and ct.ghl_contact_id is null and ct.la_match_id is not null)`
               : undefined;
   const typeWhere = type ? (type === NO_TYPE ? isNull(c.sfAccountType) : eq(c.sfAccountType, type)) : undefined;
-  const where = and(isNull(c.mergedInto), isNull(c.deactivatedAt), textWhere(c.searchText, q), f, typeWhere);
+  return and(isNull(c.mergedInto), isNull(c.deactivatedAt), textWhere(c.searchText, q), f, typeWhere);
+}
+
+export async function listAccountMap({ q, filter = "all", page = 1, type, pageSize = PAGE }: { q?: string; filter?: AccountMapFilter; page?: number; type?: string | null; pageSize?: number }) {
+  const size = Math.min(Math.max(pageSize, 1), 200);
+  const db = await getDb();
+  const c = schema.clients;
+  const where = accountMapWhere({ q, filter, type });
   const cid = sql.raw(`"clients"."id"`);
   const people = sql<number>`(select count(*) from ${schema.contacts} ct where ct.client_id = ${cid})`.mapWith(Number);
   const inLa = sql<number>`(select count(*) from ${schema.contacts} ct where ct.client_id = ${cid} and ct.ghl_contact_id is not null)`.mapWith(Number);
@@ -109,9 +115,8 @@ export async function mapCounts() {
   };
 }
 
-export async function listContactMap({ q, filter = "all", page = 1, pageSize = PAGE }: { q?: string; filter?: ContactMapFilter; page?: number; pageSize?: number }) {
-  const size = Math.min(Math.max(pageSize, 1), 200);
-  const db = await getDb();
+/** The Contacts list's filters as a WHERE clause (needs the clients join). */
+function contactMapWhere({ q, filter = "all" }: { q?: string; filter?: ContactMapFilter }) {
   const ct = schema.contacts;
   const c = schema.clients;
   const f =
@@ -124,7 +129,15 @@ export async function listContactMap({ q, filter = "all", page = 1, pageSize = P
           : filter === "la_suggested"
             ? and(isNull(ct.ghlContactId), isNotNull(ct.laMatchId))
             : undefined;
-  const where = and(textWhere(ct.searchText, q), f);
+  return and(textWhere(ct.searchText, q), f);
+}
+
+export async function listContactMap({ q, filter = "all", page = 1, pageSize = PAGE }: { q?: string; filter?: ContactMapFilter; page?: number; pageSize?: number }) {
+  const size = Math.min(Math.max(pageSize, 1), 200);
+  const db = await getDb();
+  const ct = schema.contacts;
+  const c = schema.clients;
+  const where = contactMapWhere({ q, filter });
   const [rows, [{ total }]] = await Promise.all([
     db
       .select({ contact: ct, accountName: c.name, accountSf: c.sfAccountId, accountCompany: c.ghlCompanyId })
@@ -753,4 +766,27 @@ export async function multiAccountContacts(limit = 200, offset = 0) {
     if (p) out.push({ contact: p, accounts: await accountsOfContact(id) });
   }
   return out;
+}
+
+/** Every Account ID the Accounts list shows for these filters (all pages), for "select all matching". */
+export async function accountMapIds(opts: { q?: string; filter?: AccountMapFilter; type?: string | null }) {
+  const db = await getDb();
+  const c = schema.clients;
+  const rows = await db.select({ id: c.id }).from(c).where(accountMapWhere(opts)).orderBy(asc(sql`lower(${c.name})`));
+  return rows.map((r) => r.id);
+}
+
+/** Every contact ID the Contacts list shows for these filters (all pages). */
+export async function contactMapIds(opts: { q?: string; filter?: ContactMapFilter }) {
+  const db = await getDb();
+  const ct = schema.contacts;
+  const c = schema.clients;
+  const rows = await db.select({ id: ct.id }).from(ct).innerJoin(c, eq(c.id, ct.clientId)).where(contactMapWhere(opts)).orderBy(asc(sql`lower(${c.name})`), asc(ct.name));
+  return rows.map((r) => r.id);
+}
+
+/** Every contact on the "People at several companies" list. */
+export async function multiAccountContactIds() {
+  const db = await getDb();
+  return rowsOf<{ id: string }>(await db.execute(sql`select ct.id from ${schema.contacts} ct where ${multiAccountWhere()} order by lower(ct.name), ct.id`)).map((r) => r.id);
 }

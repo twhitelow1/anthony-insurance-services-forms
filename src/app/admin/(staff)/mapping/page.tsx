@@ -1,8 +1,11 @@
 import Link from "next/link";
 import { cookies } from "next/headers";
-import { SystemLink } from "@/components/clients";
+import { SystemLink, LA_COMPANY_HINT } from "@/components/clients";
 import { ListSummary, pageHref, pageOf, pageState, Pagination } from "@/components/Pagination";
 import { SelectAll } from "@/components/SelectAll";
+import { SelectAllMatching } from "@/components/SelectAllMatching";
+import { SelectionRunPanel } from "@/components/SelectionRunPanel";
+import { getSelectionRun, showSelectionRun } from "@/lib/bulk/selection-run";
 import { SubmitButton } from "@/components/SubmitButton";
 import { AutoSubmit } from "@/components/AutoSubmit";
 import { laMatchProgress } from "@/lib/mapping/la-matches";
@@ -36,6 +39,8 @@ import {
   linkCompaniesAction,
   findLaMatchesAction,
   searchMappingAction,
+  stepMappingRunAction,
+  stopMappingRunAction,
 } from "./actions";
 import { MAP_SEARCH_COOKIE } from "./search-cookie";
 
@@ -90,7 +95,8 @@ export default async function Mapping({ searchParams }: PageProps<"/admin/mappin
   const q = (await cookies()).get(MAP_SEARCH_COOKIE)?.value ?? "";
   const flash = await readFlash(sp.f);
   const matching = str("matching") === "1";
-  const [l, counts, laOn, sfOn, types] = await Promise.all([links(), mapCounts(), ghlConfig(), salesforceConfig(), accountTypesInApp()]);
+  const [l, counts, laOn, sfOn, types, selectionRun] = await Promise.all([links(), mapCounts(), ghlConfig(), salesforceConfig(), accountTypesInApp(), getSelectionRun("mapping")]);
+  const runActive = selectionRun?.phase === "running";
 
   const accountFilter = ACCOUNT_FILTERS.some((f) => f.value === str("filter")) ? (str("filter") as AccountMapFilter) : "all";
   const companyFilter = COMPANY_FILTERS.some((f) => f.value === str("filter")) ? (str("filter") as CompanyFilter) : "unlinked";
@@ -134,6 +140,7 @@ export default async function Mapping({ searchParams }: PageProps<"/admin/mappin
         not linked to Lead Alchemist · <strong>{counts.contactsNoSf}</strong> not in Salesforce.
       </p>
       <FlashMessage flash={flash} />
+      {showSelectionRun(selectionRun) && <SelectionRunPanel run={selectionRun} back={back} stepAction={stepMappingRunAction} stopAction={stopMappingRunAction} />}
 
       <nav className="mb-4 flex flex-wrap gap-2" aria-label="Lists">
         {TABS.map((t) => (
@@ -211,6 +218,7 @@ export default async function Mapping({ searchParams }: PageProps<"/admin/mappin
               <input type="checkbox" name="createMissing" value="yes" /> Create missing contacts in Lead Alchemist
             </label>
           </form>
+          {!runActive && <SelectAllMatching form="bulk" onPage={accounts.rows.length} total={accounts.total} noun="accounts" />}
           <ListSummary total={accounts.total} state={paging} noun="account" />
           <div className="overflow-x-auto">
             <table className="data-table">
@@ -249,7 +257,7 @@ export default async function Mapping({ searchParams }: PageProps<"/admin/mappin
                     </td>
                     <td>
                       {a.ghlCompanyId ? (
-                        <SystemLink className="btn-link text-sm" href={l.ghlCompany(a.ghlCompanyId)} missing="">Linked</SystemLink>
+                        <SystemLink title={LA_COMPANY_HINT} className="btn-link text-sm" href={l.ghlCompany(a.ghlCompanyId)} missing="">Linked</SystemLink>
                       ) : (
                         <Yes on={false} label="" />
                       )}
@@ -280,6 +288,7 @@ export default async function Mapping({ searchParams }: PageProps<"/admin/mappin
             </label>
 
           </form>
+          {!runActive && <SelectAllMatching form="bulk" onPage={contacts.rows.length} total={contacts.total} noun="contacts" />}
           <ListSummary total={contacts.total} state={paging} noun="contact" />
           <div className="overflow-x-auto">
             <table className="data-table">
@@ -363,6 +372,7 @@ export default async function Mapping({ searchParams }: PageProps<"/admin/mappin
                 <SubmitButton formAction={addCompaniesToAppAction} className="btn-secondary">Add selected to AIS Connect as new accounts</SubmitButton>
                 <SubmitButton formAction={companiesToSalesforceAction} className="btn-secondary" disabled={!sfOn}>Link or create selected in Salesforce</SubmitButton>
               </form>
+              {!runActive && <SelectAllMatching form="bulk" onPage={companyRows.length} total={companies.rows.length} noun="Companies" />}
               <ListSummary total={companies.rows.length} state={paging} noun="Company" />
               <div className="overflow-x-auto">
                 <table className="data-table">
@@ -417,7 +427,7 @@ export default async function Mapping({ searchParams }: PageProps<"/admin/mappin
                             )}
                           </td>
                           <td>
-                            <SystemLink className="btn-link text-sm" href={l.ghlCompany(b.id)} missing="">View in Lead Alchemist</SystemLink>
+                            <SystemLink title={LA_COMPANY_HINT} className="btn-link text-sm" href={l.ghlCompany(b.id)} missing="">View in Lead Alchemist</SystemLink>
                           </td>
                         </tr>
                       );
@@ -441,6 +451,7 @@ export default async function Mapping({ searchParams }: PageProps<"/admin/mappin
             <input type="hidden" name="back" value={back} />
             <SubmitButton formAction={companyTagsAction} className="btn-primary" disabled={!laOn}>Add company tags in Lead Alchemist for selected</SubmitButton>
           </form>
+          {!runActive && <SelectAllMatching form="bulk" onPage={multi.length} total={multiTotal} noun="people" />}
           <ListSummary total={multiTotal} state={paging} noun="person" />
           <div className="overflow-x-auto">
             <table className="data-table">

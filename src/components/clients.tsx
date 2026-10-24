@@ -2,7 +2,10 @@ import type { ReactNode } from "react";
 import type { ApplicationSfStatus, SalesforceStatus } from "@/lib/db/schema";
 
 /** Opens a record in another system; disabled with an explanation when the record doesn't exist yet. */
-export function SystemLink({ href, children, missing, className = "btn-secondary" }: { href: string | null; children: ReactNode; missing: string; className?: string }) {
+/** Company links open Lead Alchemist's Contacts page (a Company's own page address isn't known yet). */
+export const LA_COMPANY_HINT = "Opens Lead Alchemist Contacts: choose the Companies tab at the top and search for this company";
+
+export function SystemLink({ href, children, missing, className = "btn-secondary", title }: { href: string | null; children: ReactNode; missing: string; className?: string; title?: string }) {
   if (!href) {
     return (
       <span className={`${className} cursor-not-allowed opacity-50`} aria-disabled="true" title={missing} tabIndex={0}>
@@ -11,7 +14,7 @@ export function SystemLink({ href, children, missing, className = "btn-secondary
     );
   }
   return (
-    <a className={className} href={href} target="_blank" rel="noopener">
+    <a className={className} href={href} target="_blank" rel="noopener" title={title}>
       {children}
     </a>
   );

@@ -35,7 +35,7 @@ Lead Alchemist Company, and its contacts are put in that Company. Lead Alchemist
    "LocationId is not specified". The app sends `locationId` as the API documents. If it still fails, the row shows
    the error, and the fallback is to create those Companies by hand and link them on the mapping screen.
 3. **Company page address.** Open any Company and copy the address bar to confirm the link pattern. The app's guess is
-   `/v2/location/<location>/businesses/detail/<id>` (`src/lib/integrations/urls.ts`, a one-line fix if it differs).
+   `/v2/location/<location>/businesses/detail/<id>`; that guess was broken, so Company links now open the Contacts page (`src/lib/integrations/urls.ts`, a one-line fix once the real address is known).
 
 ## API calls used
 

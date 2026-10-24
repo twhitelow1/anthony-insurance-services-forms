@@ -1,0 +1,131 @@
+import "server-only";
+import { randomUUID } from "node:crypto";
+import { eq } from "drizzle-orm";
+import { getDb, schema } from "@/lib/db";
+
+/**
+ * "Select all N matching" on a list: the bulk button the staff member pressed runs over every row
+ * that matches the list's filters, across all pages. The matching IDs are taken when it starts
+ * (so rows that drop out of the filter while it runs are still done), then worked through in
+ * small time-boxed batches, one per request; the list page keeps submitting the next batch while
+ * it's open, and it can be stopped. One run per list at a time.
+ */
+export type SelectionScope = "contacts" | "mapping";
+
+export interface SelectionRun {
+  runId: string;
+  scope: SelectionScope;
+  /** Which bulk action (the list's own key for it). */
+  action: string;
+  /** What it does, e.g. "Synced to Lead Alchemist". */
+  label: string;
+  /** The ticked options that came with the button (e.g. createMissing). */
+  options: Record<string, string>;
+  ids: string[];
+  position: number;
+  done: number;
+  notes: string[];
+  phase: "running" | "done" | "stopped";
+  error?: string;
+  /** The filters it was started from, in words. */
+  scopeText: string;
+  startedBy: string;
+  startedAt: string;
+  updatedAt: string;
+}
+
+export interface BatchResult {
+  done: number;
+  notes: string[];
+}
+
+/** The most rows one run takes. */
+export const MAX_SELECTION = 20_000;
+const CHUNK = 10;
+const key = (scope: SelectionScope) => `selection_run:${scope}`;
+
+export async function getSelectionRun(scope: SelectionScope): Promise<SelectionRun | null> {
+  const db = await getDb();
+  const [row] = await db.select().from(schema.appSettings).where(eq(schema.appSettings.key, key(scope))).limit(1);
+  return (row?.value as SelectionRun) ?? null;
+}
+
+async function save(run: SelectionRun) {
+  const db = await getDb();
+  const value = { ...run, updatedAt: new Date().toISOString() };
+  await db
+    .insert(schema.appSettings)
+    .values({ key: key(run.scope), value, updatedBy: run.startedBy })
+    .onConflictDoUpdate({ target: schema.appSettings.key, set: { value, updatedAt: new Date() } });
+  return value;
+}
+
+export async function startSelectionRun(
+  scope: SelectionScope,
+  opts: { action: string; label: string; options?: Record<string, string>; ids: string[]; scopeText: string },
+  actor: string,
+): Promise<SelectionRun> {
+  const current = await getSelectionRun(scope);
+  if (current?.phase === "running") throw new Error(`"${current.label}" is still running on ${current.ids.length.toLocaleString("en-US")} rows. Stop it first.`);
+  const ids = [...new Set(opts.ids)];
+  if (!ids.length) throw new Error("Nothing matches the current filters.");
+  if (ids.length > MAX_SELECTION) throw new Error(`That's ${ids.length.toLocaleString("en-US")} rows; narrow the filters to ${MAX_SELECTION.toLocaleString("en-US")} or fewer.`);
+  const now = new Date().toISOString();
+  return save({
+    runId: randomUUID(),
+    scope,
+    action: opts.action,
+    label: opts.label,
+    options: opts.options ?? {},
+    ids,
+    position: 0,
+    done: 0,
+    notes: [],
+    phase: "running",
+    scopeText: opts.scopeText,
+    startedBy: actor,
+    startedAt: now,
+    updatedAt: now,
+  });
+}
+
+/** One time-boxed batch of the run. Call again (the page does) until the phase isn't "running". */
+export async function stepSelectionRun(
+  scope: SelectionScope,
+  work: (run: SelectionRun) => ((ids: string[], actor: string) => Promise<BatchResult>) | null,
+  timeBudgetMs = 35_000,
+): Promise<SelectionRun | null> {
+  const run = await getSelectionRun(scope);
+  if (!run || run.phase !== "running") return run;
+  const fn = work(run);
+  if (!fn) return save({ ...run, phase: "stopped", error: "This action can't run on all matching rows any more." });
+  const started = Date.now();
+  const from = run.position;
+  // At least one batch per step, so it always moves forward.
+  while (run.position < run.ids.length && (run.position === from || Date.now() - started < timeBudgetMs)) {
+    const chunk = run.ids.slice(run.position, run.position + CHUNK);
+    try {
+      const r = await fn(chunk, run.startedBy);
+      run.done += r.done;
+      run.notes = [...run.notes, ...r.notes].slice(-20);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      // Stop rather than skip ahead: a connection or permission problem would fail every batch.
+      return save({ ...run, phase: "stopped", error: message.slice(0, 300) });
+    }
+    run.position += chunk.length;
+  }
+  if (run.position >= run.ids.length) run.phase = "done";
+  return save(run);
+}
+
+export async function stopSelectionRun(scope: SelectionScope, actor: string) {
+  const run = await getSelectionRun(scope);
+  if (!run || run.phase !== "running") return run;
+  return save({ ...run, phase: "stopped", error: `Stopped by ${actor.replace(/^staff:/, "")}` });
+}
+
+/** Shown on the list while it runs, and for a while after. */
+export function showSelectionRun(run: SelectionRun | null): run is SelectionRun {
+  return !!run && (run.phase === "running" || Date.now() - new Date(run.updatedAt).getTime() < 30 * 60_000);
+}

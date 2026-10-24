@@ -23,7 +23,7 @@ const uniq = () => Math.random().toString(36).slice(2, 8);
 
 describe("contacts directory", () => {
   it("imports both systems, matches people, filters by where they are, and adds the missing to the app", async () => {
-    const { startImport, stepImport, listDirectory, addSelectedToApp, directoryBreakdown } = await import("./directory");
+    const { startImport, stepImport, listDirectory, addSelectedToApp, directoryBreakdown, directoryKeys } = await import("./directory");
     const tag = uniq();
     const db = await getDb();
     await db.delete(schema.directoryContacts);
@@ -60,6 +60,9 @@ describe("contacts directory", () => {
     expect(both.rows.map((r) => r.email)).toEqual([`ann.${tag}@gmail.com`]);
     expect(both.total).toBe(1);
     expect((await listDirectory({ q: tag, presence: { app: "no" }, filter: "la_only" })).rows.map((r) => r.email)).toEqual([`di.${tag}@gmail.com`]);
+    // "Select all matching" takes the same rows as the list, on every page.
+    expect(await directoryKeys({ q: tag, presence: { app: "yes" } })).toEqual((await listDirectory({ q: tag, presence: { app: "yes" } })).rows.map((r) => r.key));
+    expect(await directoryKeys({ q: tag, filter: "not_app" })).toHaveLength(2);
     const breakdown = await directoryBreakdown(tag);
     expect(breakdown.total).toBe(4);
     const combo = (app: boolean, sf: boolean, la: boolean) => breakdown.combos.find((c) => c.app === app && c.sf === sf && c.la === la)?.count ?? 0;

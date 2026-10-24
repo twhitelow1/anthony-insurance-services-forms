@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
 import { addContactToAccount, ensureClient, getContactByEmail } from "@/lib/clients/repo";
-import { accountTypesInApp, listAccountMap, multiAccountContacts, NO_TYPE } from "./database";
+import { accountMapIds, accountTypesInApp, contactMapIds, listAccountMap, listContactMap, multiAccountContacts, NO_TYPE } from "./database";
 
 const uniq = () => Math.random().toString(36).slice(2, 8);
 
@@ -22,6 +22,10 @@ describe("mapping database", () => {
     expect((await listAccountMap({ q: tag, type: NO_TYPE })).rows).toHaveLength(0);
     // "In Salesforce, not in Lead Alchemist" + Customer.
     expect((await listAccountMap({ q: tag, filter: "sf_not_la", type: "Customer" })).rows.map((r) => r.id)).toEqual([current]);
+    // "Select all matching" takes the same rows as the list, on every page.
+    expect(await accountMapIds({ q: tag, filter: "sf_not_la", type: "Customer" })).toEqual([current]);
+    expect((await accountMapIds({ q: tag })).sort()).toEqual([current, past].sort());
+    expect(await contactMapIds({ q: tag, filter: "no_la" })).toEqual((await listContactMap({ q: tag, filter: "no_la" })).rows.map((r) => r.contact.id));
   });
 
   it("lists people tied to more than one account", async () => {

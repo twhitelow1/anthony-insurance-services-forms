@@ -4,7 +4,19 @@ import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { requireStaff } from "@/lib/auth/session";
-import { addSelectedToApp, sendToLeadAlchemist, sendToSalesforce, startImport, stepImport, updateLeadAlchemistForSelected, type DirectorySource } from "@/lib/contacts/directory";
+import { startSelectionRun, stepSelectionRun, stopSelectionRun, type BatchResult } from "@/lib/bulk/selection-run";
+import {
+  addSelectedToApp,
+  directoryKeys,
+  sendToLeadAlchemist,
+  sendToSalesforce,
+  startImport,
+  stepImport,
+  updateLeadAlchemistForSelected,
+  type DirectoryFilter,
+  type DirectorySource,
+  type Presence,
+} from "@/lib/contacts/directory";
 import { setFlash } from "@/lib/flash";
 import { links } from "@/lib/integrations/links";
 import { salesforceClient } from "@/lib/salesforce/client";
@@ -27,19 +39,98 @@ async function finish(to: string, tone: "ok" | "error", text: string): Promise<n
 
 const selected = (formData: FormData) => formData.getAll("ids").map(String);
 
-async function bulk(formData: FormData, verb: string, work: (values: string[], actor: string) => Promise<{ done: number; notes: string[] }>): Promise<never> {
+type Work = (values: string[], actor: string, options: Record<string, string>) => Promise<BatchResult>;
+
+/** The bulk buttons, by key, so a "select all matching" run can call the same work later. */
+const WORK: Record<string, { verb: string; options: string[]; work: Work }> = {
+  addToApp: {
+    verb: "Added to AIS Connect",
+    options: [],
+    work: async (values, actor) => addSelectedToApp(values, actor, { sf: await salesforceClient(), links: await links() }),
+  },
+  toLeadAlchemist: {
+    verb: "Synced to Lead Alchemist",
+    options: ["createMissing"],
+    work: async (values, actor, o) => sendToLeadAlchemist(values, actor, { sf: await salesforceClient(), links: await links() }, o.createMissing === "yes"),
+  },
+  toSalesforce: {
+    verb: "Linked or created in Salesforce",
+    options: [],
+    work: async (values, actor) => {
+      const sf = await salesforceClient();
+      if (!sf) throw new Error("Salesforce isn't connected. Add the keys in Settings → Integrations.");
+      return sendToSalesforce(values, actor, { sf, links: await links() });
+    },
+  },
+  updateLa: {
+    verb: "Updated in Lead Alchemist",
+    options: ["replace"],
+    work: (values, actor, o) => updateLeadAlchemistForSelected(values, actor, o.replace === "yes"),
+  },
+};
+
+const FILTERS: DirectoryFilter[] = ["all", "app_only", "sf_only", "la_only", "not_app", "not_sf", "not_la", "everywhere", "la_outdated"];
+const yesNo = (v: string | null) => (v === "yes" || v === "no" ? v : undefined);
+
+/** The list's filters, read from the page address the form came from (plus the search cookie). */
+async function listFilters(formData: FormData) {
+  const p = new URL(backTo(formData), "http://x").searchParams;
+  const filter = FILTERS.find((f) => f === p.get("filter")) ?? "all";
+  const presence: Presence = { app: yesNo(p.get("app")), sf: yesNo(p.get("sf")), la: yesNo(p.get("la")) };
+  const q = (await cookies()).get(CONTACT_SEARCH_COOKIE)?.value ?? "";
+  const words = [
+    q && `matching "${q}"`,
+    filter !== "all" && `filter: ${filter.replace(/_/g, " ")}`,
+    ...(["app", "sf", "la"] as const).filter((k) => presence[k]).map((k) => `${{ app: "AIS Connect", sf: "Salesforce", la: "Lead Alchemist" }[k]}: ${presence[k]}`),
+  ].filter(Boolean);
+  return { q, filter, presence, text: words.length ? `Contacts ${words.join(", ")}` : "All contacts" };
+}
+
+async function bulk(formData: FormData, key: keyof typeof WORK): Promise<never> {
   const staff = await requireStaff();
+  const { verb, options: optionNames, work } = WORK[key];
+  const options = Object.fromEntries(optionNames.map((n) => [n, String(formData.get(n) ?? "")]));
+  const actor = `staff:${staff.email}`;
+  if (formData.get("allMatching") === "yes") {
+    if (formData.get("confirmAll") !== "yes") return finish(backTo(formData), "error", "Tick the box to confirm running it on every matching person.");
+    let started: number;
+    try {
+      const f = await listFilters(formData);
+      started = (await startSelectionRun("contacts", { action: key, label: verb, options, ids: await directoryKeys(f), scopeText: f.text }, actor)).ids.length;
+    } catch (err) {
+      return finish(backTo(formData), "error", err instanceof Error ? err.message : String(err));
+    }
+    return finish(backTo(formData), "ok", `Started on all ${started.toLocaleString("en-US")} matching people. Keep this page open; it continues on its own.`);
+  }
   const values = selected(formData);
   if (!values.length) return finish(backTo(formData), "error", "Tick at least one person first.");
-  let r: { done: number; notes: string[] };
+  let r: BatchResult;
   try {
-    r = await work(values, `staff:${staff.email}`);
+    r = await work(values, actor, options);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.error("[contacts] bulk action failed:", message);
     return finish(backTo(formData), "error", message);
   }
   return finish(backTo(formData), "ok", `${verb}: ${r.done} of ${values.length}.${r.notes.length ? ` ${r.notes.slice(0, 6).join(" ")}` : ""}`);
+}
+
+/** One batch of a "select all matching" run; the progress panel submits this again until it's done. */
+export async function stepContactsRunAction(formData: FormData) {
+  await requireStaff();
+  const run = await stepSelectionRun("contacts", (r) => {
+    const w = WORK[r.action];
+    return w ? (ids, actor) => w.work(ids, actor, r.options) : null;
+  });
+  if (run?.phase === "stopped" && run.error) console.error("[contacts] run stopped:", run.error);
+  revalidatePath("/admin/contacts");
+  redirect(backTo(formData));
+}
+
+export async function stopContactsRunAction(formData: FormData) {
+  const staff = await requireStaff();
+  await stopSelectionRun("contacts", `staff:${staff.email}`);
+  return finish(backTo(formData), "ok", "Stopped. People already done stay done.");
 }
 
 export async function searchContactsAction(formData: FormData) {
@@ -52,27 +143,19 @@ export async function searchContactsAction(formData: FormData) {
 }
 
 export async function addToAppAction(formData: FormData) {
-  return bulk(formData, "Added to AIS Connect", async (values, actor) => addSelectedToApp(values, actor, { sf: await salesforceClient(), links: await links() }));
+  return bulk(formData, "addToApp");
 }
 
 export async function sendToLeadAlchemistAction(formData: FormData) {
-  const createMissing = formData.get("createMissing") === "yes";
-  return bulk(formData, "Synced to Lead Alchemist", async (values, actor) =>
-    sendToLeadAlchemist(values, actor, { sf: await salesforceClient(), links: await links() }, createMissing),
-  );
+  return bulk(formData, "toLeadAlchemist");
 }
 
 export async function sendToSalesforceAction(formData: FormData) {
-  return bulk(formData, "Linked or created in Salesforce", async (values, actor) => {
-    const sf = await salesforceClient();
-    if (!sf) throw new Error("Salesforce isn't connected. Add the keys in Settings → Integrations.");
-    return sendToSalesforce(values, actor, { sf, links: await links() });
-  });
+  return bulk(formData, "toSalesforce");
 }
 
 export async function updateLaDetailsAction(formData: FormData) {
-  const replace = formData.get("replace") === "yes";
-  return bulk(formData, "Updated in Lead Alchemist", (values, actor) => updateLeadAlchemistForSelected(values, actor, replace));
+  return bulk(formData, "updateLa");
 }
 
 const sourceOf = (formData: FormData): DirectorySource => (formData.get("source") === "lead_alchemist" ? "lead_alchemist" : "salesforce");

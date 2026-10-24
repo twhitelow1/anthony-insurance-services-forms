@@ -358,6 +358,17 @@ export async function listDirectory({
   return { rows, total: Number(raw[0]?.total ?? 0) || (offset > 0 ? await countDirectory({ q, filter, presence }) : 0) };
 }
 
+/** Every row key the list shows for these filters (all pages), for "select all matching". */
+export async function directoryKeys({ q, filter = "all", presence }: { q?: string; filter?: DirectoryFilter; presence?: Presence }): Promise<string[]> {
+  const db = await getDb();
+  const result = await db.execute(sql`
+    ${peopleSql()}
+    select p.app_id, p.dir_ids from flagged p
+    where ${sql.raw(FILTER_SQL[filter])} and ${sql.raw(presenceSql(presence))} ${searchSql(q)}
+    order by lower(p.name), p.pkey`);
+  return rowsOf<{ app_id: string | null; dir_ids: string | null }>(result).map((r) => (r.app_id ? `a:${r.app_id}` : `d:${r.dir_ids}`));
+}
+
 /** The total when a page past the end comes back empty (the window count needs a row). */
 async function countDirectory(opts: { q?: string; filter?: DirectoryFilter; presence?: Presence }): Promise<number> {
   const { rows, total } = await listDirectory({ ...opts, limit: 1, offset: 0 });

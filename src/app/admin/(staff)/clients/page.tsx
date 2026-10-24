@@ -2,7 +2,7 @@ import { ListSummary, pageHref, pageState, Pagination } from "@/components/Pagin
 import Link from "next/link";
 import { cookies } from "next/headers";
 import { fmtDate, StatusBadge } from "@/components/portal";
-import { SalesforceBadge, SystemLink } from "@/components/clients";
+import { SalesforceBadge, SystemLink, LA_COMPANY_HINT } from "@/components/clients";
 import { requireStaff } from "@/lib/auth/session";
 import { countPossibleDuplicates, listClients, type ClientFilter, type ClientSort } from "@/lib/clients/repo";
 import { links } from "@/lib/integrations/links";
@@ -153,7 +153,7 @@ export default async function Accounts({ searchParams }: PageProps<"/admin/clien
                   )}
                 </td>
                 <td className="text-sm">
-                  <SystemLink className="btn-link" href={l.ghlCompany(c.ghlCompanyId)} missing="No Lead Alchemist Company yet (Settings → Data mapping)">
+                  <SystemLink title={LA_COMPANY_HINT} className="btn-link" href={l.ghlCompany(c.ghlCompanyId)} missing="No Lead Alchemist Company yet (Settings → Data mapping)">
                     {c.ghlCompanyId ? "Company" : "No Company"}
                   </SystemLink>
                   <div>
