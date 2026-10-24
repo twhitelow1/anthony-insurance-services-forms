@@ -162,6 +162,13 @@
       "when": 1792877847993,
       "tag": "0022_sync_reports",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1792878353939,
+      "tag": "0023_merge_support",
+      "breakpoints": true
     }
   ]
 }

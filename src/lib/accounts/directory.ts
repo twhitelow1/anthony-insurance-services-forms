@@ -171,6 +171,8 @@ export interface AccountDirRow {
     app: { id: string; name: string } | null;
     sf: { id: string; name: string; how: string } | null;
     la: { id: string; name: string; how: string } | null;
+    /** Another AIS Connect account with the same name. */
+    duplicate: { id: string; name: string } | null;
   };
 }
 
@@ -185,10 +187,12 @@ const accountsSql = () => sql`
       select 's:' || d.id, null, d.name, d.name_key, false, d.id, null, d.phone, false
       from directory_accounts d
       where not exists (select 1 from clients c where c.sf_account_id = d.id and c.merged_into is null)
+        and not exists (select 1 from salesforce_hidden h where h.sf_id = d.id)
       union all
       select 'l:' || d.id, null, d.name, d.name_key, false, null, d.id, d.phone, false
       from directory_companies d
       where not exists (select 1 from clients c where c.ghl_company_id = d.id and c.merged_into is null)
+        and not exists (select 1 from lead_alchemist_hidden h where h.id = d.id)
     ),
     enriched as (
       select r.*, r.sf_id is not null as in_sf, r.la_id is not null as in_la,
@@ -199,7 +203,8 @@ const accountsSql = () => sql`
         case when r.la_id is not null then (select count(*) from directory_contacts dc where dc.source = 'lead_alchemist' and dc.company_id = r.la_id) else 0 end as la_contacts,
         sug_app.id as sug_app_id, sug_app.name as sug_app_name,
         sug_sf.id as sug_sf_id, sug_sf.name as sug_sf_name, sug_sf.how as sug_sf_how,
-        sug_la.id as sug_la_id, sug_la.name as sug_la_name, sug_la.how as sug_la_how
+        sug_la.id as sug_la_id, sug_la.name as sug_la_name, sug_la.how as sug_la_how,
+        sug_dup.id as sug_dup_id, sug_dup.name as sug_dup_name
       from rows r
       left join directory_accounts sfa on sfa.id = r.sf_id
       left join directory_companies lac on lac.id = r.la_id
@@ -207,20 +212,33 @@ const accountsSql = () => sql`
         select c.id::text as id, c.name from clients c
         where r.app_id is null and r.name_key <> '' and c.name_key = r.name_key and c.merged_into is null and c.deactivated_at is null
           and ((r.sf_id is not null and c.sf_account_id is null) or (r.la_id is not null and c.ghl_company_id is null))
+          and not exists (select 1 from not_duplicates nd where nd.pair = least(r.key, 'a:' || c.id::text) || '|' || greatest(r.key, 'a:' || c.id::text))
         order by c.created_at limit 1
       ) sug_app on true
       left join lateral (
         select d.id, d.name, case when d.name_key = r.name_key then 'same name' else 'same phone' end as how from directory_accounts d
         where r.sf_id is null and ((r.name_key <> '' and d.name_key = r.name_key) or (r.phone is not null and d.phone = r.phone))
           and not exists (select 1 from clients c where c.sf_account_id = d.id and c.merged_into is null)
+          and not exists (select 1 from salesforce_hidden h where h.sf_id = d.id)
+          and not exists (select 1 from not_duplicates nd where nd.pair = least(r.key, 's:' || d.id) || '|' || greatest(r.key, 's:' || d.id))
         order by (d.name_key = r.name_key) desc, d.name limit 1
       ) sug_sf on true
       left join lateral (
         select d.id, d.name, case when d.name_key = r.name_key then 'same name' else 'same phone' end as how from directory_companies d
         where r.la_id is null and ((r.name_key <> '' and d.name_key = r.name_key) or (r.phone is not null and d.phone = r.phone))
           and not exists (select 1 from clients c where c.ghl_company_id = d.id and c.merged_into is null)
+          and not exists (select 1 from lead_alchemist_hidden h where h.id = d.id)
+          and not exists (select 1 from not_duplicates nd where nd.pair = least(r.key, 'l:' || d.id) || '|' || greatest(r.key, 'l:' || d.id))
         order by (d.name_key = r.name_key) desc, d.name limit 1
       ) sug_la on true
+      left join lateral (
+        -- Another AIS Connect account with the same name (not marked as a different business).
+        select c.id::text as id, c.name from clients c
+        where r.app_id is not null and r.name_key <> '' and c.name_key = r.name_key and c.id <> r.app_id::uuid
+          and c.merged_into is null and c.deactivated_at is null and not coalesce(c.is_individual, false)
+          and not exists (select 1 from not_duplicates nd where nd.pair = least(r.key, 'a:' || c.id::text) || '|' || greatest(r.key, 'a:' || c.id::text))
+        order by c.created_at limit 1
+      ) sug_dup on true
     )
 `;
 
@@ -230,7 +248,7 @@ function whereSql({ q, presence = {}, match }: AccountDirQuery) {
   const parts = (Object.keys(PRESENCE_COLUMN) as (keyof typeof PRESENCE_COLUMN)[])
     .filter((k) => presence[k] === "yes" || presence[k] === "no")
     .map((k) => `${presence[k] === "no" ? "not " : ""}${PRESENCE_COLUMN[k]}`);
-  const anySuggestion = "(sug_app_id is not null or sug_sf_id is not null or sug_la_id is not null)";
+  const anySuggestion = "(sug_app_id is not null or sug_sf_id is not null or sug_la_id is not null or sug_dup_id is not null)";
   if (match === "suggested") parts.push(anySuggestion);
   if (match === "none") parts.push(`not ${anySuggestion}`);
   const term = q?.trim() ? `%${q.trim().toLowerCase().replace(/[\\%_]/g, (c) => `\\${c}`)}%` : null;
@@ -257,6 +275,7 @@ function toRow(r: Record<string, unknown>): AccountDirRow {
       app: r.sug_app_id ? { id: r.sug_app_id as string, name: r.sug_app_name as string } : null,
       sf: r.sug_sf_id ? { id: r.sug_sf_id as string, name: r.sug_sf_name as string, how: r.sug_sf_how as string } : null,
       la: r.sug_la_id ? { id: r.sug_la_id as string, name: r.sug_la_name as string, how: r.sug_la_how as string } : null,
+      duplicate: r.sug_dup_id ? { id: r.sug_dup_id as string, name: r.sug_dup_name as string } : null,
     },
   };
 }
@@ -290,7 +309,7 @@ export async function accountBreakdown(q?: string) {
   const result = await db.execute(sql`
     ${accountsSql()}
     select in_app, in_sf, in_la, count(*) as n,
-      count(*) filter (where sug_app_id is not null or sug_sf_id is not null or sug_la_id is not null) as suggested
+      count(*) filter (where sug_app_id is not null or sug_sf_id is not null or sug_la_id is not null or sug_dup_id is not null) as suggested
     from enriched p where ${whereSql({ q })}
     group by in_app, in_sf, in_la`);
   const rows = rowsOf<{ in_app: boolean; in_sf: boolean; in_la: boolean; n: number | string; suggested: number | string }>(result);

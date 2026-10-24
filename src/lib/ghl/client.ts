@@ -343,6 +343,17 @@ export async function listBusinesses(max = 10_000): Promise<GhlBusiness[]> {
   return all;
 }
 
+/** One Company, or null if it's gone. */
+export async function getBusiness(id: string): Promise<GhlBusiness | null> {
+  try {
+    const data = await ghlFetch<{ business?: GhlBusiness }>(`/businesses/${encodeURIComponent(id)}`, { cache: "no-store" });
+    return data.business ?? null;
+  } catch (err) {
+    if (err instanceof GhlError && err.status === 404) return null;
+    throw err;
+  }
+}
+
 const businessBody = (input: Partial<BusinessInput>) =>
   Object.fromEntries(Object.entries(input).filter(([, v]) => typeof v === "string" && v.trim()).map(([k, v]) => [k, (v as string).trim()]));
 

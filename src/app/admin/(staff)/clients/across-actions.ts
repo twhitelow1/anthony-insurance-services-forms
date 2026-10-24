@@ -81,7 +81,7 @@ const WORK: Record<string, { verb: string; options: string[]; work: Work }> = {
   linkSuggested: { verb: "Linked to suggested matches", options: [], work: async (k, a) => linkSuggestedMatches(k, a, await deps()) },
 };
 
-const KEY_RE = /^[asl]:[A-Za-z0-9-]{6,64}$/;
+const KEY_RE = /^[asl]:[A-Za-z0-9-]{3,64}$/;
 const yesNo = (v: string | null): "yes" | "no" | undefined => (v === "yes" || v === "no" ? v : undefined);
 
 async function listFilters(formData: FormData) {

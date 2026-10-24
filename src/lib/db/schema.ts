@@ -217,6 +217,30 @@ export const directoryContacts = pgTable(
 export type DirectoryContact = typeof directoryContacts.$inferSelect;
 
 /**
+ * Records staff said are different businesses despite looking alike ("Not the same business" on
+ * the merge screen), so they aren't suggested as a match again. `pair` is the two row keys
+ * (e.g. "a:<id>" and "s:<id>"), sorted and joined with "|".
+ */
+export const notDuplicates = pgTable("not_duplicates", {
+  pair: text("pair").primaryKey(),
+  decidedBy: text("decided_by").notNull(),
+  decidedAt: timestamp("decided_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/**
+ * Lead Alchemist Companies hidden in AIS Connect after a merge picked another Company (their
+ * contacts were moved to the kept one). They stay in Lead Alchemist; nothing is deleted there.
+ */
+export const leadAlchemistHidden = pgTable("lead_alchemist_hidden", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull().default(""),
+  /** The Company kept instead. */
+  keptId: text("kept_id"),
+  hiddenBy: text("hidden_by").notNull(),
+  hiddenAt: timestamp("hidden_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/**
  * Salesforce Accounts, copied by Refresh on the Accounts page ("Across all three"), so it can list
  * and match Accounts that aren't in AIS Connect without calling Salesforce. Read-only copy.
  */
