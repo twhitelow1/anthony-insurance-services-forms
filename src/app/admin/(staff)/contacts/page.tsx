@@ -6,7 +6,7 @@ import { ListSummary, pageHref, pageState, Pagination } from "@/components/Pagin
 import { SelectAll } from "@/components/SelectAll";
 import { SubmitButton } from "@/components/SubmitButton";
 import { requireStaff } from "@/lib/auth/session";
-import { directoryCounts, getImport, listDirectory, type DirectoryFilter, type DirectoryImport, type DirectorySource } from "@/lib/contacts/directory";
+import { directoryBreakdown, directoryCounts, getImport, listDirectory, type DirectoryFilter, type DirectoryImport, type DirectorySource, type Presence } from "@/lib/contacts/directory";
 import { readFlash } from "@/lib/flash";
 import { ghlConfig } from "@/lib/ghl/client";
 import { links } from "@/lib/integrations/links";
@@ -19,7 +19,7 @@ export const metadata = { title: "Contacts | AIS Connect" };
 export const dynamic = "force-dynamic";
 
 const FILTERS: { value: DirectoryFilter; label: string }[] = [
-  { value: "all", label: "Everyone" },
+  { value: "all", label: "Anyone" },
   { value: "app_only", label: "Only in AIS Connect" },
   { value: "sf_only", label: "Only in Salesforce" },
   { value: "la_only", label: "Only in Lead Alchemist" },
@@ -31,6 +31,23 @@ const FILTERS: { value: DirectoryFilter; label: string }[] = [
 ];
 
 const fmt = (n: number) => n.toLocaleString("en-US");
+
+const SYSTEMS = [
+  { key: "app", label: "AIS Connect" },
+  { key: "sf", label: "Salesforce" },
+  { key: "la", label: "Lead Alchemist" },
+] as const;
+type SystemKey = (typeof SYSTEMS)[number]["key"];
+const yesNo = (v: string) => (v === "yes" || v === "no" ? v : undefined);
+
+/** "In AIS Connect and Salesforce, not Lead Alchemist" */
+function comboLabel(c: Record<SystemKey, boolean>) {
+  const inSys = SYSTEMS.filter((s) => c[s.key]).map((s) => s.label);
+  const outSys = SYSTEMS.filter((s) => !c[s.key]).map((s) => s.label);
+  if (!outSys.length) return "In all three";
+  if (inSys.length === 1) return `Only in ${inSys[0]}`;
+  return `In ${inSys.join(" and ")}, not ${outSys[0]}`;
+}
 const Missing = () => <span className="badge badge-neutral">Not there</span>;
 
 export default async function Contacts({ searchParams }: PageProps<"/admin/contacts">) {
@@ -38,6 +55,7 @@ export default async function Contacts({ searchParams }: PageProps<"/admin/conta
   const sp = await searchParams;
   const str = (k: string) => (typeof sp[k] === "string" ? (sp[k] as string) : "");
   const filter = FILTERS.some((f) => f.value === str("filter")) ? (str("filter") as DirectoryFilter) : "all";
+  const presence: Presence = { app: yesNo(str("app")), sf: yesNo(str("sf")), la: yesNo(str("la")) };
   const paging = pageState(sp);
   const q = (await cookies()).get(CONTACT_SEARCH_COOKIE)?.value ?? "";
   const importing = str("importing");
@@ -49,9 +67,13 @@ export default async function Contacts({ searchParams }: PageProps<"/admin/conta
     directoryCounts(),
     getImport("salesforce"),
     getImport("lead_alchemist"),
-    listDirectory({ q, filter, limit: paging.pageSize, offset: paging.offset }),
+    listDirectory({ q, filter, presence, limit: paging.pageSize, offset: paging.offset }),
   ]);
-  const href = pageHref("/admin/contacts", { filter: filter !== "all" ? filter : undefined });
+  const breakdown = await directoryBreakdown(q);
+  const params = { filter: filter !== "all" ? filter : undefined, app: presence.app, sf: presence.sf, la: presence.la };
+  const href = pageHref("/admin/contacts", params);
+  const comboHref = (c: Record<SystemKey, boolean>) => `/admin/contacts?${new URLSearchParams({ app: c.app ? "yes" : "no", sf: c.sf ? "yes" : "no", la: c.la ? "yes" : "no" })}`;
+  const isCombo = (c: Record<SystemKey, boolean>) => filter === "all" && SYSTEMS.every((x) => presence[x.key] === (c[x.key] ? "yes" : "no"));
   const back = href(paging.page, paging.pageSize);
 
   return (
@@ -80,8 +102,18 @@ export default async function Contacts({ searchParams }: PageProps<"/admin/conta
           )}
         </form>
         <form method="get" className="flex flex-wrap items-end gap-2">
+          {SYSTEMS.map((x) => (
+            <label key={x.key} className="text-sm">
+              <span className="field-label !mb-1">In {x.label}</span>
+              <select name={x.key} defaultValue={presence[x.key] ?? ""} className="input">
+                <option value="">Either</option>
+                <option value="yes">Yes</option>
+                <option value="no">No</option>
+              </select>
+            </label>
+          ))}
           <label className="text-sm">
-            <span className="field-label !mb-1">Show</span>
+            <span className="field-label !mb-1">Also</span>
             <select name="filter" defaultValue={filter} className="input">
               {FILTERS.map((f) => (
                 <option key={f.value} value={f.value}>{f.label}</option>
@@ -89,8 +121,58 @@ export default async function Contacts({ searchParams }: PageProps<"/admin/conta
             </select>
           </label>
           <button className="btn-secondary">Filter</button>
+          {(presence.app || presence.sf || presence.la || filter !== "all") && (
+            <Link className="btn-link text-sm" href="/admin/contacts">Clear filters</Link>
+          )}
         </form>
       </div>
+
+      {breakdown.total > 0 && (
+        <section className="card mb-4 !p-4" aria-labelledby="where-heading">
+          <h2 id="where-heading" className="mb-2 text-sm font-semibold">
+            Where people are{q ? ` (matching "${q}")` : ""}: <span className="font-normal text-[var(--muted)]">{fmt(breakdown.total)} people</span>
+          </h2>
+          <div className="overflow-x-auto">
+            <table className="data-table text-sm">
+              <thead>
+                <tr>
+                  {SYSTEMS.map((x) => (
+                    <th key={x.key} className="text-center">{x.label}</th>
+                  ))}
+                  <th>Combination</th>
+                  <th className="text-right">People</th>
+                </tr>
+              </thead>
+              <tbody>
+                {[...breakdown.combos]
+                  .sort((a, b) => b.count - a.count)
+                  .map((c) => (
+                    <tr key={`${c.app}${c.sf}${c.la}`} className={isCombo(c) ? "bg-[var(--accent-soft)]" : undefined}>
+                      {SYSTEMS.map((x) => (
+                        <td key={x.key} className="text-center" aria-label={c[x.key] ? "yes" : "no"}>
+                          {c[x.key] ? <span className="font-semibold text-[var(--success)]">✓</span> : <span className="text-[var(--muted)]">—</span>}
+                        </td>
+                      ))}
+                      <td>
+                        <Link className="btn-link" href={comboHref(c)}>{comboLabel(c)}</Link>
+                      </td>
+                      <td className="text-right font-medium">{fmt(c.count)}</td>
+                    </tr>
+                  ))}
+                {breakdown.laOutdated > 0 && (
+                  <tr>
+                    <td colSpan={3} />
+                    <td>
+                      <Link className="btn-link" href="/admin/contacts?filter=la_outdated">Lead Alchemist details missing or different</Link>
+                    </td>
+                    <td className="text-right font-medium">{fmt(breakdown.laOutdated)}</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
 
       <form id="bulk" className="mb-3 flex flex-wrap items-center gap-2 text-sm">
         <input type="hidden" name="back" value={back} />

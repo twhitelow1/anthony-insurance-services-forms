@@ -241,29 +241,29 @@ const FILTER_SQL: Record<DirectoryFilter, string> = {
   la_outdated: "la_outdated",
 };
 
-/**
- * Everyone in the app, Salesforce and Lead Alchemist, one row per person: an app contact with the
- * directory rows matched to it, or directory rows (Salesforce and Lead Alchemist with the same
- * email, say) not in the app yet.
- */
-export async function listDirectory({
-  q,
-  filter = "all",
-  limit = 50,
-  offset = 0,
-}: {
-  q?: string;
-  filter?: DirectoryFilter;
-  limit?: number;
-  offset?: number;
-}): Promise<{ rows: DirectoryRow[]; total: number }> {
-  const db = await getDb();
+/** In (yes) or not in (no) a system; leave a system out for "either". */
+export type Presence = Partial<Record<"app" | "sf" | "la", "yes" | "no">>;
+const PRESENCE_COLUMN = { app: "in_app", sf: "in_sf", la: "in_la" } as const;
+
+function presenceSql(presence: Presence = {}) {
+  const parts = (Object.keys(PRESENCE_COLUMN) as (keyof typeof PRESENCE_COLUMN)[])
+    .filter((k) => presence[k] === "yes" || presence[k] === "no")
+    .map((k) => `${presence[k] === "no" ? "not " : ""}${PRESENCE_COLUMN[k]}`);
+  return parts.length ? parts.join(" and ") : "true";
+}
+
+function searchSql(q?: string) {
   const term = q?.trim() ? `%${q.trim().toLowerCase().replace(/[\\%_]/g, (c) => `\\${c}`)}%` : null;
   const digits = q ? phoneDigits(q) : "";
-  const search = term
-    ? sql`and (lower(p.name) like ${term} or p.email like ${term}${digits.length >= 4 ? sql` or p.phone like ${`%${digits}%`}` : sql``})`
-    : sql``;
-  const result = await db.execute(sql`
+  return term ? sql`and (lower(p.name) like ${term} or p.email like ${term}${digits.length >= 4 ? sql` or p.phone like ${`%${digits}%`}` : sql``})` : sql``;
+}
+
+/**
+ * One row per person across the app, Salesforce and Lead Alchemist (the `flagged` CTE): an app
+ * contact with the directory rows matched to it, or directory rows (Salesforce and Lead Alchemist
+ * with the same email, say) not in the app yet.
+ */
+const peopleSql = () => sql`
     with ext as (
       select d.*, coalesce('a:' || d.app_contact_id::text, 'e:' || coalesce(d.email, 'p' || d.phone, d.source || ':' || d.external_id)) as pkey
       from directory_contacts d
@@ -308,9 +308,31 @@ export async function listDirectory({
       ) as la_outdated
       from people p
     )
+`;
+
+/**
+ * Everyone in the app, Salesforce and Lead Alchemist, one row per person, filtered by where they
+ * are (`presence`, any combination), a preset `filter`, and a name / email / phone search.
+ */
+export async function listDirectory({
+  q,
+  filter = "all",
+  presence,
+  limit = 50,
+  offset = 0,
+}: {
+  q?: string;
+  filter?: DirectoryFilter;
+  presence?: Presence;
+  limit?: number;
+  offset?: number;
+}): Promise<{ rows: DirectoryRow[]; total: number }> {
+  const db = await getDb();
+  const result = await db.execute(sql`
+    ${peopleSql()}
     select p.*, cl.name as account_name, count(*) over () as total
     from flagged p left join clients cl on cl.id::text = p.client_id
-    where ${sql.raw(FILTER_SQL[filter])} ${search}
+    where ${sql.raw(FILTER_SQL[filter])} and ${sql.raw(presenceSql(presence))} ${searchSql(q)}
     order by lower(p.name), p.pkey
     limit ${Math.min(limit, 200)} offset ${offset}`);
   const raw = rowsOf<Record<string, unknown>>(result);
@@ -333,13 +355,32 @@ export async function listDirectory({
     sfAccountId: (r.sf_company_id as string) ?? null,
     laOutdated: !!r.la_outdated,
   }));
-  return { rows, total: Number(raw[0]?.total ?? 0) || (offset > 0 ? await countDirectory({ q, filter }) : 0) };
+  return { rows, total: Number(raw[0]?.total ?? 0) || (offset > 0 ? await countDirectory({ q, filter, presence }) : 0) };
 }
 
 /** The total when a page past the end comes back empty (the window count needs a row). */
-async function countDirectory(opts: { q?: string; filter?: DirectoryFilter }): Promise<number> {
+async function countDirectory(opts: { q?: string; filter?: DirectoryFilter; presence?: Presence }): Promise<number> {
   const { rows, total } = await listDirectory({ ...opts, limit: 1, offset: 0 });
   return rows.length ? total : 0;
+}
+
+/**
+ * How many people are in each combination of AIS Connect, Salesforce and Lead Alchemist (for the
+ * "Where people are" table), plus how many have Lead Alchemist details to update. Honours the search.
+ */
+export async function directoryBreakdown(q?: string) {
+  const db = await getDb();
+  const result = await db.execute(sql`
+    ${peopleSql()}
+    select in_app, in_sf, in_la, count(*) as n, count(*) filter (where la_outdated) as outdated
+    from flagged p where true ${searchSql(q)}
+    group by in_app, in_sf, in_la`);
+  const rows = rowsOf<{ in_app: boolean; in_sf: boolean; in_la: boolean; n: number | string; outdated: number | string }>(result);
+  return {
+    combos: rows.map((r) => ({ app: !!r.in_app, sf: !!r.in_sf, la: !!r.in_la, count: Number(r.n) })),
+    total: rows.reduce((t, r) => t + Number(r.n), 0),
+    laOutdated: rows.reduce((t, r) => t + Number(r.outdated), 0),
+  };
 }
 
 // ── Sync actions ───────────────────────────────────────────────────────
