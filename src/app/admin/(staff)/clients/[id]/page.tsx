@@ -137,9 +137,22 @@ export default async function AccountPage({ params, searchParams }: PageProps<"/
           </p>
           {address && <p className="text-sm text-[var(--muted)]">{address}</p>}
           <p className="mt-2 flex flex-wrap items-center gap-2 text-sm">
-            <span>Salesforce:</span> <SalesforceBadge status={client.sfStatus} title={client.sfLastError} />
+            <span>Salesforce:</span>
+            {client.sfAccountId && l.salesforce("Account", client.sfAccountId) ? (
+              <a href={l.salesforce("Account", client.sfAccountId)!} target="_blank" rel="noopener" title="Open the Account in Salesforce" className="hover:opacity-80">
+                <SalesforceBadge status={client.sfStatus} title={client.sfLastError} />
+              </a>
+            ) : (
+              <SalesforceBadge status={client.sfStatus} title={client.sfLastError} />
+            )}
             <span className="ml-2">Lead Alchemist Company:</span>
-            <span className={`badge ${client.ghlCompanyId ? "badge-success" : "badge-neutral"}`}>{client.ghlCompanyId ? "Linked" : "Not linked"}</span>
+            {client.ghlCompanyId && l.ghlCompany(client.ghlCompanyId) ? (
+              <a href={l.ghlCompany(client.ghlCompanyId)!} target="_blank" rel="noopener" title={LA_COMPANY_HINT} className="hover:opacity-80">
+                <span className="badge badge-success">Linked</span>
+              </a>
+            ) : (
+              <span className={`badge ${client.ghlCompanyId ? "badge-success" : "badge-neutral"}`}>{client.ghlCompanyId ? "Linked" : "Not linked"}</span>
+            )}
             {client.sfSyncedAt && <span className="text-xs text-[var(--muted)]">Last synced {fmtDate(client.sfSyncedAt)}</span>}
           </p>
         </div>

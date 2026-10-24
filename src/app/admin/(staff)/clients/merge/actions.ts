@@ -56,7 +56,14 @@ export async function mergeAction(formData: FormData) {
   const report = await saveSyncReport({ title: "Merged", scope: `${result.records} records into one account`, page: `/admin/clients/${result.clientId}`, actor, total: 1, done: 1, notes: result.notes });
   revalidatePath("/admin/clients");
   const said = report.clean ? "No conflicts or errors." : `Needs attention: ${report.report.errors.length} error(s), ${report.report.conflicts.length} conflict(s).`;
-  return flashTo(`/admin/clients/${result.clientId}`, report.clean ? "ok" : "warn", `Merged ${result.records} records into this account. ${said}`, report.href);
+  // From the Duplicates page, back to the list for the next group; otherwise to the account that stays.
+  const fromDuplicates = back(formData).startsWith("/admin/clients/duplicates");
+  return flashTo(
+    fromDuplicates ? back(formData) : `/admin/clients/${result.clientId}`,
+    report.clean ? "ok" : "warn",
+    `Merged ${result.records} records into ${fromDuplicates ? "one account" : "this account"}. ${said}`,
+    report.href,
+  );
 }
 
 export async function notDuplicateAction(formData: FormData) {

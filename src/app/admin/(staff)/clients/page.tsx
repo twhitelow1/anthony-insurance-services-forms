@@ -13,22 +13,9 @@ import { ghlConfig } from "@/lib/ghl/client";
 import { readFlash } from "@/lib/flash";
 import { FlashMessage } from "../salesforce/ui";
 import { AcrossView } from "./AcrossView";
+import { AccountTabs as Tabs } from "./AccountTabs";
 
 export const metadata = { title: "Accounts | AIS Connect" };
-
-/** "AIS Connect accounts" (the list below) or "Across all three" (AcrossView). */
-function Tabs({ view }: { view: "app" | "all" }) {
-  return (
-    <nav className="mb-4 flex flex-wrap gap-2" aria-label="Account views">
-      <Link href="/admin/clients" className={view === "app" ? "btn-primary" : "btn-secondary"} aria-current={view === "app" ? "page" : undefined}>
-        AIS Connect accounts
-      </Link>
-      <Link href="/admin/clients?view=all" className={view === "all" ? "btn-primary" : "btn-secondary"} aria-current={view === "all" ? "page" : undefined}>
-        Across all three (Salesforce, Lead Alchemist)
-      </Link>
-    </nav>
-  );
-}
 
 const SORTS: { value: ClientSort; label: string }[] = [
   { value: "latest", label: "Latest activity" },
@@ -42,6 +29,7 @@ const FILTERS: { value: ClientFilter; label: string }[] = [
   { value: "review", label: "Possible duplicates" },
   { value: "deactivated", label: "Deactivated" },
 ];
+
 export default async function Accounts({ searchParams }: PageProps<"/admin/clients">) {
   await requireStaff("/admin/clients");
   const sp = await searchParams;
@@ -101,7 +89,7 @@ export default async function Accounts({ searchParams }: PageProps<"/admin/clien
       {duplicates > 0 && filter !== "review" && (
         <p className="mb-4 rounded-lg border border-[var(--notice-border)] bg-[var(--notice-bg)] p-3 text-sm" role="status">
           {duplicates} new account{duplicates === 1 ? " shares its" : "s share their"} name with an existing one.{" "}
-          <Link className="btn-link" href="?filter=review">Review possible duplicates</Link>
+          <Link className="btn-link" href="/admin/clients/duplicates">Review duplicates</Link>
         </p>
       )}
 
@@ -171,13 +159,22 @@ export default async function Accounts({ searchParams }: PageProps<"/admin/clien
                     <span className="text-[var(--muted)]">—</span>
                   )}
                 </td>
-                <td>
+                <td className="text-sm">
                   {c.sfAccountId ? (
-                    <a href={l.salesforce("Account", c.sfAccountId) ?? "#"} target="_blank" rel="noopener" title="Open the Account in Salesforce">
+                    <a href={l.salesforce("Account", c.sfAccountId) ?? "#"} target="_blank" rel="noopener" title="Open the Account in Salesforce" className="hover:opacity-80">
                       <SalesforceBadge status={c.sfStatus} />
                     </a>
                   ) : (
                     <SalesforceBadge status={c.sfStatus} />
+                  )}
+                  {c.sfAccountId && (
+                    <div>
+                      <SystemLink className="btn-link text-xs" href={l.salesforce("Account", c.sfAccountId)} missing="">Account</SystemLink>
+                      {" · "}
+                      <SystemLink className="btn-link text-xs" href={c.sfContactId ? l.salesforce("Contact", c.sfContactId) : null} missing="No contact on this account is linked to a Salesforce Contact yet">
+                        {c.sfContactId ? "Contact" : "Contact not linked"}
+                      </SystemLink>
+                    </div>
                   )}
                 </td>
                 <td className="text-sm">
