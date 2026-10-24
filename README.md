@@ -37,7 +37,7 @@ Day-to-day settings live in the app, not in Vercel. They take effect immediately
 - **Carrier email:** pre-filled on the carrier draft.
 - **Lead Alchemist pipeline:** the applications pipeline and stage, the lead pipeline and stage, and status → stage moves. All are picked from dropdowns that Lead Alchemist fills.
 
-Anything left blank falls back to its Vercel variable. Secrets stay in Vercel: `RESEND_API_KEY`, `GHL_API_TOKEN`, `ANTHROPIC_API_KEY`, `SESSION_SECRET` and the database URL.
+Anything left blank falls back to its Vercel variable. Secrets stay in Vercel: `RESEND_API_KEY`, `LA_API_TOKEN`, `ANTHROPIC_API_KEY`, `SESSION_SECRET` and the database URL.
 
 ### What Lead Alchemist receives
 - **Contact fields:** first and last name, email, phone, website, mailing address, company.
@@ -48,8 +48,8 @@ Anything left blank falls back to its Vercel variable. Secrets stay in Vercel: `
   - `Application Link`: opens that application in `/admin`. Staff click it from the contact.
   - `Application PDF`: `/applications/<id>/pdf`, which always opens the newest filled carrier application, including after an edit. Staff must be signed in; the PDF is never public.
 - **One contact per applicant email.** The first sync matches the Lead Alchemist contact by email and saves its ID; every later application from that email updates that same contact by ID (its email in Lead Alchemist is left alone). **Admin → Applicants** shows who's linked, opens the contact in Lead Alchemist, and can link a contact by ID or link everyone by email. If the saved contact is deleted in Lead Alchemist, the next sync falls back to the email match.
-- **One opportunity per application** in `GHL_PIPELINE_ID`, at stage `GHL_PIPELINE_STAGE_ID`. Both accept Lead Alchemist's ID or the name as shown in Lead Alchemist, e.g. `Applications` / `Application Submitted`. **Admin → Lead Alchemist setup** confirms what they resolve to. The opportunity carries the application's reference, status, link and PDF in opportunity custom fields with the same four names (create them in Lead Alchemist under the opportunity model). If `GHL_STAGE_IDS` maps statuses to stages, status changes move it. Bound marks it won, declined marks it lost, withdrawn marks it abandoned.
-- **Leads leave the lead pipeline.** Set `GHL_LEAD_PIPELINE_ID` (and optionally `GHL_LEAD_STAGE_ID`, e.g. the booked-call stage). When someone applies, their open opportunity there is moved into the applications pipeline and becomes that application's opportunity. Later applications get new opportunities.
+- **One opportunity per application** in `LA_PIPELINE_ID`, at stage `LA_PIPELINE_STAGE_ID`. Both accept Lead Alchemist's ID or the name as shown in Lead Alchemist, e.g. `Applications` / `Application Submitted`. **Admin → Lead Alchemist setup** confirms what they resolve to. The opportunity carries the application's reference, status, link and PDF in opportunity custom fields with the same four names (create them in Lead Alchemist under the opportunity model). If `LA_STAGE_IDS` maps statuses to stages, status changes move it. Bound marks it won, declined marks it lost, withdrawn marks it abandoned.
+- **Leads leave the lead pipeline.** Set `LA_LEAD_PIPELINE_ID` (and optionally `LA_LEAD_STAGE_ID`, e.g. the booked-call stage). When someone applies, their open opportunity there is moved into the applications pipeline and becomes that application's opportunity. Later applications get new opportunities.
 - **One note** with the reference, the application link, the PDF link, and a link to every application from that email address.
 
 None of the application answers go to Lead Alchemist.

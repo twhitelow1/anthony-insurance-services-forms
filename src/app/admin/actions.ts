@@ -120,7 +120,7 @@ export async function deleteApplicationAction(formData: FormData) {
 }
 
 const applicantHref = (email: string, msg: string) =>
-  `/admin/applicants/${encodeURIComponent(email)}?ghl=${encodeURIComponent(msg)}`;
+  `/admin/applicants/${encodeURIComponent(email)}?la=${encodeURIComponent(msg)}`;
 
 /**
  * Link an applicant to their Lead Alchemist contact: the contact ID staff pasted, or else
@@ -131,7 +131,7 @@ export async function linkGhlContactAction(formData: FormData) {
   const email = normalizeEmail(String(formData.get("email") ?? ""));
   const pasted = String(formData.get("contactId") ?? "").trim();
   if (!email) throw new Error("Missing email");
-  if (!ghlConfig()) redirect(applicantHref(email, "Lead Alchemist isn't connected yet (GHL_API_TOKEN / GHL_LOCATION_ID)."));
+  if (!ghlConfig()) redirect(applicantHref(email, "Lead Alchemist isn't connected yet (LA_API_TOKEN / LA_LOCATION_ID)."));
 
   // Accept a full Lead Alchemist contact URL as well as a bare ID.
   const id = pasted.match(/contacts\/detail\/([A-Za-z0-9]+)/)?.[1] ?? pasted;
@@ -164,7 +164,7 @@ export async function unlinkGhlContactAction(formData: FormData) {
 /** Look up every not-yet-linked applicant in Lead Alchemist by email (50 per click). */
 export async function linkAllGhlAction() {
   await requireStaff();
-  if (!ghlConfig()) redirect(`/admin/applicants?ghl=${encodeURIComponent("Lead Alchemist isn't connected yet.")}`);
+  if (!ghlConfig()) redirect(`/admin/applicants?la=${encodeURIComponent("Lead Alchemist isn't connected yet.")}`);
   const emails = await unlinkedApplicantEmails(50);
   let linked = 0;
   let missing = 0;
@@ -185,7 +185,7 @@ export async function linkAllGhlAction() {
     ? `Stopped after ${linked} linked: ${failed}`
     : `Linked ${linked} applicant${linked === 1 ? "" : "s"} to Lead Alchemist.${missing ? ` ${missing} have no Lead Alchemist contact yet.` : ""}`;
   revalidatePath("/admin/applicants");
-  redirect(`/admin/applicants?ghl=${encodeURIComponent(msg)}`);
+  redirect(`/admin/applicants?la=${encodeURIComponent(msg)}`);
 }
 
 /** Remove an unfinished application (e.g. a duplicate or a test). */

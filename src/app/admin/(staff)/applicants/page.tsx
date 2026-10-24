@@ -13,7 +13,7 @@ export default async function Applicants({ searchParams }: PageProps<"/admin/app
   const sp = await searchParams;
   const q = typeof sp.q === "string" ? sp.q : "";
   const applicants = await listApplicants({ q });
-  const message = typeof sp.ghl === "string" ? sp.ghl : null;
+  const message = typeof sp.la === "string" ? sp.la : null;
 
   return (
     <div>

@@ -4,7 +4,7 @@
 
 | Date | Decision |
 |---|---|
-| 2026-10 | The CRM is called **Lead Alchemist** everywhere staff or clients see it. GoHighLevel is the underlying platform. |
+| 2026-10 | The CRM is called **Lead Alchemist** everywhere staff or clients see it. |
 | 2026-10 | **The app is the record of each application.** Lead Alchemist gets the contact, a note, tags, links and an opportunity, not the answers. |
 | 2026-10 | **One Lead Alchemist contact per applicant email**, linked by its saved contact ID. **One opportunity per application.** |
 | 2026-10 | When someone applies, their open opportunity in the **lead pipeline moves** into the applications pipeline. |
@@ -41,6 +41,7 @@
 | 2026-10-23 | **The Equipment Floater web application now matches the carrier PDF (Francis L. Dean form SL09/2021).** Added: the "single item $150K or more" question, custom-made items, Tenant Betterments (asked only when a tenant improvements value is entered), Trailers, and equipment left unattended in vehicles. These sections apply to annual policies, as on the PDF. The web form keeps the Lead Alchemist form's option amounts where they differ from the PDF (e.g. business income maximum $50,000 vs $10,000 on the PDF). |
 | 2026-10-23 | **Staff sign in with Microsoft 365 single sign-on.** If the browser already has a Microsoft 365 session, the admin opens with no sign-in screen; otherwise staff get the email sign-in link (or click "Sign in with Microsoft"). The Admins list still decides who gets in. One Entra ID app registration will also carry the Outlook-drafts permission later. |
 | 2026-10-24 | **Microsoft sign-in works for any organisation's Microsoft 365**, not just Anthony's, when the person's email or domain is approved. Domains saved under "Staff email domains" in Admin → Settings always count, even while individual admins are listed (e.g. add `dublowdigital.com` for DubLow). Personal Microsoft accounts are refused, and only Microsoft's verified email is trusted. The app is registered once as multi-tenant (`docs/microsoft-sso-setup.md`). |
+| 2026-10-24 | **Lead Alchemist, initials LA, everywhere**, including docs, PRs and chat; never the underlying platform's name. Links open https://app.leadalchemist.io. Vercel variables are renamed to `LA_…` (the old names keep working as a fallback until renamed). |
 | 2026-10-16 | **Applicants aren't pointed to the portal yet.** The confirmation and status emails and the "submitted" screen have no portal link. The portal still works; turn the links back on with `APPLICANT_PORTAL_LINKS` in `src/forms/config.ts`. |
 
 ## Open questions

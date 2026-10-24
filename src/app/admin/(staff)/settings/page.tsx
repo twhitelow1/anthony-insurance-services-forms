@@ -106,10 +106,10 @@ export default async function SettingsPage({ searchParams }: PageProps<"/admin/s
           <FromVercel value={env.carrierEmails.join(", ")} saved={!!saved.carrierEmails} />
         </section>
 
-        <section className="card !p-5" aria-labelledby="ghl">
-          <h2 id="ghl" className="mb-1 font-semibold">Lead Alchemist pipeline</h2>
+        <section className="card !p-5" aria-labelledby="lead-alchemist">
+          <h2 id="lead-alchemist" className="mb-1 font-semibold">Lead Alchemist pipeline</h2>
           {!ghlConfig() ? (
-            <p className="text-sm text-[var(--muted)]">Connect Lead Alchemist first: add GHL_API_TOKEN and GHL_LOCATION_ID in Vercel.</p>
+            <p className="text-sm text-[var(--muted)]">Connect Lead Alchemist first: add LA_API_TOKEN and LA_LOCATION_ID in Vercel.</p>
           ) : ghlError ? (
             <p className="text-sm text-[var(--danger)]">Lead Alchemist didn&apos;t return pipelines: {ghlError}. See Lead Alchemist setup.</p>
           ) : null}

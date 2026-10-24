@@ -93,7 +93,7 @@ export default async function Status() {
       ok: mailConfigured(),
       detail: mailConfigured() ? `Email sending is set up. Sender: ${settings.mailFrom}` : "Not set up yet (RESEND_API_KEY in Vercel).",
     },
-    { name: "Lead Alchemist", ok: !!ghlConfig(), detail: ghlConfig() ? "Lead Alchemist token and location are set." : "Not set up yet (GHL_API_TOKEN and GHL_LOCATION_ID)." },
+    { name: "Lead Alchemist", ok: !!ghlConfig(), detail: ghlConfig() ? "Lead Alchemist token and location are set." : "Not set up yet (LA_API_TOKEN and LA_LOCATION_ID)." },
     { name: "Claude AI review", ok: !!process.env.ANTHROPIC_API_KEY, detail: process.env.ANTHROPIC_API_KEY ? "Set up." : "Optional. Not set up (ANTHROPIC_API_KEY)." },
   ];
   const ready = rows.filter((r) => r.required).every((r) => r.ok);
