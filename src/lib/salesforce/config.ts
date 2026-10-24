@@ -1,7 +1,9 @@
 import "server-only";
+import { credentials, type IntegrationCredentials } from "@/lib/integrations/credentials";
 
 /**
- * Salesforce connection, from Vercel environment variables only (never the database or repo):
+ * The Salesforce connection: entered in Admin → Settings → Integrations (stored encrypted),
+ * else the Vercel variables
  * - SALESFORCE_LOGIN_URL     the org's My Domain URL (or a sandbox's), e.g. https://anthony.my.salesforce.com
  * - SALESFORCE_CLIENT_ID     External Client App / Connected App consumer key
  * - SALESFORCE_CLIENT_SECRET its consumer secret
@@ -13,18 +15,34 @@ export const DEFAULT_API_VERSION = "v62.0";
 
 const clean = (v: string | undefined) => (v ?? "").trim().replace(/^["']|["']$/g, "").trim();
 
-export function salesforceConfig(env: NodeJS.ProcessEnv = process.env) {
-  const loginUrl = clean(env.SALESFORCE_LOGIN_URL).replace(/\/+$/, "");
-  const clientId = clean(env.SALESFORCE_CLIENT_ID);
-  const clientSecret = clean(env.SALESFORCE_CLIENT_SECRET);
+export function salesforceConfigFrom(c: IntegrationCredentials) {
+  const loginUrl = clean(c.salesforceLoginUrl).replace(/\/+$/, "");
+  const clientId = clean(c.salesforceClientId);
+  const clientSecret = clean(c.salesforceClientSecret);
   if (!loginUrl || !clientId || !clientSecret) return null;
-  const v = clean(env.SALESFORCE_API_VERSION) || DEFAULT_API_VERSION;
+  const v = clean(c.salesforceApiVersion) || DEFAULT_API_VERSION;
   return {
     loginUrl,
     clientId,
     clientSecret,
     apiVersion: v.startsWith("v") ? v : `v${v}`,
-    lightningUrl: clean(env.SALESFORCE_LIGHTNING_URL).replace(/\/+$/, "") || null,
+    lightningUrl: clean(c.salesforceLightningUrl).replace(/\/+$/, "") || null,
   };
 }
-export type SalesforceConfig = NonNullable<ReturnType<typeof salesforceConfig>>;
+
+/** From Vercel variables only (tests and scripts). */
+export function salesforceConfigFromEnv(env: NodeJS.ProcessEnv = process.env) {
+  return salesforceConfigFrom({
+    salesforceLoginUrl: env.SALESFORCE_LOGIN_URL,
+    salesforceClientId: env.SALESFORCE_CLIENT_ID,
+    salesforceClientSecret: env.SALESFORCE_CLIENT_SECRET,
+    salesforceLightningUrl: env.SALESFORCE_LIGHTNING_URL,
+    salesforceApiVersion: env.SALESFORCE_API_VERSION,
+  });
+}
+
+/** The connection in effect (dashboard, else Vercel), or null when it isn't set up. */
+export async function salesforceConfig() {
+  return salesforceConfigFrom(await credentials());
+}
+export type SalesforceConfig = NonNullable<ReturnType<typeof salesforceConfigFrom>>;

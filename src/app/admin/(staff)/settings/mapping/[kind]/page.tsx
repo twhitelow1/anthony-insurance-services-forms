@@ -57,8 +57,8 @@ const FILTERS: { value: RowFilter; label: string }[] = [
 ];
 
 const ERRORS: Record<string, string> = {
-  salesforce: "Salesforce isn't connected yet: set SALESFORCE_LOGIN_URL, SALESFORCE_CLIENT_ID and SALESFORCE_CLIENT_SECRET in Vercel (docs/salesforce-setup.md).",
-  lead_alchemist: "Lead Alchemist isn't connected: set LA_API_TOKEN and LA_LOCATION_ID in Vercel. The token needs the Businesses scopes.",
+  salesforce: "Salesforce isn't connected yet: add its keys in Settings → Integrations (docs/salesforce-setup.md).",
+  lead_alchemist: "Lead Alchemist isn't connected: add its token and location ID in Settings → Integrations. The token needs the Businesses scopes.",
   step_failed: "The last batch stopped with an error (shown below). Fix it and continue.",
   not_review: "There's no reviewed mapping to change or confirm. Scan first.",
   not_confirmed: "Tick the box to confirm you've reviewed the mapping.",
@@ -352,10 +352,10 @@ export default async function MappingKindPage({ params, searchParams }: PageProp
                     workflows</em>; leave this off to only connect people already there.
                   </span>
                 </label>
-                <label className="flex items-start gap-2 text-sm">
-                  <input type="checkbox" name="moveContacts" value="yes" className="mt-1" />
-                  <span>Move contacts who are already in a different Company. Off: they stay where they are and are listed in the result.</span>
-                </label>
+                <p className="text-sm text-[var(--muted)]">
+                  Contacts already in a different Company stay there and are listed in the result. This app never removes a contact from a
+                  Company; move them in Lead Alchemist if needed.
+                </p>
               </>
             )}
             <label className="flex items-start gap-2 text-sm">

@@ -24,16 +24,16 @@ const kindOf = (formData: FormData): MappingKind => {
 const page = (kind: MappingKind, params: Record<string, string> = {}): never =>
   redirect(`/admin/settings/mapping/${slugFor(kind)}${Object.keys(params).length ? `?${new URLSearchParams(params)}` : ""}`);
 
-function needsConnection(kind: MappingKind): string | null {
-  if (kind !== "la_companies" && !salesforceClient()) return "salesforce";
-  if (kind === "la_companies" && !ghlConfig()) return "lead_alchemist";
+async function needsConnection(kind: MappingKind): Promise<string | null> {
+  if (kind !== "la_companies" && !(await salesforceClient())) return "salesforce";
+  if (kind === "la_companies" && !(await ghlConfig())) return "lead_alchemist";
   return null;
 }
 
 /** One scan or apply batch for the run's current phase. */
 async function step(run: MappingRun): Promise<MappingRun> {
   if (run.kind === "la_companies") return run.phase === "scanning" ? scanCompaniesBatch(run) : applyCompaniesBatch(run);
-  const sf = salesforceClient()!;
+  const sf = (await salesforceClient())!;
   if (run.kind === "salesforce_import") {
     const deps = { sf, links: await links() };
     return run.phase === "scanning" ? scanSalesforceBatch(run, deps) : applySalesforceBatch(run, deps);
@@ -56,7 +56,7 @@ async function stepSafely(run: MappingRun): Promise<string | null> {
 export async function startScanAction(formData: FormData) {
   const staff = await requireStaff();
   const kind = kindOf(formData);
-  const missing = needsConnection(kind);
+  const missing = await needsConnection(kind);
   if (missing) page(kind, { error: missing });
   const run = await startRun(kind, `staff:${staff.email}`);
   const err = await stepSafely(run);
@@ -69,7 +69,8 @@ export async function continueAction(formData: FormData) {
   const kind = kindOf(formData);
   const run = await getRun(kind);
   if (!run || (run.phase !== "scanning" && run.phase !== "applying")) page(kind);
-  if (needsConnection(kind)) page(kind, { error: needsConnection(kind)! });
+  const notConnected = await needsConnection(kind);
+  if (notConnected) page(kind, { error: notConnected });
   const err = await stepSafely({ ...run!, stoppedReason: undefined });
   revalidatePath(`/admin/settings/mapping/${slugFor(kind)}`);
   page(kind, err ? { error: err } : {});
@@ -98,8 +99,9 @@ export async function confirmAction(formData: FormData) {
   const staff = await requireStaff();
   const kind = kindOf(formData);
   if (formData.get("reviewed") !== "yes") page(kind, { error: "not_confirmed" });
-  if (needsConnection(kind)) page(kind, { error: needsConnection(kind)! });
-  const options = { createContacts: formData.get("createContacts") === "yes", moveContacts: formData.get("moveContacts") === "yes" };
+  const notConnected = await needsConnection(kind);
+  if (notConnected) page(kind, { error: notConnected });
+  const options = { createContacts: formData.get("createContacts") === "yes" };
   let run: MappingRun;
   try {
     run = await confirmRun(kind, `staff:${staff.email}`, options);
@@ -115,7 +117,7 @@ export async function confirmAction(formData: FormData) {
 export async function runQueuedSyncsAction(formData: FormData) {
   await requireStaff();
   const kind = kindOf(formData);
-  if (!salesforceClient()) page(kind, { error: "salesforce" });
+  if (!(await salesforceClient())) page(kind, { error: "salesforce" });
   const r = await runQueuedJobs(40_000);
   if (r.off) page(kind, { error: "sync_off" });
   page(kind, { ran: String(r.ran), failed: String(r.failed), remaining: String(r.remaining) });

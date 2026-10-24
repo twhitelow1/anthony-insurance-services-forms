@@ -30,7 +30,7 @@ export default async function SettingsPage({ searchParams }: PageProps<"/admin/s
 
   let pipelines: GhlPipeline[] = [];
   let ghlError = "";
-  if (ghlConfig()) {
+  if ((await ghlConfig())) {
     try {
       pipelines = await listPipelines();
     } catch (err) {
@@ -113,8 +113,8 @@ export default async function SettingsPage({ searchParams }: PageProps<"/admin/s
 
         <section className="card !p-5" aria-labelledby="lead-alchemist">
           <h2 id="lead-alchemist" className="mb-1 font-semibold">Lead Alchemist pipeline</h2>
-          {!ghlConfig() ? (
-            <p className="text-sm text-[var(--muted)]">Connect Lead Alchemist first: add LA_API_TOKEN and LA_LOCATION_ID in Vercel.</p>
+          {!(await ghlConfig()) ? (
+            <p className="text-sm text-[var(--muted)]">Connect Lead Alchemist first in Settings → Integrations.</p>
           ) : ghlError ? (
             <p className="text-sm text-[var(--danger)]">Lead Alchemist didn&apos;t return pipelines: {ghlError}. See Lead Alchemist setup.</p>
           ) : null}
@@ -197,6 +197,15 @@ export default async function SettingsPage({ searchParams }: PageProps<"/admin/s
           <Hint>Pick stages from the applications pipeline. Bound, declined and withdrawn also mark the opportunity won, lost or abandoned.</Hint>
         </section>
 
+        <section className="card !p-5" aria-labelledby="integrations">
+          <h2 id="integrations" className="mb-1 font-semibold">Integrations</h2>
+          <p className="mb-3 text-sm text-[var(--muted)]">
+            Enter and test the Salesforce and Lead Alchemist keys. The app reads, creates and makes limited updates in both, and never deletes
+            anything there: records are deleted only in Salesforce or Lead Alchemist.
+          </p>
+          <Link className="btn-secondary" href="/admin/settings/integrations">Open integrations</Link>
+        </section>
+
         <section className="card !p-5" aria-labelledby="mapping">
           <h2 id="mapping" className="mb-1 font-semibold">Data mapping</h2>
           <p className="mb-3 text-sm text-[var(--muted)]">
@@ -273,7 +282,7 @@ export default async function SettingsPage({ searchParams }: PageProps<"/admin/s
           <h3 className="mb-2 mt-5 text-sm font-semibold">Health</h3>
           {!sf.configured ? (
             <p className="text-sm text-[var(--muted)]">
-              Not connected. Add SALESFORCE_LOGIN_URL, SALESFORCE_CLIENT_ID, SALESFORCE_CLIENT_SECRET and SALESFORCE_LIGHTNING_URL in Vercel.
+              Not connected. Add the connection keys in Settings → Integrations.
             </p>
           ) : !sf.connected ? (
             <p className="text-sm text-[var(--danger)]" role="alert">Can&apos;t sign in to Salesforce: {sf.error}</p>

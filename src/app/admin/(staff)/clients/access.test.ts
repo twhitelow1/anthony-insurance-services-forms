@@ -74,3 +74,17 @@ describe("admin-only access", () => {
     expect(await listAccountContacts(a)).toHaveLength(1); // nothing merged
   });
 });
+
+describe("integration keys", () => {
+  it("only staff can save connection keys", async () => {
+    const { saveIntegrationAction } = await import("../settings/integrations/actions");
+    const form = new FormData();
+    form.set("integration", "lead_alchemist");
+    form.set("laLocationId", "Loc123");
+    await signIn("client", "someone@example.com");
+    await expect(saveIntegrationAction(form)).rejects.toThrow();
+    const { credentials, clearCredentialCache } = await import("@/lib/integrations/credentials");
+    clearCredentialCache();
+    expect((await credentials()).laLocationId).not.toBe("Loc123");
+  });
+});

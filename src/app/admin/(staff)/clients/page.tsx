@@ -58,7 +58,7 @@ export default async function Accounts({ searchParams }: PageProps<"/admin/clien
             Export CSV
           </a>
           <Link className="btn-secondary" href="/admin/settings/mapping">Data mapping (Salesforce, Lead Alchemist)</Link>
-          {ghlConfig() && (
+          {(await ghlConfig()) && (
             <form action={linkAllGhlAction}>
               <button className="btn-secondary" title="Find the Lead Alchemist contact for every person that isn't linked yet (50 per click)">
                 Link to Lead Alchemist

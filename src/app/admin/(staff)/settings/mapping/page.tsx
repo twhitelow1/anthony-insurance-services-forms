@@ -34,7 +34,7 @@ export default async function Mapping() {
     const run = await getRun(s.kind);
     return { run, summary: run ? await summarize(run.runId) : null };
   }));
-  const connected = { salesforce: !!salesforceClient(), lead_alchemist: !!ghlConfig() };
+  const connected = { salesforce: !!(await salesforceClient()), lead_alchemist: !!(await ghlConfig()) };
   return (
     <div>
       <Link href="/admin/settings" className="btn-link">← Settings</Link>
@@ -63,7 +63,7 @@ export default async function Mapping() {
                   )}
                   {!connected[s.needs] && (
                     <p className="mt-2 text-sm text-[var(--danger)]">
-                      {s.needs === "salesforce" ? "Connect Salesforce first (docs/salesforce-setup.md)." : "Connect Lead Alchemist first (LA_API_TOKEN and LA_LOCATION_ID)."}
+                      {s.needs === "salesforce" ? "Connect Salesforce first (Settings → Integrations)." : "Connect Lead Alchemist first (Settings → Integrations)."}
                     </p>
                   )}
                 </div>

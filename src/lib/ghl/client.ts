@@ -1,5 +1,7 @@
 import "server-only";
+import { assertLeadAlchemistRequestAllowed } from "@/lib/integrations/no-delete";
 import { buildUrl } from "@/lib/integrations/urls";
+import { credentials } from "@/lib/integrations/credentials";
 import { laAppUrl, laEnv } from "./env";
 
 /**
@@ -34,16 +36,19 @@ export class GhlError extends Error {
 /** Env value without stray whitespace, quotes or a pasted "Bearer " prefix. */
 const clean = (v: string | undefined) => (v ?? "").trim().replace(/^["']|["']$/g, "").replace(/^Bearer\s+/i, "").trim();
 
-export function ghlConfig() {
-  const token = clean(laEnv("API_TOKEN"));
-  const locationId = clean(laEnv("LOCATION_ID"));
+/** The connection in effect: Admin → Settings → Integrations, else LA_API_TOKEN / LA_LOCATION_ID in Vercel. */
+export async function ghlConfig() {
+  const c = await credentials();
+  const token = clean(c.laApiToken);
+  const locationId = clean(c.laLocationId);
   if (!token || !locationId) return null;
   return { token, locationId };
 }
 
 async function ghlFetch<T>(path: string, init: RequestInit & { next?: { revalidate?: number } } = {}): Promise<T> {
-  const cfg = ghlConfig();
-  if (!cfg) throw new GhlError("LA_API_TOKEN and LA_LOCATION_ID must be set", 500, null);
+  assertLeadAlchemistRequestAllowed(init.method, path);
+  const cfg = await ghlConfig();
+  if (!cfg) throw new GhlError("Lead Alchemist isn't connected: add the token and location ID in Admin → Settings → Integrations", 500, null);
 
   const res = await fetch(`${BASE_URL}${path}`, {
     ...init,
@@ -69,7 +74,7 @@ async function ghlFetch<T>(path: string, init: RequestInit & { next?: { revalida
 
 /** Contact (or opportunity) custom fields for the location. Cached for 10 minutes. */
 export async function listCustomFields(model: "contact" | "opportunity" = "contact"): Promise<GhlCustomField[]> {
-  const { locationId } = ghlConfig()!;
+  const { locationId } = (await ghlConfig())!;
   const data = await ghlFetch<{ customFields: GhlCustomField[] }>(
     `/locations/${locationId}/customFields?model=${model}`,
     { next: { revalidate: 600 } },
@@ -79,7 +84,7 @@ export async function listCustomFields(model: "contact" | "opportunity" = "conta
 
 /** Create a text custom field (needs the "Edit Custom Fields" scope on the token). */
 export async function createCustomField(name: string, model: "contact" | "opportunity"): Promise<GhlCustomField> {
-  const { locationId } = ghlConfig()!;
+  const { locationId } = (await ghlConfig())!;
   const data = await ghlFetch<{ customField: GhlCustomField }>(`/locations/${locationId}/customFields`, {
     method: "POST",
     body: JSON.stringify({ name, dataType: "TEXT", model }),
@@ -107,7 +112,7 @@ export interface UpsertContactInput {
 
 /** Create or update (matched on email/phone per the location's duplicate settings). */
 export async function upsertContact(input: UpsertContactInput) {
-  const { locationId } = ghlConfig()!;
+  const { locationId } = (await ghlConfig())!;
   return ghlFetch<{ new: boolean; contact: { id: string } }>("/contacts/upsert", {
     method: "POST",
     body: JSON.stringify({ ...input, locationId }),
@@ -122,16 +127,39 @@ export interface GhlContact {
   lastName?: string | null;
   contactName?: string | null;
   companyName?: string | null;
+  phone?: string | null;
   /** The Lead Alchemist Company the contact belongs to (a contact has at most one). */
   businessId?: string | null;
 }
 
 /** The Lead Alchemist contact with this email, if any (Lead Alchemist's own duplicate lookup). */
 export async function findContactByEmail(email: string): Promise<GhlContact | null> {
-  const { locationId } = ghlConfig()!;
+  const { locationId } = (await ghlConfig())!;
   const q = new URLSearchParams({ locationId, email });
   const data = await ghlFetch<{ contact?: GhlContact | null }>(`/contacts/search/duplicate?${q}`, { cache: "no-store" });
   return data.contact ?? null;
+}
+
+/** The Lead Alchemist contact with this phone number, if any (Lead Alchemist's own duplicate lookup). */
+export async function findContactByPhone(phone: string): Promise<GhlContact | null> {
+  const { locationId } = (await ghlConfig())!;
+  const digits = phone.replace(/\D/g, "");
+  if (digits.length < 7) return null;
+  const number = digits.length === 10 ? `+1${digits}` : `+${digits}`;
+  const q = new URLSearchParams({ locationId, number });
+  const data = await ghlFetch<{ contact?: GhlContact | null }>(`/contacts/search/duplicate?${q}`, { cache: "no-store" });
+  return data.contact ?? null;
+}
+
+/** Contacts matching a name, email or phone (Lead Alchemist's search), newest first. */
+export async function searchContacts({ query, limit = 10 }: { query: string; limit?: number }): Promise<GhlContact[]> {
+  const { locationId } = (await ghlConfig())!;
+  const data = await ghlFetch<{ contacts?: GhlContact[] }>("/contacts/search", {
+    method: "POST",
+    body: JSON.stringify({ locationId, pageLimit: Math.min(Math.max(limit, 1), 100), query }),
+    cache: "no-store",
+  });
+  return data.contacts ?? [];
 }
 
 /** A contact by ID, or null if it was deleted (or merged away). */
@@ -146,8 +174,8 @@ export async function getContact(id: string): Promise<GhlContact | null> {
 }
 
 /** Where staff open a contact in Lead Alchemist (https://app.leadalchemist.io unless LA_APP_URL says otherwise). */
-export function contactUrl(contactId: string) {
-  const cfg = ghlConfig();
+export async function contactUrl(contactId: string) {
+  const cfg = await ghlConfig();
   const host = laAppUrl();
   return cfg ? buildUrl("ghlContact", { ghl: host, locationId: cfg.locationId, id: contactId }) : null;
 }
@@ -184,7 +212,7 @@ export interface OpportunityInput {
 }
 
 export async function createOpportunity(input: OpportunityInput) {
-  const { locationId } = ghlConfig()!;
+  const { locationId } = (await ghlConfig())!;
   return ghlFetch<{ opportunity: { id: string } }>("/opportunities/", {
     method: "POST",
     body: JSON.stringify({ status: "open", ...input, locationId }),
@@ -211,7 +239,7 @@ export interface GhlOpportunity {
 
 /** Open opportunities for a contact in a pipeline, newest first. */
 export async function findOpenOpportunities(contactId: string, pipelineId: string): Promise<GhlOpportunity[]> {
-  const { locationId } = ghlConfig()!;
+  const { locationId } = (await ghlConfig())!;
   const q = new URLSearchParams({ location_id: locationId, contact_id: contactId, pipeline_id: pipelineId, status: "open" });
   const data = await ghlFetch<{ opportunities?: GhlOpportunity[] }>(`/opportunities/search?${q}`, { cache: "no-store" });
   return (data.opportunities ?? [])
@@ -227,7 +255,7 @@ export interface GhlPipeline {
 }
 
 export async function listPipelines(): Promise<GhlPipeline[]> {
-  const { locationId } = ghlConfig()!;
+  const { locationId } = (await ghlConfig())!;
   const data = await ghlFetch<{ pipelines: GhlPipeline[] }>(`/opportunities/pipelines?locationId=${locationId}`, {
     cache: "no-store",
   });
@@ -255,7 +283,7 @@ export type BusinessInput = Omit<GhlBusiness, "id">;
 
 /** Every Company in the sub-account (paged 100 at a time). */
 export async function listBusinesses(max = 10_000): Promise<GhlBusiness[]> {
-  const { locationId } = ghlConfig()!;
+  const { locationId } = (await ghlConfig())!;
   const all: GhlBusiness[] = [];
   for (let skip = 0; skip < max; skip += 100) {
     const q = new URLSearchParams({ locationId, limit: "100", skip: String(skip) });
@@ -271,7 +299,7 @@ const businessBody = (input: Partial<BusinessInput>) =>
   Object.fromEntries(Object.entries(input).filter(([, v]) => typeof v === "string" && v.trim()).map(([k, v]) => [k, (v as string).trim()]));
 
 export async function createBusiness(input: BusinessInput): Promise<GhlBusiness> {
-  const { locationId } = ghlConfig()!;
+  const { locationId } = (await ghlConfig())!;
   // The API spells the response key "buiseness".
   const data = await ghlFetch<{ buiseness?: GhlBusiness; business?: GhlBusiness }>("/businesses/", {
     method: "POST",
@@ -289,7 +317,7 @@ export async function updateBusiness(id: string, input: Partial<BusinessInput>) 
 
 /** Put contacts in a Company (up to 50 per call; a contact can only be in one Company). */
 export async function addContactsToBusiness(contactIds: string[], businessId: string) {
-  const { locationId } = ghlConfig()!;
+  const { locationId } = (await ghlConfig())!;
   for (let i = 0; i < contactIds.length; i += 50) {
     await ghlFetch("/contacts/bulk/business", {
       method: "POST",

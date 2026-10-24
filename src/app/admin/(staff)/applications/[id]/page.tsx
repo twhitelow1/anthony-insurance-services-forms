@@ -37,7 +37,7 @@ export default async function AdminApplication({ params, searchParams }: PagePro
   const ghlFailed = !app.ghlContactId && events.some((e) => e.type === "ghl_sync_failed");
   const pdfError = !docs.some((d) => d.kind === "carrier_form") ? events.find((e) => e.type === "pdf_failed") : undefined;
   const [l, settings, jobs] = await Promise.all([links(), getSettings(), jobsFor(app.id)]);
-  const sfReady = !!salesforceConfig() && settings.salesforceEnabled;
+  const sfReady = !!(await salesforceConfig()) && settings.salesforceEnabled;
   const openJob = jobs.find((j) => j.status === "pending" || j.status === "running");
   const lastSfEvent = events.find((e) => e.type.startsWith("sf_"));
   const SF_RESULT: Record<string, string> = {

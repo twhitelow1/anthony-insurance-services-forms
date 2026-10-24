@@ -70,9 +70,9 @@ const describeErr = (err: unknown) => (err instanceof Error ? err.message : Stri
 export async function defaultSyncDeps(): Promise<SyncDeps | { off: string }> {
   const s = await getSettings();
   if (!s.salesforceEnabled) return { off: "Salesforce sync is turned off in Admin → Settings." };
-  const sf = salesforceClient();
-  if (!sf) return { off: "Salesforce isn't connected: set SALESFORCE_LOGIN_URL, SALESFORCE_CLIENT_ID and SALESFORCE_CLIENT_SECRET in Vercel." };
-  return { sf, ghl: ghlLinks(), links: await configuredLinks(), dryRun: s.salesforceDryRun, stageMap: s.salesforceStageMap };
+  const sf = await salesforceClient();
+  if (!sf) return { off: "Salesforce isn't connected: add the connection keys in Admin → Settings → Integrations." };
+  return { sf, ghl: await ghlLinks(), links: await configuredLinks(), dryRun: s.salesforceDryRun, stageMap: s.salesforceStageMap };
 }
 
 async function setAppSf(id: string, patch: Partial<Application>) {

@@ -46,12 +46,12 @@ export async function checkSalesforce(api: SalesforceApi): Promise<Omit<Salesfor
 
 let cache: { at: number; value: Promise<SalesforceHealth> } | null = null;
 
-export function salesforceHealth({ fresh = false } = {}): Promise<SalesforceHealth> {
-  if (!salesforceConfig()) {
-    return Promise.resolve({ configured: false, connected: false, missingFields: [], stages: [], picklists: {}, usage: null, checkedAt: new Date() });
+export async function salesforceHealth({ fresh = false } = {}): Promise<SalesforceHealth> {
+  if (!(await salesforceConfig())) {
+    return { configured: false, connected: false, missingFields: [], stages: [], picklists: {}, usage: null, checkedAt: new Date() };
   }
   if (cache && !fresh && Date.now() - cache.at < 5 * 60_000) return cache.value;
-  const value = checkSalesforce(salesforceClient()!)
+  const value = checkSalesforce((await salesforceClient())!)
     .then((r) => ({ ...r, configured: true, checkedAt: new Date() }))
     .catch((err) => ({
       configured: true,

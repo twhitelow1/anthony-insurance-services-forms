@@ -36,7 +36,7 @@ const GHL_MESSAGES: Record<string, string> = {
   no_contact_email: "No Lead Alchemist contact has this email yet. It's created on the next sync.",
   lookup_failed: "The Lead Alchemist lookup failed. Try again in a minute.",
   bad_id: "That isn't a Lead Alchemist contact ID or link.",
-  not_connected: "Lead Alchemist isn't connected (LA_API_TOKEN / LA_LOCATION_ID).",
+  not_connected: "Lead Alchemist isn't connected (Settings → Integrations).",
 };
 const SAVED: Record<string, string> = {
   merged: "Merged. Their contacts, applications and unfinished applications are on this account now.",
@@ -73,7 +73,8 @@ export default async function AccountPage({ params, searchParams }: PageProps<"/
   ]);
   const contactEmails = new Map(await Promise.all(people.map(async (p) => [p.id, await contactEmailsOf(p.id)] as const)));
   const appsBy = (contactId: string) => apps.filter((a) => a.contactId === contactId).length;
-  const sfReady = !!salesforceConfig() && settings.salesforceEnabled;
+  const sfReady = !!(await salesforceConfig()) && settings.salesforceEnabled;
+  const laConnected = !!(await ghlConfig());
   const lastSfEvent = events.find((e) => e.type.startsWith("sf_"));
   const address = [client.address?.street, client.address?.city, [client.address?.state, client.address?.postalCode].filter(Boolean).join(" ")]
     .filter(Boolean)
@@ -222,7 +223,7 @@ export default async function AccountPage({ params, searchParams }: PageProps<"/
                       <SystemLink className="btn-link text-xs" href={l.ghlContact(p.ghlContactId)} missing="">
                         View Contact
                       </SystemLink>
-                    ) : ghlConfig() && mails[0] ? (
+                    ) : laConnected && mails[0] ? (
                       <form action={linkGhlContactAction}>
                         <input type="hidden" name="email" value={mails[0]} />
                         <button className="btn-link text-xs">Find in Lead Alchemist</button>

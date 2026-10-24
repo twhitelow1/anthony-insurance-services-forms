@@ -2,7 +2,7 @@ import { requireStaff } from "@/lib/auth/session";
 import { GhlError, type GhlPipeline, ghlConfig, listPipelines } from "@/lib/ghl/client";
 import { pipelineConfig, resolvePipeline } from "@/lib/ghl/sync";
 import Link from "next/link";
-import { laEnv } from "@/lib/ghl/env";
+import { credentials } from "@/lib/integrations/credentials";
 
 export const metadata = { title: "Lead Alchemist pipelines | Anthony Insurance Services" };
 // Always ask Lead Alchemist live; never serve a copy rendered at build time.
@@ -12,13 +12,14 @@ export const dynamic = "force-dynamic";
 export default async function GhlPipelinesPage() {
   await requireStaff("/admin/lead-alchemist");
   const raw = await pipelineConfig();
-  const token = (laEnv("API_TOKEN") ?? "").trim();
+  const creds = await credentials();
+  const token = creds.laApiToken;
 
   // Fetch first, render after: JSX built inside try/catch wouldn't have its render errors caught.
   let pipelines: GhlPipeline[] = [];
   let errorStatus: number | null = null;
   let errorMessage = "";
-  if (ghlConfig()) {
+  if ((await ghlConfig())) {
     try {
       pipelines = await listPipelines();
     } catch (err) {
@@ -32,7 +33,7 @@ export default async function GhlPipelinesPage() {
   // Settings may be IDs or names; show what they resolve to (or why they don't).
   let configured: Awaited<ReturnType<typeof resolvePipeline>> = null;
   let configError: string | null = null;
-  if (raw && errorStatus === null && ghlConfig()) {
+  if (raw && errorStatus === null && (await ghlConfig())) {
     try {
       configured = await resolvePipeline();
     } catch (err) {
@@ -41,8 +42,12 @@ export default async function GhlPipelinesPage() {
   }
 
   let body: React.ReactNode;
-  if (!ghlConfig()) {
-    body = <p className="callout callout-notice">Add LA_API_TOKEN and LA_LOCATION_ID in Vercel first, then redeploy.</p>;
+  if (!(await ghlConfig())) {
+    body = (
+      <p className="callout callout-notice">
+        Add the Lead Alchemist token and location ID in <Link className="btn-link" href="/admin/settings/integrations">Settings → Integrations</Link> first.
+      </p>
+    );
   } else if (errorStatus !== null) {
     body = (
       <div className="space-y-2 rounded-lg bg-[var(--danger-bg)] p-3 text-sm text-[var(--danger)]" role="alert">
@@ -53,10 +58,10 @@ export default async function GhlPipelinesPage() {
           {/authClass/i.test(errorMessage)
             ? "This token was created at the agency level. Create the Private Integration inside the Anthony Insurance sub-account (Settings → Private Integrations) and use that token."
             : errorStatus === 401
-              ? "The token is invalid or was revoked. Create a new Private Integration in the sub-account and update LA_API_TOKEN."
+              ? "The token is invalid or was revoked. Create a new Private Integration in the sub-account and save it in Settings → Integrations."
               : errorStatus === 403
-                ? "The token is missing a scope (needs View/Edit Opportunities), or LA_LOCATION_ID isn't the sub-account this token belongs to."
-                : "Check LA_API_TOKEN and LA_LOCATION_ID in Vercel, then redeploy."}
+                ? "The token is missing a scope (needs View/Edit Opportunities), or the location ID isn't the sub-account this token belongs to."
+                : "Check the token and location ID in Settings → Integrations."}
         </p>
       </div>
     );
@@ -114,10 +119,10 @@ export default async function GhlPipelinesPage() {
         Reference, Application Status, Application Link and Application PDF.
       </p>
       <dl className="callout mb-6 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
-        <dt className="font-medium">LA_API_TOKEN</dt>
+        <dt className="font-medium">Token</dt>
         <dd>{token ? `set (${token.startsWith("pit-") ? "Private Integration token" : "not a pit- token"}, ${token.length} characters)` : "missing"}</dd>
-        <dt className="font-medium">LA_LOCATION_ID</dt>
-        <dd>{laEnv("LOCATION_ID") ? <code>{laEnv("LOCATION_ID")}</code> : "missing"}</dd>
+        <dt className="font-medium">Location ID</dt>
+        <dd>{creds.laLocationId ? <code>{creds.laLocationId}</code> : "missing"}</dd>
         <dt className="font-medium">Pipeline</dt>
         <dd>{raw?.pipelineId ? <code>{raw.pipelineId}</code> : "not set (no opportunities are created)"}</dd>
         <dt className="font-medium">Stage for new applications</dt>
@@ -127,7 +132,7 @@ export default async function GhlPipelinesPage() {
         <dt className="font-medium">Lead stage</dt>
         <dd>{raw?.leadStage ? <code>{raw.leadStage}</code> : "not set (any stage)"}</dd>
         <dt className="font-medium">Lead Alchemist answered</dt>
-        <dd>{!ghlConfig() ? "not called" : errorStatus !== null ? "with an error (below)" : `${pipelines.length} pipeline${pipelines.length === 1 ? "" : "s"}`}</dd>
+        <dd>{!(await ghlConfig()) ? "not called" : errorStatus !== null ? "with an error (below)" : `${pipelines.length} pipeline${pipelines.length === 1 ? "" : "s"}`}</dd>
       </dl>
       {configured && (
         <p className="callout mb-6 text-sm" role="status">

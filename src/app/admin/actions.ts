@@ -138,7 +138,7 @@ export async function linkGhlContactAction(formData: FormData) {
   const email = normalizeEmail(String(formData.get("email") ?? ""));
   const pasted = String(formData.get("contactId") ?? "").trim();
   if (!email) throw new Error("Missing email");
-  if (!ghlConfig()) redirect(await clientHref(email, "not_connected"));
+  if (!(await ghlConfig())) redirect(await clientHref(email, "not_connected"));
 
   // Accept a full Lead Alchemist contact URL as well as a bare ID.
   const id = pasted.match(/contacts\/detail\/([A-Za-z0-9]+)/)?.[1] ?? pasted;
@@ -170,7 +170,7 @@ export async function unlinkGhlContactAction(formData: FormData) {
 /** Look up every not-yet-linked applicant in Lead Alchemist by email (50 per click). */
 export async function linkAllGhlAction() {
   await requireStaff();
-  if (!ghlConfig()) redirect("/admin/clients?la=not_connected");
+  if (!(await ghlConfig())) redirect("/admin/clients?la=not_connected");
   const emails = await unlinkedApplicantEmails(50);
   let linked = 0;
   let missing = 0;

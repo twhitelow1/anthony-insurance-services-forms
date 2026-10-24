@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createSalesforceClient } from "./client";
 import { SalesforceError } from "./api";
-import { salesforceConfig } from "./config";
+import { salesforceConfigFromEnv } from "./config";
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -71,10 +71,10 @@ describe("Salesforce REST client", () => {
     expect(body).toMatchObject({ FirstPublishLocationId: "001A", PathOnClient: "a.pdf", VersionData: Buffer.from("%PDF").toString("base64") });
   });
 
-  it("reads its settings from the environment only, and isn't configured without them", () => {
-    expect(salesforceConfig({} as NodeJS.ProcessEnv)).toBeNull();
+  it("reads its Vercel settings, and isn't configured without them", () => {
+    expect(salesforceConfigFromEnv({} as NodeJS.ProcessEnv)).toBeNull();
     expect(
-      salesforceConfig({
+      salesforceConfigFromEnv({
         SALESFORCE_LOGIN_URL: "https://test.salesforce.com/",
         SALESFORCE_CLIENT_ID: "x",
         SALESFORCE_CLIENT_SECRET: "y",

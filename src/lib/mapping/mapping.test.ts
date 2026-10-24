@@ -104,7 +104,7 @@ describe("app accounts → Lead Alchemist Companies", () => {
     expect(row(solo.clientId)).toMatchObject({ proposal: "skip" });
     expect(la.created).not.toContain(`Fresh Dance ${tag}`); // nothing written yet
 
-    run = await confirmRun("la_companies", "staff:amy@anthonyinsuranceservices.com", { createContacts: false, moveContacts: false });
+    run = await confirmRun("la_companies", "staff:amy@anthonyinsuranceservices.com", { createContacts: false });
     run = await applyCompaniesBatch(run, { paceMs: 0 });
     expect((await getClient(one.clientId))!.ghlCompanyId).toBe(`existing-${tag}`);
     expect(la.contacts.get(`c1-${tag}`)!.businessId).toBe(`existing-${tag}`);

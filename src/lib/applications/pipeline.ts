@@ -71,7 +71,7 @@ async function linkClient(form: FormDefinition, app: Application): Promise<strin
  * Test submissions never go to Salesforce.
  */
 export async function pushToSalesforce(app: Pick<Application, "id" | "isTest" | "reference">) {
-  if (app.isTest || !salesforceConfig()) return;
+  if (app.isTest || !(await salesforceConfig())) return;
   try {
     if (!(await getSettings()).salesforceEnabled) return;
     const jobId = await enqueueSalesforceSync(app.id);
@@ -139,7 +139,7 @@ export async function runAiReview(form: FormDefinition, app: Application) {
 }
 
 export async function pushToGhl(form: FormDefinition, app: Application, clientId?: string | null) {
-  if (!ghlConfig()) return;
+  if (!(await ghlConfig())) return;
   try {
     const pdf = await mainDocument(app.id);
     // Same email → same Lead Alchemist contact: use the contact ID saved from earlier syncs.
@@ -235,7 +235,7 @@ async function sendConfirmation(form: FormDefinition, app: Application) {
 export async function onStatusChanged(app: Application, previous: ApplicationStatus, opts: { note?: string; notifyClient: boolean }) {
   const { note, notifyClient } = opts;
   const tasks: Promise<unknown>[] = [];
-  if (ghlConfig() && app.ghlContactId) {
+  if ((await ghlConfig()) && app.ghlContactId) {
     tasks.push(
       syncStatus(app, previous).catch(async (err) => {
         console.error("[pipeline] Lead Alchemist status sync failed", app.reference, err);
@@ -269,7 +269,7 @@ export async function linkDraftClient(form: FormDefinition, draft: Draft) {
 
 /** An applicant started a form and gave an email: tell Lead Alchemist ("app-started"). Never throws. */
 export async function syncDraftStarted(form: FormDefinition, draft: Draft) {
-  if (!ghlConfig() || !draft.email) return;
+  if (!(await ghlConfig()) || !draft.email) return;
   try {
     const saved = await getApplicant(draft.email);
     const { contactId } = await syncStartedApplication(form, draft.values, saved?.ghlContactId);

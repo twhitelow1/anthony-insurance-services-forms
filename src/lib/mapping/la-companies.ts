@@ -189,7 +189,8 @@ async function applyRow(row: MappingRow, run: MappingRun, deps: LaCompaniesDeps)
     if (ghlId !== p.ghlContactId) await setContactGhl(p.id, ghlId);
     const current = await getGhlContact(ghlId);
     await sleep(pace);
-    if (current?.businessId && current.businessId !== companyId && !run.options.moveContacts) {
+    // Never moved: that would take the contact out of its other Company.
+    if (current?.businessId && current.businessId !== companyId) {
       inOther++;
       continue;
     }

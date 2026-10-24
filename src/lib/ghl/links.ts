@@ -47,4 +47,4 @@ export const ghlLinkWriter: GhlLinkWriter = {
 };
 
 /** The writer, or null when Lead Alchemist isn't connected. */
-export const ghlLinks = (): GhlLinkWriter | null => (ghlConfig() ? ghlLinkWriter : null);
+export const ghlLinks = async (): Promise<GhlLinkWriter | null> => ((await ghlConfig()) ? ghlLinkWriter : null);

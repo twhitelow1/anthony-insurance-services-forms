@@ -1,4 +1,5 @@
 import "server-only";
+import { assertSalesforceRequestAllowed } from "@/lib/integrations/no-delete";
 import { SalesforceError, type ObjectDescribe, type SalesforceApi } from "./api";
 import { salesforceConfig, type SalesforceConfig } from "./config";
 
@@ -18,7 +19,7 @@ interface Token {
 const TOKEN_TTL_MS = 50 * 60_000; // refreshed early; a 401 also refreshes it once
 const DESCRIBE_TTL_MS = 10 * 60_000;
 
-export function createSalesforceClient(cfg: SalesforceConfig = salesforceConfig()!): SalesforceApi {
+export function createSalesforceClient(cfg: SalesforceConfig): SalesforceApi {
   if (!cfg) throw new SalesforceError("Salesforce isn't configured (SALESFORCE_LOGIN_URL, SALESFORCE_CLIENT_ID, SALESFORCE_CLIENT_SECRET).", 500);
   let token: Token | null = null;
   let lastUsage: { used: number; max: number } | null = null;
@@ -41,6 +42,7 @@ export function createSalesforceClient(cfg: SalesforceConfig = salesforceConfig(
   }
 
   async function sf<T>(path: string, init: RequestInit = {}, retried = false): Promise<T> {
+    assertSalesforceRequestAllowed(init.method, path);
     const t = await getToken();
     const url = path.startsWith("http") ? path : `${t.instanceUrl}${path.startsWith("/services/") ? path : `/services/data/${cfg.apiVersion}${path}`}`;
     const res = await fetch(url, {
@@ -126,10 +128,15 @@ export function createSalesforceClient(cfg: SalesforceConfig = salesforceConfig(
   return api;
 }
 
-let shared: SalesforceApi | null = null;
-/** One client per server instance (token and describe caches are shared). Null when not configured. */
-export function salesforceClient(): SalesforceApi | null {
-  if (!salesforceConfig()) return null;
-  shared ??= createSalesforceClient();
-  return shared;
+let shared: { key: string; api: SalesforceApi } | null = null;
+/**
+ * One client per server instance (token and describe caches are shared), rebuilt when the
+ * connection keys change. Null when Salesforce isn't set up.
+ */
+export async function salesforceClient(): Promise<SalesforceApi | null> {
+  const cfg = await salesforceConfig();
+  if (!cfg) return null;
+  const key = JSON.stringify(cfg);
+  if (shared?.key !== key) shared = { key, api: createSalesforceClient(cfg) };
+  return shared.api;
 }
