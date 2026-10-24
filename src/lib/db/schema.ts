@@ -140,6 +140,8 @@ export const contacts = pgTable(
     /** "email", "phone", "email+phone", or "several" when more than one Lead Alchemist contact matched. */
     laMatchHow: text("la_match_how"),
     laMatchCheckedAt: timestamp("la_match_checked_at", { withTimezone: true }),
+    /** A Lead Alchemist contact staff said is NOT this person: never suggested or auto-linked again. */
+    laMatchDeniedId: text("la_match_denied_id"),
     searchText: text("search_text").notNull().default(""),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),

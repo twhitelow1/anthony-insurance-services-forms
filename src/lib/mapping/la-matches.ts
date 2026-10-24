@@ -1,6 +1,7 @@
 import "server-only";
 import { and, asc, count, eq, isNotNull, isNull } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
+import type { Contact } from "@/lib/db/schema";
 import { exactMatch, laCandidates, laName } from "@/lib/ghl/match";
 
 /**
@@ -38,13 +39,8 @@ export async function findLaMatches({ timeBudgetMs = 40_000 } = {}) {
     if (!batch.length) return { checked, found, done: true };
     for (const p of batch) {
       if (Date.now() - started > timeBudgetMs) break;
-      let match: { id: string | null; name: string | null; how: string | null } = { id: null, name: null, how: null };
-      const candidates = await laCandidates(p, { byName: false });
-      const exact = exactMatch(candidates);
-      if (exact) {
-        match = { id: exact.id, name: laName(exact), how: candidates.find((c) => c.contact.id === exact.id)!.how.join("+") };
-        found++;
-      } else if (candidates.length > 1) match = { id: null, name: null, how: "several" };
+      const match = await lookUp(p);
+      if (match.id) found++;
       await db.update(ct).set({ laMatchId: match.id, laMatchName: match.name, laMatchHow: match.how, laMatchCheckedAt: new Date() }).where(eq(ct.id, p.id));
       checked++;
     }
@@ -57,4 +53,38 @@ export async function resetLaMatches() {
   const db = await getDb();
   const ct = schema.contacts;
   await db.update(ct).set({ laMatchCheckedAt: null }).where(unlinked());
+}
+
+type Match = { id: string | null; name: string | null; how: string | null };
+
+/** The one exact Lead Alchemist match for a contact (leaving out one staff rejected), or why there isn't one. */
+async function lookUp(p: Contact): Promise<Match> {
+  const candidates = (await laCandidates(p, { byName: false })).filter((c) => c.contact.id !== p.laMatchDeniedId);
+  const exact = exactMatch(candidates);
+  if (exact) return { id: exact.id, name: laName(exact), how: candidates.find((c) => c.contact.id === exact.id)!.how.join("+") };
+  return { id: null, name: null, how: candidates.length > 1 ? "several" : null };
+}
+
+/** "Check Lead Alchemist" on one contact: look it up now and save the suggestion (or that there's none). */
+export async function checkLaMatch(contactId: string) {
+  const db = await getDb();
+  const ct = schema.contacts;
+  const [p] = await db.select().from(ct).where(eq(ct.id, contactId)).limit(1);
+  if (!p) throw new Error("That contact no longer exists.");
+  const match = await lookUp(p);
+  await db.update(ct).set({ laMatchId: match.id, laMatchName: match.name, laMatchHow: match.how, laMatchCheckedAt: new Date() }).where(eq(ct.id, p.id));
+  return match;
+}
+
+/** "Not them": forget the suggestion and never suggest (or auto-link) that Lead Alchemist contact again. */
+export async function denyLaMatch(contactId: string) {
+  const db = await getDb();
+  const ct = schema.contacts;
+  const [p] = await db.select().from(ct).where(eq(ct.id, contactId)).limit(1);
+  if (!p) throw new Error("That contact no longer exists.");
+  await db
+    .update(ct)
+    .set({ laMatchDeniedId: p.laMatchId ?? p.laMatchDeniedId, laMatchId: null, laMatchName: null, laMatchHow: "denied", laMatchCheckedAt: new Date() })
+    .where(eq(ct.id, p.id));
+  return p;
 }

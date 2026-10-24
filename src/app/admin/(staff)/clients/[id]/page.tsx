@@ -18,7 +18,9 @@ import {
   listClientEvents,
 } from "@/lib/clients/repo";
 import { links } from "@/lib/integrations/links";
-import { ghlConfig } from "@/lib/ghl/client";
+import { ghlConfig, listBusinesses } from "@/lib/ghl/client";
+import type { Contact } from "@/lib/db/schema";
+import { matchCompanies } from "@/lib/mapping/company-match";
 import { salesforceConfig } from "@/lib/salesforce/config";
 import { getSettings } from "@/lib/settings";
 import { userModeAction } from "@/app/admin/actions";
@@ -40,6 +42,8 @@ import {
   pushContactValueAction,
   updateLaContactAction,
   addToLeadAlchemistAction,
+  laContactAction,
+  linkAccountCompanyAction,
 } from "../actions";
 
 const GHL_MESSAGES: Record<string, string> = {
@@ -97,6 +101,7 @@ export default async function AccountPage({ params, searchParams }: PageProps<"/
   const laConnected = !!(await ghlConfig());
   const sfConnected = !!(await salesforceConfig());
   const alerts = await listNotifications({ clientId: client.id, status: ACTIVE, limit: 20 });
+  const companySuggestions = laConnected && !client.ghlCompanyId ? await companiesLike(client) : [];
   const diffs = new Map(await Promise.all(people.map(async (p) => [p.id, await externalDifferences(p)] as const)));
   const snap = client.sfSnapshot;
   const address = [client.address?.street, client.address?.city, [client.address?.state, client.address?.postalCode].filter(Boolean).join(" ")]
@@ -156,12 +161,39 @@ export default async function AccountPage({ params, searchParams }: PageProps<"/
           </SystemLink>
         ) : (
           laConnected && (
-            <form action={addToLeadAlchemistAction}>
-              <input type="hidden" name="id" value={client.id} />
-              <button className="btn-secondary" title="Link the Lead Alchemist Company with the same name, or create it. Contacts can be added to it any time.">
-                Add Company to Lead Alchemist
-              </button>
-            </form>
+            <>
+              <form action={addToLeadAlchemistAction}>
+                <input type="hidden" name="id" value={client.id} />
+                <button className="btn-secondary" title="Link the Lead Alchemist Company with the same name, or create it. Contacts can be added to it any time.">
+                  Add Company to Lead Alchemist
+                </button>
+              </form>
+              <details className="text-sm">
+                <summary className="btn-secondary cursor-pointer list-none">Link to an existing Company</summary>
+                <form action={linkAccountCompanyAction} className="card mt-2 space-y-2 !p-3">
+                  <input type="hidden" name="id" value={client.id} />
+                  {companySuggestions.length > 0 && (
+                    <label className="block">
+                      <span className="field-label">Lead Alchemist Companies that look like this account</span>
+                      <select name="businessId" className="input">
+                        <option value="">Choose…</option>
+                        {companySuggestions.map((c) => (
+                          <option key={c.id} value={c.id}>
+                            {c.name} ({c.why})
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  )}
+                  <label className="block">
+                    <span className="field-label">{companySuggestions.length ? "Or paste" : "Paste"} the Company&apos;s Lead Alchemist address or ID</span>
+                    <input name="business" className="input" placeholder="https://app.leadalchemist.io/v2/location/…/businesses/detail/…" maxLength={300} />
+                  </label>
+                  <p className="text-xs text-[var(--muted)]">Links this account to it; contacts already in Lead Alchemist are added to the Company. Nothing else changes.</p>
+                  <button className="btn-primary">Link</button>
+                </form>
+              </details>
+            </>
           )
         )}
         <SystemLink href={l.ghlContact(ghlContactId)} missing="Not linked to a Lead Alchemist contact yet.">
@@ -341,13 +373,7 @@ export default async function AccountPage({ params, searchParams }: PageProps<"/
                         )}
                       </>
                     ) : laConnected ? (
-                      <form action={addToLeadAlchemistAction}>
-                        <input type="hidden" name="id" value={client.id} />
-                        <input type="hidden" name="contactId" value={p.id} />
-                        <button className="btn-link text-xs" title="Links the Lead Alchemist contact with this email or phone, or creates it; adds the Company first if needed and puts them in it">
-                          Add to Lead Alchemist
-                        </button>
-                      </form>
+                      <LaSuggestion contact={p} href={p.laMatchId ? l.ghlContact(p.laMatchId) : null} />
                     ) : (
                       <span className="text-xs text-[var(--muted)]">Not linked</span>
                     )}
@@ -528,5 +554,62 @@ function ExternalValues({ email, phone }: { email: string | null; phone: string 
       {email && <div>{email}</div>}
       {phone && <div>{phone}</div>}
     </div>
+  );
+}
+
+/** Lead Alchemist Companies that look like this account (same name, website, phone or email domain, or a similar name). */
+async function companiesLike(client: { id: string; name: string; nameKey: string; phones: string[]; website: string | null; primaryEmail: string | null; sfAccountId: string | null; sfAccountType: string | null; ghlCompanyId: string | null }) {
+  const businesses = await listBusinesses().catch(() => []);
+  return matchCompanies(businesses, [client])
+    .filter((m) => m.suggestions.length)
+    .map((m) => ({ id: m.business.id, name: m.business.name, why: m.suggestions[0].why.join(", "), strong: m.suggestions[0].confidence === "strong" }))
+    .sort((a, b) => Number(b.strong) - Number(a.strong) || a.name.localeCompare(b.name))
+    .slice(0, 15);
+}
+
+/** A contact not in Lead Alchemist yet: check, then review the suggestion before linking or creating. */
+function Op({ op, children, title, primary }: { op: string; children: React.ReactNode; title?: string; primary?: boolean }) {
+  return (
+    <button name="op" value={op} className={`btn-link text-xs ${primary ? "font-semibold" : ""}`} title={title}>
+      {children}
+    </button>
+  );
+}
+
+function LaSuggestion({ contact: p, href }: { contact: Contact; href: string | null }) {
+  return (
+    <form action={laContactAction} className="space-y-1 text-xs">
+      <input type="hidden" name="contactId" value={p.id} />
+      {p.laMatchId ? (
+        <>
+          <div>
+            <span className="badge badge-warning">Suggested</span>{" "}
+            <SystemLink className="btn-link" href={href} missing="">{p.laMatchName ?? "Lead Alchemist contact"}</SystemLink>
+            <span className="text-[var(--muted)]"> · same {p.laMatchHow?.replace("+", " and ")}</span>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Op op="link" primary title="Link to this Lead Alchemist contact, put them in the Company and fill their empty details">Use this contact</Op>
+            <Op op="deny" title="It's someone else: never suggest it again and create a new Lead Alchemist contact">Not them, create new</Op>
+          </div>
+        </>
+      ) : p.laMatchHow === "several" ? (
+        <>
+          <div className="text-[var(--muted)]">Several Lead Alchemist contacts have this email or phone.</div>
+          <div className="flex flex-wrap gap-2">
+            <Op op="check">Check again</Op>
+          </div>
+        </>
+      ) : p.laMatchCheckedAt ? (
+        <>
+          <div className="text-[var(--muted)]">{p.laMatchHow === "denied" ? "Suggestion rejected." : "No match in Lead Alchemist."}</div>
+          <div className="flex flex-wrap gap-2">
+            <Op op="create" primary title="Create the Lead Alchemist contact (and the Company if needed) and put them in it">Create in Lead Alchemist</Op>
+            <Op op="check">Check again</Op>
+          </div>
+        </>
+      ) : (
+        <Op op="check" primary title="Look Lead Alchemist up by email and phone. Nothing is linked until you choose.">Check Lead Alchemist</Op>
+      )}
+    </form>
   );
 }

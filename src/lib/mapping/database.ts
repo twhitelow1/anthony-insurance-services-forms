@@ -4,7 +4,7 @@ import { getDb, schema } from "@/lib/db";
 import type { Client, Contact } from "@/lib/db/schema";
 import { accountsOfContact, addClientEvent, listAccountContacts, contactEmailsOf, createAccount, getClient, getContact, setClientSalesforce, setContactSalesforce } from "@/lib/clients/repo";
 import { laCompanyName, nameKey, searchTerms } from "@/lib/clients/text";
-import { addContactsToBusiness, addTags, createBusiness, getContact as getLaContact, ghlConfig, isScopeError, listBusinesses, upsertContact, type GhlBusiness } from "@/lib/ghl/client";
+import { addContactsToBusiness, addTags, createBusiness, createContact as createLaContact, getContact as getLaContact, ghlConfig, isScopeError, listBusinesses, upsertContact, type GhlBusiness } from "@/lib/ghl/client";
 import { exactMatch, laCandidates, linkLaContact } from "@/lib/ghl/match";
 import type { Links } from "@/lib/integrations/urls";
 import { soqlString, type SalesforceApi } from "@/lib/salesforce/api";
@@ -389,7 +389,7 @@ export async function connectContactsToCompany(
       }
     }
     if (!laId) {
-      const candidates = await laCandidates(p, { byName: false });
+      const candidates = (await laCandidates(p, { byName: false })).filter((c) => c.contact.id !== p.laMatchDeniedId);
       const match = exactMatch(candidates);
       if (match) {
         await linkLaContact(p.id, match.id, actor);
@@ -398,7 +398,8 @@ export async function connectContactsToCompany(
         unclear++; // more than one Lead Alchemist contact shares this email or phone
         continue;
       } else if (opts.createMissing && (p.primaryEmail || p.phones[0])) {
-        const res = await upsertContact({
+        // Upsert would merge into the Lead Alchemist contact staff said isn't this person; create a new one instead.
+        const res = await (p.laMatchDeniedId ? createLaContact : upsertContact)({
           email: p.primaryEmail ?? undefined,
           firstName: p.firstName ?? (p.lastName ? undefined : p.name),
           lastName: p.lastName ?? undefined,

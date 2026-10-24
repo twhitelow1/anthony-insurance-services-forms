@@ -135,6 +135,19 @@ export async function upsertContact(input: UpsertContactInput) {
   });
 }
 
+/**
+ * Create a new contact even when one with this email or phone exists (staff said the existing one
+ * is someone else). Lead Alchemist may still refuse a duplicate if the location doesn't allow them.
+ */
+export async function createContact(input: UpsertContactInput) {
+  const { locationId } = (await ghlConfig())!;
+  return ghlFetch<{ contact: { id: string } }>("/contacts/", {
+    method: "POST",
+    body: JSON.stringify({ ...input, locationId }),
+    cache: "no-store",
+  });
+}
+
 export interface GhlContact {
   id: string;
   email?: string | null;

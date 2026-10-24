@@ -43,6 +43,11 @@ vi.mock("@/lib/ghl/client", async (orig) => {
       Object.assign(la.contacts.get(id)!, input);
       return {};
     },
+    createContact: async (input: { email?: string; companyName?: string }) => {
+      const c = { id: `new${la.contacts.size + 1}`, email: input.email, companyName: input.companyName };
+      la.contacts.set(c.id, c);
+      return { contact: { id: c.id } };
+    },
     listCustomFields: async () => [],
     createCustomField: async (name: string) => ({ id: `f-${name}`, name, fieldKey: name }),
   };
@@ -165,5 +170,28 @@ describe("adding a Company before its contacts", () => {
     expect((await getContactByEmail(`first.${tag}@gmail.com`))!.ghlContactId).toBeNull(); // only the one asked for
     // The Company is reused, not created again (the stand-in's list is shared with the sync, so count distinct IDs).
     expect(new Set(la.businesses.filter((b) => b.name === `Later Gym ${tag}`).map((b) => b.id)).size).toBe(1);
+  });
+});
+
+describe("reviewing a suggested Lead Alchemist contact", () => {
+  it("suggests without linking, and after 'not them' never links it and creates a new contact", async () => {
+    la.scope = true;
+    const { checkLaMatch, denyLaMatch } = await import("./la-matches");
+    const { syncAccountsToLeadAlchemist } = await import("./database");
+    const tag = uniq();
+    const clientId = await ensureClient({ email: `same.${tag}@gmail.com`, contactName: `Sam ${tag}`, businessName: `Twin Studio ${tag}` });
+    la.contacts.set(`other-${tag}`, { id: `other-${tag}`, email: `same.${tag}@gmail.com`, firstName: "Someone Else" });
+    const person = (await getContactByEmail(`same.${tag}@gmail.com`))!;
+
+    expect(await checkLaMatch(person.id)).toMatchObject({ id: `other-${tag}`, how: "email" });
+    expect((await getContactByEmail(`same.${tag}@gmail.com`))!.ghlContactId).toBeNull(); // only suggested
+
+    await denyLaMatch(person.id);
+    await syncAccountsToLeadAlchemist([clientId], ACTOR, { sf: null, links: LINKS }, { createMissing: true, contactIds: [person.id] });
+    const after = (await getContactByEmail(`same.${tag}@gmail.com`))!;
+    expect(after.ghlContactId).toBeTruthy();
+    expect(after.ghlContactId).not.toBe(`other-${tag}`);
+    expect(after.laMatchDeniedId).toBe(`other-${tag}`);
+    expect((await checkLaMatch(person.id)).id).toBeNull(); // never suggested again
   });
 });
