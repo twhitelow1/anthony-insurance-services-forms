@@ -181,9 +181,10 @@ describe("sync an application to Salesforce", () => {
     expect(sf.creates().find((w) => w.object === "OpportunityContactRole")!.data).toMatchObject({ IsPrimary: true });
 
     const account = sf.records.Account[0];
+    // Type is the account's status and is only ever set in Salesforce.
+    expect(account.Type).toBeUndefined();
     expect(account).toMatchObject({
       Name: "Alexa Prussin",
-      Type: "Customer",
       Legal_Entity__c: "Individual",
       Program__c: "Aerial Instructor",
       GL_Aggregate_Limit__c: 2000000,

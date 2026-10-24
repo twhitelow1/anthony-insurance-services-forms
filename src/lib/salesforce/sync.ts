@@ -190,7 +190,7 @@ export async function syncApplicationToSalesforce(applicationId: string, deps: S
         accountDescribe,
         {
           Name: accountName,
-          Type: "Customer",
+          // Type is the account's status and is only ever set in Salesforce.
           Phone: client.phones[0] ?? contactFields.phone,
           BillingStreet: contactFields.address1,
           BillingCity: contactFields.city,

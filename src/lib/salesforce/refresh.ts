@@ -20,6 +20,7 @@ import { hiddenSet } from "./hidden";
 
 /** Account fields read when the org has them (custom ones are checked against describe first). */
 const OPTIONAL_FIELDS = {
+  type: "Type",
   program: "Program__c",
   legalEntity: "Legal_Entity__c",
   effectiveDate: "Effective_Date__c",
@@ -51,6 +52,7 @@ export async function readAccountSnapshot(sf: SalesforceApi, sfAccountId: string
     row,
     snapshot: {
       name: row.Name,
+      type: str(row[OPTIONAL_FIELDS.type]),
       phone: row.Phone,
       website: row.Website,
       address: [row.BillingStreet, row.BillingCity, row.BillingState, row.BillingPostalCode].filter(Boolean).join(", ") || null,
@@ -73,7 +75,7 @@ export async function refreshAccountFromSalesforce(clientId: string, sf: Salesfo
   if (!read) throw new Error("The linked Salesforce Account wasn't found (it may have been deleted in Salesforce).");
   await setClientSalesforce(client.id, { sfPulledAt: new Date() });
   const db = await getDb();
-  await db.update(schema.clients).set({ sfSnapshot: read.snapshot }).where(eq(schema.clients.id, client.id));
+  await db.update(schema.clients).set({ sfSnapshot: read.snapshot, sfAccountType: read.snapshot.type ?? null }).where(eq(schema.clients.id, client.id));
 
   // Salesforce Contacts the app doesn't have yet: add them under this Account, unless removed here.
   const sfContacts = read.row.Contacts?.records ?? [];

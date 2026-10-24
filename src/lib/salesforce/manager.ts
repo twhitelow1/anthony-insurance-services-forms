@@ -14,7 +14,7 @@ import {
 } from "@/lib/clients/repo";
 import { accountDetail, applyAccount, proposeForAccount, type AccountRow, type SalesforceImportDeps } from "@/lib/mapping/salesforce-import";
 import { soqlString, type SalesforceApi } from "./api";
-import { accountSelect, CONTACT_FIELDS, contactsReadable, selectList } from "./fields";
+import { accountSelect, CONTACT_FIELDS, contactsReadable, selectList, visibleFields } from "./fields";
 import { hiddenSet, hide, unhide } from "./hidden";
 
 /**
@@ -32,11 +32,14 @@ export type AppState = "not_in_app" | "synced" | "unsynced" | "removed";
 export interface SfAccountListRow {
   id: string;
   name: string;
+  /** Salesforce Account Type: the account's status. */
+  type: string | null;
   phone: string | null;
   website: string | null;
   city: string | null;
   state: string | null;
-  contacts: number;
+  /** null when the integration user can't read Contacts. */
+  contacts: number | null;
   appState: AppState;
   client?: { id: string; name: string };
 }
@@ -48,12 +51,27 @@ export const MAX_OFFSET = 2000;
 const likeTerm = (q: string) => q.replace(/[\\%_]/g, (c) => `\\${c}`);
 
 /** One page of Salesforce Accounts, each with where it stands in this app. */
-export async function listSalesforceAccounts(sf: SalesforceApi, opts: { q?: string; offset?: number } = {}) {
+/** The Account Type picklist values (Customer, Prospect…), for the Type filter. Empty when Type isn't readable. */
+export async function accountTypes(sf: SalesforceApi): Promise<string[]> {
+  const field = (await sf.describe("Account")).fields.find((f) => f.name === "Type");
+  return (field?.picklistValues ?? []).filter((p) => p.active).map((p) => p.value);
+}
+
+/** NO_TYPE filters Accounts whose Type is blank. */
+export const NO_TYPE = "__none__";
+
+export async function listSalesforceAccounts(sf: SalesforceApi, opts: { q?: string; offset?: number; type?: string | null } = {}) {
   const q = opts.q?.trim();
   const offset = Math.min(Math.max(0, opts.offset ?? 0), MAX_OFFSET);
-  const where = q ? `WHERE Name LIKE ${soqlString(`%${likeTerm(q)}%`)} ` : "";
+  const wanted = ["Name", "Type", "Phone", "Website", "BillingCity", "BillingState"];
+  const [visible, contactsVisible] = await Promise.all([visibleFields(sf, "Account", wanted), contactsReadable(sf)]);
+  const conditions = [
+    q ? `Name LIKE ${soqlString(`%${likeTerm(q)}%`)}` : null,
+    opts.type && visible.includes("Type") ? (opts.type === NO_TYPE ? "Type = null" : `Type = ${soqlString(opts.type)}`) : null,
+  ].filter(Boolean);
+  const where = conditions.length ? `WHERE ${conditions.join(" AND ")} ` : "";
   const { records } = await sf.queryPage<AccountRow & { Contacts?: { totalSize?: number; records: unknown[] } | null }>(
-    `SELECT ${await selectList(sf, "Account", ["Name", "Phone", "Website", "BillingCity", "BillingState"])}${(await contactsReadable(sf)) ? ", (SELECT Id FROM Contacts)" : ""} ` +
+    `SELECT ${["Id", ...visible].join(", ")}${contactsVisible ? ", (SELECT Id FROM Contacts)" : ""} ` +
       `FROM Account ${where}ORDER BY Name, Id LIMIT ${PAGE_SIZE + 1} OFFSET ${offset}`,
   );
   const page = records.slice(0, PAGE_SIZE);
@@ -71,16 +89,25 @@ export async function listSalesforceAccounts(sf: SalesforceApi, opts: { q?: stri
     return {
       id: r.Id,
       name: r.Name,
+      type: r.Type ?? null,
       phone: r.Phone,
       website: r.Website,
       city: r.BillingCity,
       state: r.BillingState,
-      contacts: r.Contacts?.totalSize ?? r.Contacts?.records.length ?? 0,
+      contacts: contactsVisible ? (r.Contacts?.totalSize ?? r.Contacts?.records.length ?? 0) : null,
       appState: c ? (c.paused ? "unsynced" : "synced") : hidden.has(r.Id) ? "removed" : "not_in_app",
       client: c ? { id: c.id, name: c.name } : undefined,
     };
   });
-  return { rows, hasMore: records.length > PAGE_SIZE && offset + PAGE_SIZE <= MAX_OFFSET, offset, pageSize: PAGE_SIZE };
+  return {
+    rows,
+    hasMore: records.length > PAGE_SIZE && offset + PAGE_SIZE <= MAX_OFFSET,
+    offset,
+    pageSize: PAGE_SIZE,
+    /** What the integration user can't read, so the page can say why columns are empty. */
+    contactsVisible,
+    hiddenFields: wanted.filter((f) => !visible.includes(f)),
+  };
 }
 
 /** Counts for the top of the screen, from the app's side. */
