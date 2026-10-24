@@ -61,6 +61,6 @@ export async function unlinkLaContact(contactId: string, actor: string) {
   if (!contact) throw new Error("That contact no longer exists.");
   await setContactGhl(contact.id, null);
   for (const email of await contactEmailsOf(contact.id)) await linkApplicantGhl(email, null);
-  await addClientEvent(contact.clientId, "la_contact_linked", actor, { message: `${contact.name} unlinked from Lead Alchemist in this app (nothing changed in Lead Alchemist)` });
+  await addClientEvent(contact.clientId, "la_contact_linked", actor, { message: `${contact.name} unlinked from Lead Alchemist in AIS Connect (nothing changed in Lead Alchemist)` });
   return contact;
 }

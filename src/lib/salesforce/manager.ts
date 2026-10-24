@@ -209,7 +209,7 @@ export async function deactivateAccount(clientId: string, actor: string, reason?
   const db = await getDb();
   await db.update(schema.clients).set({ deactivatedAt: new Date(), deactivatedBy: actor, updatedAt: new Date() }).where(eq(schema.clients.id, client.id));
   await addClientEvent(client.id, "deactivated", actor, {
-    message: `Deactivated in this app${client.sfAccountId ? ` (was synced with Salesforce Account ${client.sfAccountId}; nothing changed in Salesforce)` : ""}${reason?.trim() ? `. Reason: ${reason.trim().slice(0, 300)}` : ""}`,
+    message: `Deactivated in AIS Connect${client.sfAccountId ? ` (was synced with Salesforce Account ${client.sfAccountId}; nothing changed in Salesforce)` : ""}${reason?.trim() ? `. Reason: ${reason.trim().slice(0, 300)}` : ""}`,
     data: { sfAccountId: client.sfAccountId },
   });
   return client;
@@ -246,7 +246,7 @@ export async function relinkSalesforceAccount(clientId: string, newSfAccountId: 
     .from(schema.clients)
     .where(and(eq(schema.clients.sfAccountId, row.Id), isNull(schema.clients.mergedInto)))
     .limit(1);
-  if (other && other.id !== client.id) throw new Error(`"${other.name}" in this app is already linked to that Salesforce Account. Merge the two accounts instead.`);
+  if (other && other.id !== client.id) throw new Error(`"${other.name}" in AIS Connect is already linked to that Salesforce Account. Merge the two accounts instead.`);
   const previous = client.sfAccountId;
   await setClientSalesforce(client.id, { sfAccountId: row.Id, sfStatus: "linked", sfLastError: null, sfSyncPaused: false });
   await db.update(schema.clients).set({ sfSnapshot: null, sfAccountType: null }).where(eq(schema.clients.id, client.id));
@@ -371,7 +371,7 @@ export async function removeContactFromDashboard(contactId: string, actor: strin
   await db.delete(schema.contacts).where(eq(schema.contacts.id, contact.id));
   await refreshSearch(contact.clientId);
   await addClientEvent(contact.clientId, "contact_removed", actor, {
-    message: `${contact.name} removed from this app (still in Salesforce and Lead Alchemist)`,
+    message: `${contact.name} removed from AIS Connect (still in Salesforce and Lead Alchemist)`,
   });
   return contact;
 }

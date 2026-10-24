@@ -1,0 +1,1 @@
+ALTER TABLE "contacts" ADD COLUMN "la_match_denied_id" text;

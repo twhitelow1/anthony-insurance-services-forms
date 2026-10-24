@@ -18,11 +18,12 @@ export default async function StaffLayout({ children }: LayoutProps<"/admin">) {
   return (
     <>
       <OpenAccessBanner />
-      <TopBar title="Applications admin" href="/admin" who={staff.email}>
+      <TopBar title="AIS Connect" href="/admin" who={staff.email}>
         <nav className="flex flex-wrap items-center gap-4 font-medium">
           <Link href="/admin" className="hover:underline">Applications</Link>
           <Link href="/admin/unfinished" className="hover:underline">Unfinished</Link>
           <Link href="/admin/clients" className="hover:underline">Accounts</Link>
+          <Link href="/admin/contacts" className="hover:underline">Contacts</Link>
           <Link href="/admin/salesforce" className="hover:underline">Salesforce</Link>
           <Link href="/admin/mapping" className="hover:underline">Mapping</Link>
           <Link href="/admin/notifications" className="hover:underline">

@@ -8,7 +8,7 @@ import { ListSummary, pageHref, pageState, Pagination } from "@/components/Pagin
 import { FlashMessage } from "../salesforce/ui";
 import { setNotificationStatusAction } from "./actions";
 
-export const metadata = { title: "Notifications | Anthony Insurance Services" };
+export const metadata = { title: "Notifications | AIS Connect" };
 export const dynamic = "force-dynamic";
 
 const VIEWS = ["board", "list", "log"] as const;

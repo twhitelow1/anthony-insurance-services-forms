@@ -4,7 +4,7 @@ import { CopyButton } from "@/components/CopyButton";
 import { requireStaff } from "@/lib/auth/session";
 import { BRANDS, defaultBrand, isBrand, type BrandId } from "@/lib/brands";
 
-export const metadata = { title: "Forms & embed codes | Anthony Insurance Services" };
+export const metadata = { title: "Forms & embed codes | AIS Connect" };
 
 const appUrl = () => (process.env.APP_URL ?? "https://anthony-insurance-services-forms.vercel.app").replace(/\/$/, "");
 

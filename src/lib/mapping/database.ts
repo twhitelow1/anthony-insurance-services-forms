@@ -4,7 +4,7 @@ import { getDb, schema } from "@/lib/db";
 import type { Client, Contact } from "@/lib/db/schema";
 import { accountsOfContact, addClientEvent, listAccountContacts, contactEmailsOf, createAccount, getClient, getContact, setClientSalesforce, setContactSalesforce } from "@/lib/clients/repo";
 import { laCompanyName, nameKey, searchTerms } from "@/lib/clients/text";
-import { addContactsToBusiness, addTags, createBusiness, getContact as getLaContact, ghlConfig, isScopeError, listBusinesses, upsertContact, type GhlBusiness } from "@/lib/ghl/client";
+import { addContactsToBusiness, addTags, createBusiness, createContact as createLaContact, getContact as getLaContact, ghlConfig, isScopeError, listBusinesses, upsertContact, type GhlBusiness } from "@/lib/ghl/client";
 import { exactMatch, laCandidates, linkLaContact } from "@/lib/ghl/match";
 import type { Links } from "@/lib/integrations/urls";
 import { soqlString, type SalesforceApi } from "@/lib/salesforce/api";
@@ -273,6 +273,10 @@ export interface LeadAlchemistSyncOptions {
   createMissing?: boolean;
   /** Stop starting new records after this long, so one click never runs past the server's time limit. */
   timeBudgetMs?: number;
+  /** Accounts only: just link or create the Company (contacts can be added to it later). */
+  companyOnly?: boolean;
+  /** Accounts only: handle just these of the account's contacts. */
+  contactIds?: string[];
 }
 
 const COMPANIES_BLOCKED =
@@ -338,7 +342,9 @@ export async function syncAccountsToLeadAlchemist(
         companyId = null;
       }
     }
-    const people = await db.select().from(schema.contacts).where(eq(schema.contacts.clientId, account.id));
+    const people = opts.companyOnly
+      ? []
+      : (await db.select().from(schema.contacts).where(eq(schema.contacts.clientId, account.id))).filter((p) => !opts.contactIds || opts.contactIds.includes(p.id));
     const r = await connectContactsToCompany(people, companies ? companyId : null, actor, { ...opts, companyName: laCompanyName(account) });
     if (r.blocked) companies = null;
     if (r.notes.length) result.notes.push(...r.notes.map((n) => `${account.name}: ${n}`));
@@ -383,7 +389,7 @@ export async function connectContactsToCompany(
       }
     }
     if (!laId) {
-      const candidates = await laCandidates(p, { byName: false });
+      const candidates = (await laCandidates(p, { byName: false })).filter((c) => c.contact.id !== p.laMatchDeniedId);
       const match = exactMatch(candidates);
       if (match) {
         await linkLaContact(p.id, match.id, actor);
@@ -392,7 +398,8 @@ export async function connectContactsToCompany(
         unclear++; // more than one Lead Alchemist contact shares this email or phone
         continue;
       } else if (opts.createMissing && (p.primaryEmail || p.phones[0])) {
-        const res = await upsertContact({
+        // Upsert would merge into the Lead Alchemist contact staff said isn't this person; create a new one instead.
+        const res = await (p.laMatchDeniedId ? createLaContact : upsertContact)({
           email: p.primaryEmail ?? undefined,
           firstName: p.firstName ?? (p.lastName ? undefined : p.name),
           lastName: p.lastName ?? undefined,
@@ -427,6 +434,18 @@ export async function connectContactsToCompany(
       result.blocked = true;
     }
   }
+  // Fill in what Lead Alchemist is missing (name, email, phone, address) and write the links between
+  // the three systems onto each linked contact.
+  const { updateLeadAlchemistDetails } = await import("@/lib/contacts/external");
+  let filled = 0;
+  for (const p of people) {
+    try {
+      if ((await updateLeadAlchemistDetails(p.id, actor)).fields.length) filled++;
+    } catch {
+      // Not linked (no match and not created) or Lead Alchemist refused: the notes above cover it.
+    }
+  }
+  if (filled) result.notes.push(`${filled} Lead Alchemist contact${filled === 1 ? "" : "s"} filled in from AIS Connect`);
   if (created) result.notes.push(`${created} contact${created === 1 ? "" : "s"} created in Lead Alchemist`);
   if (unmatched)
     result.notes.push(

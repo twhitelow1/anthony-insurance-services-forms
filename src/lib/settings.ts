@@ -85,7 +85,7 @@ export function envSettings(env: NodeJS.ProcessEnv = process.env): Settings {
     ghlLeadStage: laEnv("LEAD_STAGE_ID", env)?.trim() ?? "",
     ghlStageMap: parseStageMap(laEnv("STAGE_IDS", env), "LA_STAGE_IDS"),
     ghlAppUrl: laEnv("APP_URL", env)?.trim() ?? "",
-    ghlCompaniesSync: laEnv("COMPANIES_SYNC", env) === "1",
+    ghlCompaniesSync: laEnv("COMPANIES_SYNC", env) !== "0",
     salesforceEnabled: env.SALESFORCE_SYNC_ENABLED === "1",
     salesforceDryRun: defaultDryRun(env),
     salesforceStageMap: parseStageMap(env.SALESFORCE_STAGE_MAP, "SALESFORCE_STAGE_MAP"),

@@ -6,7 +6,7 @@ import { CLIENT_SEARCH_COOKIE } from "@/lib/clients/search-cookie";
 import { redirect } from "next/navigation";
 import { requireStaff } from "@/lib/auth/session";
 import { addClientEvent, getClient, getContact, keepSeparate, listAccountContacts, listClientApplications, mergeClients, setPrimaryContact, splitContact } from "@/lib/clients/repo";
-import { pushContactValue, refreshContactExternal } from "@/lib/contacts/external";
+import { pushContactValue, refreshContactExternal, updateLeadAlchemistDetails } from "@/lib/contacts/external";
 import { setFlash } from "@/lib/flash";
 import { addNotificationNote } from "@/lib/notifications/repo";
 import { salesforceClient } from "@/lib/salesforce/client";
@@ -166,6 +166,151 @@ export async function refreshContactsAction(formData: FormData) {
   for (const p of await listAccountContacts(client.id)) await refreshContactExternal(p.id).catch(() => {});
   revalidatePath(`/admin/clients/${client.id}`);
   back(client.id, { saved: "checked" });
+}
+
+/**
+ * "Add Company to Lead Alchemist" (no contact needed: people can join the Company later), and
+ * "Add to Lead Alchemist" on a contact (creates the Company first if needed, then the contact if
+ * Lead Alchemist has no email or phone match, puts them in the Company and fills in their details).
+ */
+export async function addToLeadAlchemistAction(formData: FormData) {
+  const staff = await requireStaff();
+  const client = await getClient(String(formData.get("id") ?? ""));
+  if (!client) throw new Error("Account not found");
+  const contactId = String(formData.get("contactId") ?? "");
+  const one = UUID_RE.test(contactId);
+  let tone: "ok" | "error" = "ok";
+  let text: string;
+  try {
+    const { syncAccountsToLeadAlchemist } = await import("@/lib/mapping/database");
+    const { links } = await import("@/lib/integrations/links");
+    const r = await syncAccountsToLeadAlchemist([client.id], `staff:${staff.email}`, { sf: await salesforceClient(), links: await links() }, one ? { createMissing: true, contactIds: [contactId] } : { companyOnly: true });
+    const after = await getClient(client.id);
+    text = [one ? "Added to Lead Alchemist." : after?.ghlCompanyId ? "The Company is in Lead Alchemist." : "No Company was added.", ...r.notes].join(" ");
+    if (!after?.ghlCompanyId && !one) tone = "error";
+  } catch (err) {
+    tone = "error";
+    text = err instanceof Error ? err.message : String(err);
+  }
+  const f = await setFlash({ tone, text });
+  revalidatePath(`/admin/clients/${client.id}`);
+  redirect(`/admin/clients/${client.id}?f=${f}`);
+}
+
+/**
+ * "Link to an existing Company": a suggested Company or a pasted Lead Alchemist address / ID. The
+ * account's contacts that are already linked to Lead Alchemist are put in it; nothing else changes.
+ */
+export async function linkAccountCompanyAction(formData: FormData) {
+  const staff = await requireStaff();
+  const actor = `staff:${staff.email}`;
+  const client = await getClient(String(formData.get("id") ?? ""));
+  if (!client) throw new Error("Account not found");
+  const pasted = String(formData.get("business") ?? "").trim();
+  const businessId = String(formData.get("businessId") ?? "").trim() || pasted.match(/businesses\/detail\/([A-Za-z0-9]+)/)?.[1] || (/^[A-Za-z0-9]{6,64}$/.test(pasted) ? pasted : "");
+  let tone: "ok" | "error" = "ok";
+  let text: string;
+  try {
+    if (!businessId) throw new Error("Choose a Company or paste its Lead Alchemist address.");
+    const { linkCompaniesToAccounts, syncAccountsToLeadAlchemist } = await import("@/lib/mapping/database");
+    const { links } = await import("@/lib/integrations/links");
+    const r = await linkCompaniesToAccounts([{ businessId, accountId: client.id }], actor);
+    if (!r.done) throw new Error(r.notes.join(" ") || "That Company wasn't found in Lead Alchemist.");
+    const linkedPeople = (await listAccountContacts(client.id)).filter((p) => p.ghlContactId && p.homeHere).map((p) => p.id);
+    const s = linkedPeople.length
+      ? await syncAccountsToLeadAlchemist([client.id], actor, { sf: await salesforceClient(), links: await links() }, { contactIds: linkedPeople })
+      : { notes: [] as string[] };
+    text = ["Linked to the Lead Alchemist Company.", ...s.notes].join(" ");
+  } catch (err) {
+    tone = "error";
+    text = err instanceof Error ? err.message : String(err);
+  }
+  const f = await setFlash({ tone, text });
+  revalidatePath(`/admin/clients/${client.id}`);
+  redirect(`/admin/clients/${client.id}?f=${f}`);
+}
+
+/**
+ * A contact not in Lead Alchemist yet, on the account page:
+ * - check: look Lead Alchemist up by email and phone and show the suggestion (nothing is linked);
+ * - link: use the suggested contact (put in the Company, empty fields filled, links written);
+ * - deny: it's someone else: never suggest it again, and create a new Lead Alchemist contact;
+ * - create: no match: create the contact (and the Company if needed).
+ */
+export async function laContactAction(formData: FormData) {
+  const staff = await requireStaff();
+  const actor = `staff:${staff.email}`;
+  const contactId = String(formData.get("contactId") ?? "");
+  const op = String(formData.get("op") ?? "");
+  if (!UUID_RE.test(contactId)) throw new Error("Unknown contact");
+  const contact = await getContact(contactId);
+  if (!contact) throw new Error("That contact no longer exists.");
+  const { checkLaMatch, denyLaMatch } = await import("@/lib/mapping/la-matches");
+  const { syncAccountsToLeadAlchemist } = await import("@/lib/mapping/database");
+  const { linkLaContact } = await import("@/lib/ghl/match");
+  const { links } = await import("@/lib/integrations/links");
+  const deps = { sf: await salesforceClient(), links: await links() };
+  const sync = (createMissing: boolean) => syncAccountsToLeadAlchemist([contact.clientId], actor, deps, { createMissing, contactIds: [contact.id] });
+  let tone: "ok" | "error" = "ok";
+  let text = "";
+  try {
+    if (op === "check") {
+      const m = await checkLaMatch(contact.id);
+      text = m.id
+        ? `${contact.name}: Lead Alchemist has a contact with the same ${m.how?.replace("+", " and ")} (${m.name}). Check it, then use it or create a new one.`
+        : m.how === "several"
+          ? `${contact.name}: several Lead Alchemist contacts have this email or phone. Open the Salesforce Account page to pick one, or create a new one.`
+          : `${contact.name}: no Lead Alchemist contact has this email or phone. You can create one.`;
+    } else if (op === "link") {
+      if (!contact.laMatchId) throw new Error("There's no suggestion to use: check Lead Alchemist again.");
+      await linkLaContact(contact.id, contact.laMatchId, actor);
+      const r = await sync(false);
+      text = [`${contact.name} linked to their Lead Alchemist contact and put in the Company.`, ...r.notes].join(" ");
+    } else if (op === "deny") {
+      await denyLaMatch(contact.id);
+      const r = await sync(true);
+      const after = await getContact(contact.id);
+      text = after?.ghlContactId
+        ? [`${contact.name}: suggestion rejected; a new Lead Alchemist contact was created and put in the Company.`, ...r.notes].join(" ")
+        : [`${contact.name}: suggestion rejected (it won't be suggested again), but Lead Alchemist didn't create a new contact.`, ...r.notes].join(" ");
+      if (!after?.ghlContactId) tone = "error";
+    } else if (op === "create") {
+      const r = await sync(true);
+      const after = await getContact(contact.id);
+      text = after?.ghlContactId ? [`${contact.name} is in Lead Alchemist and in the Company.`, ...r.notes].join(" ") : [`${contact.name} wasn't added.`, ...r.notes].join(" ");
+      if (!after?.ghlContactId) tone = "error";
+    } else throw new Error("Unknown action");
+  } catch (err) {
+    tone = "error";
+    text = err instanceof Error ? err.message : String(err);
+  }
+  const f = await setFlash({ tone, text });
+  revalidatePath(`/admin/clients/${contact.clientId}`);
+  redirect(`/admin/clients/${contact.clientId}?f=${f}`);
+}
+
+/**
+ * "Update in Lead Alchemist": fill the contact's empty Lead Alchemist fields from the app (or, with
+ * replace, every field that differs) and write the links between the three systems onto it.
+ */
+export async function updateLaContactAction(formData: FormData) {
+  const staff = await requireStaff();
+  const contactId = String(formData.get("contactId") ?? "");
+  if (!UUID_RE.test(contactId)) throw new Error("Unknown contact");
+  const contact = await getContact(contactId);
+  if (!contact) throw new Error("That contact no longer exists.");
+  let text: string;
+  let tone: "ok" | "error" = "ok";
+  try {
+    const { fields } = await updateLeadAlchemistDetails(contactId, `staff:${staff.email}`, { replace: formData.get("replace") === "yes" });
+    text = fields.length ? `${contact.name}: updated ${fields.join(", ")} in Lead Alchemist (and the links between the three systems).` : `${contact.name}: Lead Alchemist already matches; links refreshed.`;
+  } catch (err) {
+    tone = "error";
+    text = err instanceof Error ? err.message : String(err);
+  }
+  const f = await setFlash({ tone, text });
+  revalidatePath(`/admin/clients/${contact.clientId}`);
+  redirect(`/admin/clients/${contact.clientId}?f=${f}`);
 }
 
 /**

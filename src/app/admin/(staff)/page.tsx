@@ -8,7 +8,7 @@ import { countApplications, searchApplications } from "@/lib/applications/repo";
 import { STATUSES, STATUS_KEYS, isStatus } from "@/lib/applications/status";
 import { clientPath } from "@/lib/applications/links";
 
-export const metadata = { title: "Applications | Anthony Insurance Services" };
+export const metadata = { title: "Applications | AIS Connect" };
 
 export default async function AdminHome({ searchParams }: PageProps<"/admin">) {
   await requireStaff("/admin");

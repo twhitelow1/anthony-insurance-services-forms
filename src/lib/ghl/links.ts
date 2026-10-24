@@ -8,7 +8,10 @@ import { CONTACT_LINK_FIELDS, ensureCustomFields, findField, OPPORTUNITY_LINK_FI
  * The fields are created on first use (same mechanism as the application fields).
  */
 export interface GhlLinkWriter {
-  contactLinks(contactId: string, links: { salesforceAccount?: string | null; clientPage?: string | null }): Promise<{ missing: string[] }>;
+  contactLinks(
+    contactId: string,
+    links: { salesforceAccount?: string | null; salesforceContact?: string | null; clientPage?: string | null },
+  ): Promise<{ missing: string[] }>;
   opportunityLinks(opportunityId: string, links: { salesforceOpportunity?: string | null; application?: string | null }): Promise<{ missing: string[] }>;
   note(contactId: string, body: string): Promise<void>;
 }
@@ -28,6 +31,7 @@ export const ghlLinkWriter: GhlLinkWriter = {
   async contactLinks(contactId, links) {
     const { customFields, missing } = await fieldValues("contact", [
       [CONTACT_LINK_FIELDS.salesforceAccount, links.salesforceAccount],
+      [CONTACT_LINK_FIELDS.salesforceContact, links.salesforceContact],
       [CONTACT_LINK_FIELDS.clientPage, links.clientPage],
     ]);
     if (customFields.length) await updateContact(contactId, { customFields });

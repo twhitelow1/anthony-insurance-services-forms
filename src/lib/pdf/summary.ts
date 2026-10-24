@@ -384,7 +384,7 @@ export async function buildApplicationPdf(form: FormDefinition, app: Application
   if (reps.length) for (const r of reps) w.para(r, { size: 8.5, after: 3 });
   else
     w.para(
-      "The undersigned declares that the statements in this application are true, complete and accurate, and understands that this application does not bind coverage.",
+      "The undersigned declares that the statements in AIS Connectlication are true, complete and accurate, and understands that AIS Connectlication does not bind coverage.",
       { size: 8.5, after: 3 },
     );
   w.ensure(110);

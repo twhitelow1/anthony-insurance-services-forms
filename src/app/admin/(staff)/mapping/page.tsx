@@ -39,7 +39,7 @@ import {
 } from "./actions";
 import { MAP_SEARCH_COOKIE } from "./search-cookie";
 
-export const metadata = { title: "Mapping | Anthony Insurance Services" };
+export const metadata = { title: "Mapping | AIS Connect" };
 export const dynamic = "force-dynamic";
 
 const TABS = ["accounts", "contacts", "companies", "multi"] as const;
@@ -70,7 +70,7 @@ const COMPANY_FILTERS: { value: CompanyFilter; label: string }[] = [
   { value: "unlinked", label: "Not linked yet" },
   { value: "strong", label: "Likely match (same name, website, phone or email domain)" },
   { value: "possible", label: "Possible match (similar name)" },
-  { value: "none", label: "No match in this app" },
+  { value: "none", label: "No match in AIS Connect" },
   { value: "linked", label: "Linked" },
   { value: "all", label: "All" },
 ];
@@ -125,7 +125,7 @@ export default async function Mapping({ searchParams }: PageProps<"/admin/mappin
     <div>
       <h1 className="mb-2 text-2xl font-semibold">Mapping</h1>
       <p className="mb-4 max-w-3xl text-sm text-[var(--muted)]">
-        Every account and contact in this app with its Salesforce and Lead Alchemist links. Filter to what isn&apos;t mapped yet, tick rows and send
+        Every account and contact in AIS Connect with its Salesforce and Lead Alchemist links. Filter to what isn&apos;t mapped yet, tick rows and send
         them across. Nothing runs on its own and nothing is deleted anywhere; records are linked when one already matches, and created otherwise.
       </p>
       <p className="mb-4 text-sm">
@@ -351,16 +351,16 @@ export default async function Mapping({ searchParams }: PageProps<"/admin/mappin
               <p className="mb-2 text-sm">
                 <strong>{companies.counts.total}</strong> Companies in Lead Alchemist: <strong>{companies.counts.linked}</strong> linked ·{" "}
                 <strong>{companies.counts.strong}</strong> likely match · <strong>{companies.counts.possible}</strong> possible match ·{" "}
-                <strong>{companies.counts.none}</strong> no match in this app.
+                <strong>{companies.counts.none}</strong> no match in AIS Connect.
               </p>
               <p className="mb-3 max-w-3xl text-sm text-[var(--muted)]">
-                Matched against every account in this app (which mirrors Salesforce once its Accounts are synced). Check the account picked in each
-                row, tick the rows and link them. Linking only saves the pairing in this app; nothing changes in Lead Alchemist or Salesforce.
+                Matched against every account in AIS Connect (which mirrors Salesforce once its Accounts are synced). Check the account picked in each
+                row, tick the rows and link them. Linking only saves the pairing in AIS Connect; nothing changes in Lead Alchemist or Salesforce.
               </p>
               <form id="bulk" className="mb-3 flex flex-wrap items-center gap-2 text-sm">
                 <input type="hidden" name="back" value={back} />
                 <SubmitButton formAction={linkCompaniesAction} className="btn-primary">Link selected to the chosen account</SubmitButton>
-                <SubmitButton formAction={addCompaniesToAppAction} className="btn-secondary">Add selected to this app as new accounts</SubmitButton>
+                <SubmitButton formAction={addCompaniesToAppAction} className="btn-secondary">Add selected to AIS Connect as new accounts</SubmitButton>
                 <SubmitButton formAction={companiesToSalesforceAction} className="btn-secondary" disabled={!sfOn}>Link or create selected in Salesforce</SubmitButton>
               </form>
               <ListSummary total={companies.rows.length} state={paging} noun="Company" />
@@ -370,7 +370,7 @@ export default async function Mapping({ searchParams }: PageProps<"/admin/mappin
                     <tr>
                       <th className="w-8"><SelectAll form="bulk" /></th>
                       <th>Lead Alchemist Company</th>
-                      <th>Account in this app</th>
+                      <th>Account in AIS Connect</th>
                       <th>Salesforce</th>
                       <th />
                     </tr>

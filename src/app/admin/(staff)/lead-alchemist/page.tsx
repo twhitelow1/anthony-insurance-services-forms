@@ -4,7 +4,7 @@ import { pipelineConfig, resolvePipeline } from "@/lib/ghl/sync";
 import Link from "next/link";
 import { credentials } from "@/lib/integrations/credentials";
 
-export const metadata = { title: "Lead Alchemist pipelines | Anthony Insurance Services" };
+export const metadata = { title: "Lead Alchemist pipelines | AIS Connect" };
 // Always ask Lead Alchemist live; never serve a copy rendered at build time.
 export const dynamic = "force-dynamic";
 

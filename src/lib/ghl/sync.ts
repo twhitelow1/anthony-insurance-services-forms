@@ -39,6 +39,7 @@ export const PORTAL_FIELDS = {
 /** Three-way link fields on Lead Alchemist contacts and opportunities (single-line text, created automatically). */
 export const CONTACT_LINK_FIELDS = {
   salesforceAccount: "Salesforce Account Link",
+  salesforceContact: "Salesforce Contact Link",
   clientPage: "Client Page Link",
 } as const;
 export const OPPORTUNITY_LINK_FIELDS = {

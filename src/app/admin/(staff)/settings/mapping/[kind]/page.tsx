@@ -12,7 +12,7 @@ import { getSettings } from "@/lib/settings";
 import { confirmAction, continueAction, runQueuedSyncsAction, saveDecisionsAction, startScanAction } from "../actions";
 import { KIND_SLUGS } from "../kinds";
 
-export const metadata = { title: "Data mapping | Anthony Insurance Services" };
+export const metadata = { title: "Data mapping | AIS Connect" };
 
 
 /** Per mapping: what the two sides are called and how to link to them. */
@@ -22,14 +22,14 @@ const SIDES: Record<MappingKind, { source: string; target: string; createLabel: 
     target: "App account",
     createLabel: "Create a new app account",
     intro:
-      "Every Salesforce Account, matched to the app's accounts by Contact email, then by name plus phone or website. Confirming links or creates each account, adds its Salesforce Contacts as contacts, and writes the app's link onto the Salesforce Account (link fields only).",
+      "Every Salesforce Account, matched to AIS Connect's accounts by Contact email, then by name plus phone or website. Confirming links or creates each account, adds its Salesforce Contacts as contacts, and writes AIS Connect's link onto the Salesforce Account (link fields only).",
   },
   la_companies: {
     source: "App account",
     target: "Lead Alchemist Company",
     createLabel: "Create a new Company",
     intro:
-      "Every account in the app, matched to Lead Alchemist's Companies by name (ignoring punctuation and LLC/Inc) or website. Confirming links or creates each Company and puts the account's contacts in it. A contact can only be in one Company.",
+      "Every account in AIS Connect, matched to Lead Alchemist's Companies by name (ignoring punctuation and LLC/Inc) or website. Confirming links or creates each Company and puts the account's contacts in it. A contact can only be in one Company.",
   },
   salesforce_push: {
     source: "App account",
@@ -352,7 +352,7 @@ export default async function MappingKindPage({ params, searchParams }: PageProp
                   </span>
                 </label>
                 <p className="text-sm text-[var(--muted)]">
-                  Contacts already in a different Company stay there and are listed in the result. This app never removes a contact from a
+                  Contacts already in a different Company stay there and are listed in the result. AIS Connect never removes a contact from a
                   Company; move them in Lead Alchemist if needed.
                 </p>
               </>

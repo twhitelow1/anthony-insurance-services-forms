@@ -54,7 +54,7 @@ const COMPANY_PATHS = /^\/(businesses\b|contacts\/bulk\/business\b)/;
 export function leadAlchemistErrorMessage(method: string, path: string, status: number) {
   const where = path.split("?")[0];
   if ((status === 401 || status === 403) && COMPANY_PATHS.test(path))
-    return `Lead Alchemist won't let the app use Companies (${status}): the token is missing the Companies scopes. In Lead Alchemist, open Settings → Private Integrations, edit the app's integration, add the two Companies scopes (listed as businesses.readonly and businesses.write), and save. If it shows a new token, paste it in Admin → Settings → Integrations.`;
+    return `Lead Alchemist won't let AIS Connect use Companies (${status}): the token is missing the Companies scopes. In Lead Alchemist, open Settings → Private Integrations, edit AIS Connect's integration, add the two Companies scopes (listed as businesses.readonly and businesses.write), and save. If it shows a new token, paste it in Admin → Settings → Integrations.`;
   if (status === 401 || status === 403)
     return `Lead Alchemist refused ${method} ${where} (${status}): the token is invalid or missing a scope. Check it in Admin → Settings → Integrations (Test connection).`;
   return `Lead Alchemist ${method} ${where} failed: ${status}`;
@@ -135,6 +135,19 @@ export async function upsertContact(input: UpsertContactInput) {
   });
 }
 
+/**
+ * Create a new contact even when one with this email or phone exists (staff said the existing one
+ * is someone else). Lead Alchemist may still refuse a duplicate if the location doesn't allow them.
+ */
+export async function createContact(input: UpsertContactInput) {
+  const { locationId } = (await ghlConfig())!;
+  return ghlFetch<{ contact: { id: string } }>("/contacts/", {
+    method: "POST",
+    body: JSON.stringify({ ...input, locationId }),
+    cache: "no-store",
+  });
+}
+
 export interface GhlContact {
   id: string;
   email?: string | null;
@@ -145,6 +158,10 @@ export interface GhlContact {
   phone?: string | null;
   /** The Lead Alchemist Company the contact belongs to (a contact has at most one). */
   businessId?: string | null;
+  address1?: string | null;
+  city?: string | null;
+  state?: string | null;
+  postalCode?: string | null;
 }
 
 /** The Lead Alchemist contact with this email, if any (Lead Alchemist's own duplicate lookup). */
@@ -175,6 +192,22 @@ export async function searchContacts({ query, limit = 10 }: { query: string; lim
     cache: "no-store",
   });
   return data.contacts ?? [];
+}
+
+/**
+ * One page of every contact in the sub-account (100 at a time), for the contacts directory.
+ * Pass the previous page's `next` to continue; `next` is null on the last page.
+ */
+export async function listContactsPage(after: unknown[] | null): Promise<{ contacts: GhlContact[]; total: number | null; next: unknown[] | null }> {
+  const { locationId } = (await ghlConfig())!;
+  const data = await ghlFetch<{ contacts?: (GhlContact & { searchAfter?: unknown[] })[]; total?: number }>("/contacts/search", {
+    method: "POST",
+    body: JSON.stringify({ locationId, pageLimit: 100, ...(after ? { searchAfter: after } : { page: 1 }), sort: [{ field: "dateAdded", direction: "asc" }] }),
+    cache: "no-store",
+  });
+  const contacts = data.contacts ?? [];
+  const last = contacts.at(-1)?.searchAfter;
+  return { contacts, total: data.total ?? null, next: contacts.length === 100 && Array.isArray(last) ? last : null };
 }
 
 /** A contact by ID, or null if it was deleted (or merged away). */

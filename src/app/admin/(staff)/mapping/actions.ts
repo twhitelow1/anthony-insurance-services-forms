@@ -117,12 +117,12 @@ export async function linkCompaniesAction(formData: FormData) {
         ids.map((businessId) => ({ businessId, accountId: String(formData.get(`match_${businessId}`) ?? "") })).filter((p) => UUID.test(p.accountId)),
         actor,
       ),
-    "Linked to accounts in this app",
+    "Linked to accounts in AIS Connect",
   );
 }
 
 export async function addCompaniesToAppAction(formData: FormData) {
-  return bulk(formData, LA_ID, (ids, actor) => addCompaniesToApp(ids, actor), "Added to this app");
+  return bulk(formData, LA_ID, (ids, actor) => addCompaniesToApp(ids, actor), "Added to AIS Connect");
 }
 
 /**

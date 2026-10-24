@@ -383,7 +383,7 @@ export async function syncApplicationToSalesforce(applicationId: string, deps: S
             sfAccountLink ? `Salesforce Account: ${sfAccountLink}` : null,
             sfOppLink ? `Salesforce Opportunity: ${sfOppLink}` : null,
             clientLink ? `Account page (all applications): ${clientLink}` : null,
-            appLink ? `This application: ${appLink}` : null,
+            appLink ? `AIS Connectlication: ${appLink}` : null,
           ]
             .filter(Boolean)
             .join("\n"),

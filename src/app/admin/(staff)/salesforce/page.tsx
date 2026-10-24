@@ -25,7 +25,7 @@ import {
 import { SF_SEARCH_COOKIE } from "./search-cookie";
 import { ActionButton, AppStateBadge, FlashMessage } from "./ui";
 
-export const metadata = { title: "Salesforce | Anthony Insurance Services" };
+export const metadata = { title: "Salesforce | AIS Connect" };
 export const dynamic = "force-dynamic";
 
 export default async function SalesforceAccounts({ searchParams }: PageProps<"/admin/salesforce">) {
@@ -71,12 +71,12 @@ export default async function SalesforceAccounts({ searchParams }: PageProps<"/a
         </div>
       </div>
       <p className="mb-4 max-w-3xl text-sm text-[var(--muted)]">
-        Every Account in Salesforce, and whether this app keeps it in sync. <strong>Sync</strong> brings an Account and its Contacts in and keeps
-        them updated; <strong>Unsync</strong> stops syncing but keeps everything; removing an Account or Contact takes it out of this app only.
-        This app never deletes anything in Salesforce or Lead Alchemist: open the record there to delete it.
+        Every Account in Salesforce, and whether AIS Connect keeps it in sync. <strong>Sync</strong> brings an Account and its Contacts in and keeps
+        them updated; <strong>Unsync</strong> stops syncing but keeps everything; removing an Account or Contact takes it out of AIS Connect only.
+        AIS Connect never deletes anything in Salesforce or Lead Alchemist: open the record there to delete it.
       </p>
       <p className="mb-4 text-sm">
-        In this app: <strong>{counts.synced}</strong> synced · <strong>{counts.unsynced}</strong> unsynced · <strong>{counts.deactivated}</strong> deactivated here
+        In AIS Connect: <strong>{counts.synced}</strong> synced · <strong>{counts.unsynced}</strong> unsynced · <strong>{counts.deactivated}</strong> deactivated here
       </p>
 
       <FlashMessage flash={flash} />
@@ -95,7 +95,7 @@ export default async function SalesforceAccounts({ searchParams }: PageProps<"/a
         <>
           {list && (!list.contactsVisible || list.hiddenFields.length > 0) && (
             <div className="mb-4 rounded-lg border border-[var(--notice-border)] bg-[var(--notice-bg)] p-3 text-sm" role="alert">
-              <p className="font-semibold">Salesforce isn&apos;t sharing everything with the app yet.</p>
+              <p className="font-semibold">Salesforce isn&apos;t sharing everything with AIS Connect yet.</p>
               <ul className="mt-1 list-disc pl-5">
                 {!list.contactsVisible && <li>Contacts can&apos;t be read, so contact counts and contacts are missing.</li>}
                 {list.hiddenFields.length > 0 && <li>These Account fields are hidden from the integration user: {list.hiddenFields.join(", ")}.</li>}
@@ -145,7 +145,7 @@ export default async function SalesforceAccounts({ searchParams }: PageProps<"/a
           {/* Row checkboxes belong to this form (form="sf-bulk"), so each row's own buttons can stay separate forms. */}
           <form id="sf-bulk" action={syncSelectedAccountsAction} className="mb-3 flex flex-wrap items-center gap-3 text-sm">
             <input type="hidden" name="back" value={back} />
-            <button className="btn-primary">Sync selected into this app</button>
+            <button className="btn-primary">Sync selected into AIS Connect</button>
             <span className="text-[var(--muted)]">
               Tick Accounts (up to 50){type ? ` — showing Type: ${type === NO_TYPE ? "no type" : type}` : ""}. Brings each one and its Contacts in; nothing changes in Salesforce.
             </span>
@@ -157,13 +157,13 @@ export default async function SalesforceAccounts({ searchParams }: PageProps<"/a
                 <input type="hidden" name="back" value={back} />
                 <input type="hidden" name="type" value={type} />
                 <p>
-                  Sync all {fmt(list.total)} into this app{q ? ` (name contains "${q}")` : ""}
+                  Sync all {fmt(list.total)} into AIS Connect{q ? ` (name contains "${q}")` : ""}
                   {type ? ` (Type: ${type === NO_TYPE ? "no type" : type})` : ""}. Each Account and its Contacts come in; deactivated Accounts
                   are skipped. It runs in batches while this page is open, and you can stop it at any time. Nothing changes in Salesforce unless you
                   tick the box below.
                 </p>
                 <label className="flex items-center gap-2">
-                  <input type="checkbox" name="writeLinks" value="yes" /> Also write this app&apos;s links onto each Salesforce Account and Contact
+                  <input type="checkbox" name="writeLinks" value="yes" /> Also write AIS Connect&apos;s links onto each Salesforce Account and Contact
                   (about one Salesforce API call per record)
                 </label>
                 <label className="flex items-center gap-2">
@@ -186,7 +186,7 @@ export default async function SalesforceAccounts({ searchParams }: PageProps<"/a
                   <th>Salesforce Account</th>
                   <th>Type</th>
                   <th>Contacts</th>
-                  <th>In this app</th>
+                  <th>In AIS Connect</th>
                   <th>Actions</th>
                 </tr>
               </thead>

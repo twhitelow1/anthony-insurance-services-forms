@@ -3,7 +3,7 @@ import { entraConfig } from "@/lib/auth/entra";
 import { getSession, safeReturnTo } from "@/lib/auth/session";
 import { requestStaffLinkAction } from "../login-actions";
 
-export const metadata = { title: "Staff sign-in | Anthony Insurance Services" };
+export const metadata = { title: "Staff sign-in | AIS Connect" };
 
 export default async function AdminLogin({ searchParams }: PageProps<"/admin/login">) {
   const sp = await searchParams;

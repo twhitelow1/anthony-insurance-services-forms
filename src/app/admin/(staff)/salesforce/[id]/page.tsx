@@ -26,7 +26,7 @@ import {
 } from "../actions";
 import { AccountLifecycle, ActionButton, AppStateBadge, FlashMessage, RemoveForm } from "../ui";
 
-export const metadata = { title: "Salesforce Account | Anthony Insurance Services" };
+export const metadata = { title: "Salesforce Account | AIS Connect" };
 export const dynamic = "force-dynamic";
 
 const SF_ID = /^[A-Za-z0-9]{15,18}$/;
@@ -101,7 +101,7 @@ export default async function SalesforceAccount({ params, searchParams }: PagePr
         <div className="flex flex-wrap gap-2">
           {client ? (
             <>
-              <Link className="btn-secondary" href={`/admin/clients/${client.id}`}>Open in this app</Link>
+              <Link className="btn-secondary" href={`/admin/clients/${client.id}`}>Open in AIS Connect</Link>
               {accountState === "deactivated" ? null : accountState === "synced" ? (
                 <>
                   <ActionButton action={syncAccountAction} fields={{ sfAccountId: id, back }}>Sync now</ActionButton>
@@ -113,7 +113,7 @@ export default async function SalesforceAccount({ params, searchParams }: PagePr
             </>
           ) : (
             <ActionButton action={syncAccountAction} fields={{ sfAccountId: id, back }} className="btn-primary">
-              Sync into this app
+              Sync into AIS Connect
             </ActionButton>
           )}
           <SystemLink href={l.salesforce("Account", id)} missing="Add the Lightning URL in Settings → Integrations">View in Salesforce</SystemLink>
@@ -135,7 +135,7 @@ export default async function SalesforceAccount({ params, searchParams }: PagePr
             <thead>
               <tr>
                 <th>Contact</th>
-                <th>In this app</th>
+                <th>In AIS Connect</th>
                 <th>Actions</th>
               </tr>
             </thead>
@@ -171,8 +171,8 @@ export default async function SalesforceAccount({ params, searchParams }: PagePr
                           <RemoveForm
                             action={removeContactAction}
                             fields={{ contactId: c.contact.id, back }}
-                            label="Remove from this app"
-                            stays={`Deletes ${c.contact.name} from this app only. They stay in Salesforce and Lead Alchemist; delete them there if they should go.`}
+                            label="Remove from AIS Connect"
+                            stays={`Deletes ${c.contact.name} from AIS Connect only. They stay in Salesforce and Lead Alchemist; delete them there if they should go.`}
                           />
                         )}
                         {c.contact && b && (b.applications > 0 || b.drafts > 0) && (
@@ -203,7 +203,7 @@ export default async function SalesforceAccount({ params, searchParams }: PagePr
             )}
           </div>
           <p className="mb-3 text-sm text-[var(--muted)]">
-            Matches each person here to their Lead Alchemist contact by email or phone. Linking saves the connection in this app; it doesn&apos;t
+            Matches each person here to their Lead Alchemist contact by email or phone. Linking saves the connection in AIS Connect; it doesn&apos;t
             change the Lead Alchemist contact.
           </p>
           {!laOn ? (
@@ -215,7 +215,7 @@ export default async function SalesforceAccount({ params, searchParams }: PagePr
               <table className="data-table">
                 <thead>
                   <tr>
-                    <th>Person in this app</th>
+                    <th>Person in AIS Connect</th>
                     <th>Lead Alchemist</th>
                   </tr>
                 </thead>

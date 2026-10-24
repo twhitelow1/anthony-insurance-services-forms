@@ -1,6 +1,6 @@
 import { sql } from "drizzle-orm";
 import { customType } from "drizzle-orm/pg-core";
-import { boolean, index, integer, jsonb, pgTable, primaryKey, serial, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { boolean, index, integer, jsonb, pgTable, primaryKey, serial, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import type { FormValues } from "@/lib/forms/types";
 import type { ApplicationStatus } from "@/lib/applications/status";
 import type { AiReview } from "@/lib/ai/review";
@@ -140,6 +140,8 @@ export const contacts = pgTable(
     /** "email", "phone", "email+phone", or "several" when more than one Lead Alchemist contact matched. */
     laMatchHow: text("la_match_how"),
     laMatchCheckedAt: timestamp("la_match_checked_at", { withTimezone: true }),
+    /** A Lead Alchemist contact staff said is NOT this person: never suggested or auto-linked again. */
+    laMatchDeniedId: text("la_match_denied_id"),
     searchText: text("search_text").notNull().default(""),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -167,6 +169,43 @@ export const accountContacts = pgTable(
   },
   (t) => [primaryKey({ columns: [t.clientId, t.contactId] }), index("account_contacts_contact_idx").on(t.contactId)],
 );
+
+/**
+ * The contacts directory: every Salesforce Contact and Lead Alchemist contact, as last imported
+ * (Contacts page → Refresh), matched to the app's contact when there is one (by its saved link,
+ * else the same email, else the same phone). A copy for listing and filtering only: the app
+ * never edits Salesforce or Lead Alchemist from it except through the sync actions.
+ */
+export const directoryContacts = pgTable(
+  "directory_contacts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    /** "salesforce" or "lead_alchemist". */
+    source: text("source").$type<"salesforce" | "lead_alchemist">().notNull(),
+    externalId: text("external_id").notNull(),
+    name: text("name").notNull().default(""),
+    /** Lower-cased. */
+    email: text("email"),
+    /** Last 10 digits. */
+    phone: text("phone"),
+    /** The Salesforce Account / Lead Alchemist Company the contact is attached to. */
+    companyId: text("company_id"),
+    companyName: text("company_name"),
+    /** The app's contact for this person, if any. */
+    appContactId: uuid("app_contact_id").references(() => contacts.id, { onDelete: "set null" }),
+    /** "linked" (saved link), "email" or "phone". */
+    matchHow: text("match_how"),
+    fetchedAt: timestamp("fetched_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("directory_contacts_source_ext_idx").on(t.source, t.externalId),
+    index("directory_contacts_app_idx").on(t.appContactId),
+    index("directory_contacts_email_idx").on(t.email),
+    index("directory_contacts_phone_idx").on(t.phone),
+  ],
+);
+
+export type DirectoryContact = typeof directoryContacts.$inferSelect;
 
 /** Every email that belongs to a contact (lower-cased). An email belongs to one contact. */
 export const contactEmails = pgTable(
@@ -600,7 +639,7 @@ export const loginTokens = pgTable("login_tokens", {
  * a phone or email on an application that differs from Salesforce or Lead Alchemist. Never
  * deleted; dismissing is a status. Every change is in notification_log with who and when.
  */
-export type NotificationKind = "contact_changed" | "sf_new_contact" | "unmapped" | "renewal_due" | "other";
+export type NotificationKind = "contact_changed" | "sf_new_contact" | "unmapped" | "renewal_due" | "possible_duplicate" | "other";
 export type NotificationStatus = "open" | "in_progress" | "done" | "dismissed";
 export const notifications = pgTable(
   "notifications",

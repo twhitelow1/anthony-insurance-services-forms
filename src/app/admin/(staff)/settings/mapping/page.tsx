@@ -6,17 +6,17 @@ import { getRun, MAPPING_TITLES, summarize } from "@/lib/mapping/runs";
 import { salesforceClient } from "@/lib/salesforce/client";
 import { slugFor } from "./kinds";
 
-export const metadata = { title: "Data mapping | Anthony Insurance Services" };
+export const metadata = { title: "Data mapping | AIS Connect" };
 
 const STEPS: { kind: MappingKind; what: string; needs: "salesforce" | "lead_alchemist" }[] = [
   {
     kind: "salesforce_import",
-    what: "Every Salesforce Account and its Contacts become accounts and contacts in the app, matched to the ones already here.",
+    what: "Every Salesforce Account and its Contacts become accounts and contacts in AIS Connect, matched to the ones already here.",
     needs: "salesforce",
   },
   {
     kind: "la_companies",
-    what: "Each business account in the app is matched to a Lead Alchemist Company (or gets a new one), and its contacts are put in that Company.",
+    what: "Each business account in AIS Connect is matched to a Lead Alchemist Company (or gets a new one), and its contacts are put in that Company.",
     needs: "lead_alchemist",
   },
   {
@@ -41,7 +41,7 @@ export default async function Mapping() {
       <h1 className="mb-2 mt-3 text-2xl font-semibold">Data mapping</h1>
       <p className="mb-6 max-w-3xl text-sm text-[var(--muted)]">
         Work through these in order. Each one first <strong>scans</strong> (reads only, writes nothing), then shows every record next to the
-        match it found, for you to check and change. Nothing is written to the app, Salesforce or Lead Alchemist until you <strong>confirm</strong>.
+        match it found, for you to check and change. Nothing is written to AIS Connect, Salesforce or Lead Alchemist until you <strong>confirm</strong>.
       </p>
       <ol className="space-y-4">
         {STEPS.map((s, i) => {
