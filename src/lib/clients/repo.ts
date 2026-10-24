@@ -662,6 +662,8 @@ export interface ClientListRow {
   sfStatus: SalesforceStatus;
   sfAccountId: string | null;
   ghlContactId: string | null;
+  /** The primary contact's Salesforce Contact (else another contact's). */
+  sfContactId: string | null;
   ghlCompanyId: string | null;
   possibleDuplicateOf: string | null;
 }
@@ -707,6 +709,7 @@ export async function listClients({
   const draftCount = sql<number>`(select count(*) from ${drafts} d where d.client_id = ${cid} and d.status = 'started')`.mapWith(Number);
   const lastActivity = sql`greatest(coalesce((select max(a.created_at) from ${applications} a where a.client_id = ${cid}), 'epoch'), coalesce((select max(d.updated_at) from ${drafts} d where d.client_id = ${cid}), 'epoch'), ${cCreated})`;
   const ghlContact = sql<string | null>`(select ct.ghl_contact_id from ${contacts} ct where ct.client_id = ${cid} and ct.ghl_contact_id is not null order by (ct.primary_email = ${cPrimary}) desc nulls last limit 1)`;
+  const sfContact = sql<string | null>`(select ct.sf_contact_id from ${contacts} ct where ct.client_id = ${cid} and ct.sf_contact_id is not null order by (ct.primary_email = ${cPrimary}) desc nulls last limit 1)`;
   const order =
     sort === "name" ? [asc(sql`lower(${clients.name})`)] : sort === "applications" ? [desc(appCount), desc(lastActivity)] : [desc(lastActivity)];
   const size = Math.min(Math.max(pageSize, 1), 500);
@@ -728,6 +731,7 @@ export async function listClients({
         sfStatus: clients.sfStatus,
         sfAccountId: clients.sfAccountId,
         ghlContactId: ghlContact,
+        sfContactId: sfContact,
         ghlCompanyId: clients.ghlCompanyId,
         possibleDuplicateOf: clients.possibleDuplicateOf,
       })

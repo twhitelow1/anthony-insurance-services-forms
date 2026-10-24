@@ -159,13 +159,22 @@ export default async function Accounts({ searchParams }: PageProps<"/admin/clien
                     <span className="text-[var(--muted)]">—</span>
                   )}
                 </td>
-                <td>
+                <td className="text-sm">
                   {c.sfAccountId ? (
-                    <a href={l.salesforce("Account", c.sfAccountId) ?? "#"} target="_blank" rel="noopener" title="Open the Account in Salesforce">
+                    <a href={l.salesforce("Account", c.sfAccountId) ?? "#"} target="_blank" rel="noopener" title="Open the Account in Salesforce" className="hover:opacity-80">
                       <SalesforceBadge status={c.sfStatus} />
                     </a>
                   ) : (
                     <SalesforceBadge status={c.sfStatus} />
+                  )}
+                  {c.sfAccountId && (
+                    <div>
+                      <SystemLink className="btn-link text-xs" href={l.salesforce("Account", c.sfAccountId)} missing="">Account</SystemLink>
+                      {" · "}
+                      <SystemLink className="btn-link text-xs" href={c.sfContactId ? l.salesforce("Contact", c.sfContactId) : null} missing="No contact on this account is linked to a Salesforce Contact yet">
+                        {c.sfContactId ? "Contact" : "Contact not linked"}
+                      </SystemLink>
+                    </div>
                   )}
                 </td>
                 <td className="text-sm">
