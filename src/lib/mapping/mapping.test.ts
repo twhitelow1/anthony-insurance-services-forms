@@ -29,6 +29,9 @@ vi.mock("@/lib/ghl/client", async (orig) => ({
     la.contacts.set(c.id, c);
     return { new: true, contact: { id: c.id } };
   },
+  updateContact: async () => ({}),
+  listCustomFields: async () => [],
+  createCustomField: async (name: string) => ({ id: `f-${name}`, name, fieldKey: name }),
   addContactsToBusiness: async (ids: string[], businessId: string) => {
     la.attached.push({ ids, businessId });
     for (const id of ids) la.contacts.get(id)!.businessId = businessId;

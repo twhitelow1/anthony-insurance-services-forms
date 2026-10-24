@@ -6,7 +6,7 @@ import { ensureClient, getClient, getContactByEmail } from "@/lib/clients/repo";
 const la = vi.hoisted(() => ({
   scope: true,
   businesses: [] as { id: string; name: string }[],
-  contacts: new Map<string, { id: string; email?: string; phone?: string; businessId?: string | null; companyName?: string }>(),
+  contacts: new Map<string, { id: string; email?: string; phone?: string; firstName?: string; lastName?: string; businessId?: string | null; companyName?: string; customFields?: unknown }>(),
   attached: [] as { ids: string[]; businessId: string }[],
 }));
 vi.mock("@/lib/ghl/client", async (orig) => {
@@ -39,6 +39,12 @@ vi.mock("@/lib/ghl/client", async (orig) => {
       for (const id of ids) la.contacts.get(id)!.businessId = businessId;
     },
     upsertGhlLinkFields: async () => ({ missing: [] }),
+    updateContact: async (id: string, input: Record<string, unknown>) => {
+      Object.assign(la.contacts.get(id)!, input);
+      return {};
+    },
+    listCustomFields: async () => [],
+    createCustomField: async (name: string) => ({ id: `f-${name}`, name, fieldKey: name }),
   };
 });
 
@@ -110,5 +116,31 @@ describe("finding Lead Alchemist matches for unlinked contacts", () => {
     await syncAccountsToLeadAlchemist([withMatch, noMatch], ACTOR, { sf: null, links: LINKS });
     expect((await getContactByEmail(`m.${tag}@gmail.com`))!.ghlContactId).toBe(`la-${tag}`);
     expect((await listAccountMap({ q: tag, filter: "la_suggested" })).rows).toHaveLength(0);
+  });
+});
+
+describe("filling in Lead Alchemist from the app", () => {
+  it("gives a phone-only caller their name, email and company, and never overwrites without asking", async () => {
+    la.scope = true;
+    const { connectSelectedContacts } = await import("./database");
+    const { updateLeadAlchemistDetails } = await import("@/lib/contacts/external");
+    const tag = uniq();
+    const clientId = await ensureClient({ email: `call.${tag}@gmail.com`, contactName: `Cal Ler${tag}`, businessName: `Ring Gym ${tag}`, phone: "5557771234" });
+    const person = (await getContactByEmail(`call.${tag}@gmail.com`))!;
+    // In Lead Alchemist they only ever called: the contact is just a phone number, named after it.
+    la.contacts.set(`caller-${tag}`, { id: `caller-${tag}`, phone: "+15557771234", firstName: "+1 555-777-1234" });
+    const { linkLaContact } = await import("@/lib/ghl/match");
+    await linkLaContact(person.id, `caller-${tag}`, ACTOR);
+
+    await connectSelectedContacts([person.id], ACTOR);
+    const la1 = la.contacts.get(`caller-${tag}`)!;
+    expect(la1).toMatchObject({ firstName: "Cal", lastName: `Ler${tag}`, email: `call.${tag}@gmail.com`, companyName: `Ring Gym ${tag}` });
+    expect(la1.phone).toBe("+15557771234"); // already there: left as is
+    expect(JSON.stringify(la1.customFields)).toContain(`/admin/clients/${clientId}`); // link back to the app
+
+    // A different value in Lead Alchemist stays unless staff choose to replace it.
+    la1.companyName = "Old Name";
+    expect((await updateLeadAlchemistDetails(person.id, ACTOR)).fields).toEqual([]);
+    expect((await updateLeadAlchemistDetails(person.id, ACTOR, { replace: true })).fields).toEqual(["companyName"]);
   });
 });

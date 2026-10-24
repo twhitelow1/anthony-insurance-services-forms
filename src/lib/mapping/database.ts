@@ -427,6 +427,18 @@ export async function connectContactsToCompany(
       result.blocked = true;
     }
   }
+  // Fill in what Lead Alchemist is missing (name, email, phone, address) and write the links between
+  // the three systems onto each linked contact.
+  const { updateLeadAlchemistDetails } = await import("@/lib/contacts/external");
+  let filled = 0;
+  for (const p of people) {
+    try {
+      if ((await updateLeadAlchemistDetails(p.id, actor)).fields.length) filled++;
+    } catch {
+      // Not linked (no match and not created) or Lead Alchemist refused: the notes above cover it.
+    }
+  }
+  if (filled) result.notes.push(`${filled} Lead Alchemist contact${filled === 1 ? "" : "s"} filled in from the app`);
   if (created) result.notes.push(`${created} contact${created === 1 ? "" : "s"} created in Lead Alchemist`);
   if (unmatched)
     result.notes.push(

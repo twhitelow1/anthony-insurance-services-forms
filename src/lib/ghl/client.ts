@@ -145,6 +145,10 @@ export interface GhlContact {
   phone?: string | null;
   /** The Lead Alchemist Company the contact belongs to (a contact has at most one). */
   businessId?: string | null;
+  address1?: string | null;
+  city?: string | null;
+  state?: string | null;
+  postalCode?: string | null;
 }
 
 /** The Lead Alchemist contact with this email, if any (Lead Alchemist's own duplicate lookup). */
@@ -175,6 +179,22 @@ export async function searchContacts({ query, limit = 10 }: { query: string; lim
     cache: "no-store",
   });
   return data.contacts ?? [];
+}
+
+/**
+ * One page of every contact in the sub-account (100 at a time), for the contacts directory.
+ * Pass the previous page's `next` to continue; `next` is null on the last page.
+ */
+export async function listContactsPage(after: unknown[] | null): Promise<{ contacts: GhlContact[]; total: number | null; next: unknown[] | null }> {
+  const { locationId } = (await ghlConfig())!;
+  const data = await ghlFetch<{ contacts?: (GhlContact & { searchAfter?: unknown[] })[]; total?: number }>("/contacts/search", {
+    method: "POST",
+    body: JSON.stringify({ locationId, pageLimit: 100, ...(after ? { searchAfter: after } : { page: 1 }), sort: [{ field: "dateAdded", direction: "asc" }] }),
+    cache: "no-store",
+  });
+  const contacts = data.contacts ?? [];
+  const last = contacts.at(-1)?.searchAfter;
+  return { contacts, total: data.total ?? null, next: contacts.length === 100 && Array.isArray(last) ? last : null };
 }
 
 /** A contact by ID, or null if it was deleted (or merged away). */

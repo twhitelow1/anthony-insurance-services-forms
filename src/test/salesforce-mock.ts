@@ -88,8 +88,17 @@ export function mockSalesforce(
         ...c,
         Account: c.AccountId ? { Name: byId(String(c.AccountId))?.Name } : null,
       }));
+    if (/FROM Contact( WHERE Id > '[^']+')? ORDER BY Id LIMIT \d+$/.test(soql)) {
+      // The contacts directory: every Contact in Id order, with its Account's name.
+      const after = soql.match(/Id > '([^']+)'/)?.[1];
+      const limit = Number(soql.match(/LIMIT (\d+)$/)![1]);
+      return records.Contact.filter((c) => !after || c.Id > after)
+        .sort((a, b) => a.Id.localeCompare(b.Id))
+        .slice(0, limit)
+        .map((c) => ({ ...c, Account: c.AccountId ? { Name: byId(String(c.AccountId))?.Name } : null }));
+    }
     if ((m = soql.match(/FROM Account WHERE Name = '((?:[^'\\]|\\.)*)'/))) return records.Account.filter((a) => a.Name === unq(m![1]));
-    if ((m = soql.match(/FROM Account WHERE Id = '((?:[^'\\]|\\.)*)'/))) return records.Account.filter((a) => a.Id === unq(m![1]));
+    if ((m = soql.match(/FROM (Account|Contact) WHERE Id = '((?:[^'\\]|\\.)*)'/))) return records[m[1]].filter((a) => a.Id === unq(m![2]));
     if ((m = soql.match(/FROM OpportunityContactRole WHERE OpportunityId = '([^']+)' AND ContactId = '([^']+)'/)))
       return records.OpportunityContactRole.filter((r) => r.OpportunityId === m![1] && r.ContactId === m![2]);
     if (/FROM OpportunityStage/.test(soql))
@@ -119,7 +128,8 @@ export function mockSalesforce(
     },
     async queryPage<T extends Record<string, unknown>>(soql: string) {
       fail();
-      if (/^SELECT COUNT\(\) FROM Account$/.test(soql)) return { records: [], nextRecordsUrl: null, totalSize: records.Account.length };
+      const counted = soql.match(/^SELECT COUNT\(\) FROM (Account|Contact)$/)?.[1];
+      if (counted) return { records: [], nextRecordsUrl: null, totalSize: records[counted].length };
       return { records: run(soql) as unknown as T[], nextRecordsUrl: null };
     },
     async describe(object) {

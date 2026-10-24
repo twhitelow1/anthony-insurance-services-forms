@@ -38,6 +38,7 @@ import {
   refreshFromSalesforceAction,
   refreshContactsAction,
   pushContactValueAction,
+  updateLaContactAction,
 } from "../actions";
 
 const GHL_MESSAGES: Record<string, string> = {
@@ -314,9 +315,22 @@ export default async function AccountPage({ params, searchParams }: PageProps<"/
                   <td className="text-sm">
                     {p.ghlContactId && <ExternalValues email={p.laEmail} phone={p.laPhone} />}
                     {p.ghlContactId ? (
-                      <SystemLink className="btn-link text-xs" href={l.ghlContact(p.ghlContactId)} missing="">
-                        View Contact
-                      </SystemLink>
+                      <>
+                        <SystemLink className="btn-link text-xs" href={l.ghlContact(p.ghlContactId)} missing="">
+                          View Contact
+                        </SystemLink>
+                        {laConnected && (
+                          <form action={updateLaContactAction} className="mt-1 flex flex-wrap gap-2">
+                            <input type="hidden" name="contactId" value={p.id} />
+                            <button className="btn-link text-xs" title="Fill the empty name, email, phone, company and address fields and add the links">
+                              Update in Lead Alchemist
+                            </button>
+                            <button name="replace" value="yes" className="btn-link text-xs text-[var(--muted)]" title="Also replace Lead Alchemist values that differ from this app's">
+                              (replace differences)
+                            </button>
+                          </form>
+                        )}
+                      </>
                     ) : laConnected && mails[0] ? (
                       <form action={linkGhlContactAction}>
                         <input type="hidden" name="email" value={mails[0]} />

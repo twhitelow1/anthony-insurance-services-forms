@@ -127,6 +127,13 @@
       "when": 1792869432807,
       "tag": "0017_la_contact_matches",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1792870444393,
+      "tag": "0018_contacts_directory",
+      "breakpoints": true
     }
   ]
 }
