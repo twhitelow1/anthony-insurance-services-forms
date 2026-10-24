@@ -25,7 +25,6 @@ import {
   companiesToSalesforceAction,
   companyTagsAction,
   contactsToCompanyAction,
-  contactsToLeadAlchemistAction,
   contactsToSalesforceAction,
   searchMappingAction,
 } from "./actions";
@@ -162,11 +161,14 @@ export default async function Mapping({ searchParams }: PageProps<"/admin/mappin
           <form id="bulk" className="mb-3 flex flex-wrap gap-2 text-sm">
             <input type="hidden" name="back" value={back} />
             <button formAction={accountsToLeadAlchemistAction} className="btn-primary" disabled={!laOn} title={laOn ? undefined : "Connect Lead Alchemist first"}>
-              Sync selected to Lead Alchemist Companies
+              Sync selected to Lead Alchemist (Company + contacts)
             </button>
             <button formAction={accountsToSalesforceAction} className="btn-secondary" disabled={!sfOn} title={sfOn ? undefined : "Connect Salesforce first"}>
               Link or create selected in Salesforce
             </button>
+            <label className="flex items-center gap-2" title="Lead Alchemist may start its workflows for new contacts">
+              <input type="checkbox" name="createMissing" value="yes" /> Create missing contacts in Lead Alchemist
+            </label>
           </form>
           <div className="overflow-x-auto">
             <table className="data-table">
@@ -226,9 +228,14 @@ export default async function Mapping({ searchParams }: PageProps<"/admin/mappin
         <>
           <form id="bulk" className="mb-3 flex flex-wrap gap-2 text-sm">
             <input type="hidden" name="back" value={back} />
-            <button formAction={contactsToLeadAlchemistAction} className="btn-primary" disabled={!laOn}>Link selected to Lead Alchemist (exact email/phone)</button>
-            <button formAction={contactsToCompanyAction} className="btn-secondary" disabled={!laOn}>Add selected to their account&apos;s Company</button>
+            <button formAction={contactsToCompanyAction} className="btn-primary" disabled={!laOn} title="Links by exact email or phone, then adds each to their account's Company">
+              Sync selected to Lead Alchemist (and their Company)
+            </button>
             <button formAction={contactsToSalesforceAction} className="btn-secondary" disabled={!sfOn}>Link or create selected in Salesforce</button>
+            <label className="flex items-center gap-2" title="Lead Alchemist may start its workflows for new contacts">
+              <input type="checkbox" name="createMissing" value="yes" /> Create missing contacts in Lead Alchemist
+            </label>
+
           </form>
           <div className="overflow-x-auto">
             <table className="data-table">
@@ -285,7 +292,7 @@ export default async function Mapping({ searchParams }: PageProps<"/admin/mappin
             <p className="callout callout-notice">Connect Lead Alchemist in Settings → Integrations first.</p>
           ) : laError ? (
             <p className="rounded-lg bg-[var(--danger-bg)] p-3 text-sm text-[var(--danger)]" role="alert">
-              Couldn&apos;t read Lead Alchemist Companies: {laError}. The token needs the Businesses (view, edit) scopes.
+              Couldn&apos;t read Lead Alchemist Companies: {laError}
             </p>
           ) : (
             <>

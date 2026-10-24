@@ -70,7 +70,8 @@ export async function searchMappingAction(formData: FormData) {
 }
 
 export async function accountsToLeadAlchemistAction(formData: FormData) {
-  return bulk(formData, UUID, async (ids, actor) => syncAccountsToLeadAlchemist(ids, actor, { sf: await salesforceClient(), links: await links() }), "Synced to Lead Alchemist");
+  const createMissing = formData.get("createMissing") === "yes";
+  return bulk(formData, UUID, async (ids, actor) => syncAccountsToLeadAlchemist(ids, actor, { sf: await salesforceClient(), links: await links() }, { createMissing }), "Synced to Lead Alchemist");
 }
 
 export async function accountsToSalesforceAction(formData: FormData) {
@@ -82,7 +83,8 @@ export async function contactsToLeadAlchemistAction(formData: FormData) {
 }
 
 export async function contactsToCompanyAction(formData: FormData) {
-  return bulk(formData, UUID, (ids, actor) => connectSelectedContacts(ids, actor), "Added to their Company");
+  const createMissing = formData.get("createMissing") === "yes";
+  return bulk(formData, UUID, (ids, actor) => connectSelectedContacts(ids, actor, { createMissing }), "Synced to Lead Alchemist");
 }
 
 export async function contactsToSalesforceAction(formData: FormData) {
