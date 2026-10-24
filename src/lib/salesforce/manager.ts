@@ -44,7 +44,8 @@ export interface SfAccountListRow {
   client?: { id: string; name: string };
 }
 
-const PAGE_SIZE = 50;
+/** Rows per page on the Salesforce screen. */
+export const PAGE_SIZES = [25, 50, 100, 200] as const;
 /** SOQL OFFSET stops at 2,000; past that, search narrows the list. */
 export const MAX_OFFSET = 2000;
 
@@ -60,7 +61,8 @@ export async function accountTypes(sf: SalesforceApi): Promise<string[]> {
 /** NO_TYPE filters Accounts whose Type is blank. */
 export const NO_TYPE = "__none__";
 
-export async function listSalesforceAccounts(sf: SalesforceApi, opts: { q?: string; offset?: number; type?: string | null } = {}) {
+export async function listSalesforceAccounts(sf: SalesforceApi, opts: { q?: string; offset?: number; type?: string | null; pageSize?: number } = {}) {
+  const PAGE_SIZE = PAGE_SIZES.includes(opts.pageSize as (typeof PAGE_SIZES)[number]) ? opts.pageSize! : 50;
   const q = opts.q?.trim();
   const offset = Math.min(Math.max(0, opts.offset ?? 0), MAX_OFFSET);
   const wanted = ["Name", "Type", "Phone", "Website", "BillingCity", "BillingState"];
@@ -70,6 +72,11 @@ export async function listSalesforceAccounts(sf: SalesforceApi, opts: { q?: stri
     opts.type && visible.includes("Type") ? (opts.type === NO_TYPE ? "Type = null" : `Type = ${soqlString(opts.type)}`) : null,
   ].filter(Boolean);
   const where = conditions.length ? `WHERE ${conditions.join(" AND ")} ` : "";
+  // How many match in all ("SELECT COUNT()" returns only totalSize).
+  const totalPromise = sf
+    .queryPage(`SELECT COUNT() FROM Account ${where}`)
+    .then((r) => r.totalSize ?? null)
+    .catch(() => null);
   const { records } = await sf.queryPage<AccountRow & { Contacts?: { totalSize?: number; records: unknown[] } | null }>(
     `SELECT ${["Id", ...visible].join(", ")}${contactsVisible ? ", (SELECT Id FROM Contacts)" : ""} ` +
       `FROM Account ${where}ORDER BY Name, Id LIMIT ${PAGE_SIZE + 1} OFFSET ${offset}`,
@@ -101,6 +108,7 @@ export async function listSalesforceAccounts(sf: SalesforceApi, opts: { q?: stri
   });
   return {
     rows,
+    total: await totalPromise,
     hasMore: records.length > PAGE_SIZE && offset + PAGE_SIZE <= MAX_OFFSET,
     offset,
     pageSize: PAGE_SIZE,

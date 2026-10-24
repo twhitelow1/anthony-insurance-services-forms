@@ -30,7 +30,7 @@ export interface SalesforceApi {
   /** Runs a SOQL query and follows nextRecordsUrl until every record is read (or `max` reached). */
   query<T extends Record<string, unknown>>(soql: string, opts?: { max?: number }): Promise<T[]>;
   /** One page of a query, for the resumable backfill. */
-  queryPage<T extends Record<string, unknown>>(soqlOrNextUrl: string): Promise<{ records: T[]; nextRecordsUrl: string | null }>;
+  queryPage<T extends Record<string, unknown>>(soqlOrNextUrl: string): Promise<{ records: T[]; nextRecordsUrl: string | null; totalSize?: number }>;
   describe(object: string): Promise<ObjectDescribe>;
   create(object: string, data: Record<string, unknown>): Promise<{ id: string }>;
   update(object: string, id: string, data: Record<string, unknown>): Promise<void>;

@@ -76,7 +76,7 @@ export async function syncAccountAction(formData: FormData) {
   return run(formData, async (actor) => (await syncAccount(id(formData, "sfAccountId"), { sf: await sf(), links: await links() }, actor)).result);
 }
 
-/** "Sync selected": pull each ticked Salesforce Account into the app (up to 25 at a time). */
+/** "Sync selected": pull each ticked Salesforce Account into the app (up to 50 at a time; stops near the time limit and says how many are left). */
 export async function syncSelectedAccountsAction(formData: FormData) {
   return run(formData, async (actor) => {
     const ids = formData
@@ -84,7 +84,7 @@ export async function syncSelectedAccountsAction(formData: FormData) {
       .map(String)
       .filter((v) => /^[A-Za-z0-9]{15,18}$/.test(v));
     if (!ids.length) throw new Error("Tick at least one Account first.");
-    if (ids.length > 25) throw new Error("Sync up to 25 Accounts at a time.");
+    if (ids.length > 50) throw new Error("Sync up to 50 Accounts at a time.");
     const deps = { sf: await sf(), links: await links() };
     const started = Date.now();
     let done = 0;

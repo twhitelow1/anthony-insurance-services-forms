@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { cookies } from "next/headers";
 import { SystemLink } from "@/components/clients";
+import { SelectAll } from "@/components/SelectAll";
 import { requireStaff } from "@/lib/auth/session";
 import { readFlash } from "@/lib/flash";
 import { ghlConfig } from "@/lib/ghl/client";
@@ -171,7 +172,7 @@ export default async function Mapping({ searchParams }: PageProps<"/admin/mappin
             <table className="data-table">
               <thead>
                 <tr>
-                  <th className="w-8"><span className="sr-only">Select</span></th>
+                  <th className="w-8"><SelectAll form="bulk" /></th>
                   <th>Account</th>
                   <th>Type (Salesforce)</th>
                   <th>Salesforce</th>
@@ -233,7 +234,7 @@ export default async function Mapping({ searchParams }: PageProps<"/admin/mappin
             <table className="data-table">
               <thead>
                 <tr>
-                  <th className="w-8"><span className="sr-only">Select</span></th>
+                  <th className="w-8"><SelectAll form="bulk" /></th>
                   <th>Contact</th>
                   <th>Account</th>
                   <th>Salesforce</th>
@@ -297,7 +298,7 @@ export default async function Mapping({ searchParams }: PageProps<"/admin/mappin
                 <table className="data-table">
                   <thead>
                     <tr>
-                      <th className="w-8"><span className="sr-only">Select</span></th>
+                      <th className="w-8"><SelectAll form="bulk" /></th>
                       <th>Company</th>
                       <th>In this app</th>
                       <th />
@@ -342,7 +343,7 @@ export default async function Mapping({ searchParams }: PageProps<"/admin/mappin
             <table className="data-table">
               <thead>
                 <tr>
-                  <th className="w-8"><span className="sr-only">Select</span></th>
+                  <th className="w-8"><SelectAll form="bulk" /></th>
                   <th>Person</th>
                   <th>Accounts</th>
                   <th>Lead Alchemist</th>
