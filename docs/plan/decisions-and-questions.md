@@ -73,6 +73,7 @@
 | 2026-10-24 | **The app is called AIS Connect** (Todd), everywhere staff see it: the admin's title bar and page titles, buttons ("Add selected to AIS Connect"), filters ("Only in AIS Connect"), messages and docs, instead of "this app". |
 | 2026-10-24 | **Applications find their Salesforce account first** (Todd: catch renewals and clients adding coverage instead of making duplicates). When the applicant's email belongs to a Salesforce Contact (from the Salesforce contacts read into AIS Connect), the application joins that Contact's Account (created in AIS Connect, linked to Salesforce, if it isn't here yet), unless the business name on the application is clearly different. When it's not a sure match, a new account is made and, if something close exists (similar name, same phone, website or business email domain, or the person's Salesforce Account under another name), a "Possible existing account" notification lists them for staff to merge or keep separate. A missing Lead Alchemist Company is created with the contact by default (Settings can turn it off). |
 | 2026-10-24 | **Lead Alchemist suggestions are reviewed, not auto-linked, on the account page:** Check Lead Alchemist → Use this contact, or Not them, create new (the rejected contact is never suggested or auto-linked again). An account can be linked to an existing Company (suggested ones, or a pasted address); a Company can be created before its contacts, who can join it any time. |
+| 2026-10-24 | **AIS branding** (Todd): AIS orange (#eb5929, buttons #c4461b) and charcoal (#2b3540) replace the old blue; the real AIS logo (from anthonyinsuranceservices.com) is in the title bar, on AIS forms and in AIS emails; the browser-tab icon is the orange "ais" box from the AIS site. To be swapped for bundled original files when Todd sends them. |
 | 2026-10-16 | **Applicants aren't pointed to the portal yet.** The confirmation and status emails and the "submitted" screen have no portal link. The portal still works; turn the links back on with `APPLICANT_PORTAL_LINKS` in `src/forms/config.ts`. |
 
 ## Open questions
@@ -89,7 +90,7 @@
 | 3f | **Outlook drafts permission:** staff single sign-on is live (DubLow's multi-tenant app registration, 2026-10-24). Still to do: delegated Mail.ReadWrite for "Prepare carrier email" drafts, which needs Anthony's tenant. | Todd / Anthony IT | #13 |
 | 4 | **Carrier list:** name, contact, products and states, how each accepts submissions, and their application PDFs | Anthony | C, #13, #9 |
 | 5 | **Compliance sign-off** on the carrier magic-link design (48-hour links, access log) | Anthony / compliance | #13 |
-| 6 | **Brand assets:** confirm MASI's brand colors (current: charcoal #262e37 with a red accent), and send the AIS logo file (PNG or SVG) | Todd / Anthony | #10 polish |
+| 6 | **Brand assets:** confirm MASI's brand colors (current: charcoal #262e37 with a red accent), and send the original AIS logo and favicon files (SVG or large PNG) to bundle instead of linking to the AIS site | Todd / Anthony | #10 polish |
 | 6b | **Lead Alchemist workflow** for unfinished applications: build it on the tag `app-started` (days 1, 3, 7, 30) | Todd | #14 |
 | 6c | **Swap the website widgets** for the embed codes from Admin → Forms | Todd / web team | #10 rollout |
 | 7 | **Lead Alchemist stage ↔ app status map** for the two-way sync | Todd | D |

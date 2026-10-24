@@ -1,3 +1,4 @@
+import { BRANDS } from "@/lib/brands";
 import type { ReactNode } from "react";
 import type { ApplicationEvent } from "@/lib/db/schema";
 import { STATUSES, isStatus, type ApplicationStatus } from "@/lib/applications/status";
@@ -89,9 +90,10 @@ export function TopBar({ title, href, who, children }: { title: string; href: st
   return (
     <header className="border-b border-[var(--border)] bg-[var(--surface)]">
       <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center justify-between gap-3 px-4 py-3">
-        <a href={href} className="flex flex-col leading-tight">
-          <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--accent-strong)]">Anthony Insurance Services</span>
-          <span className="font-semibold text-[var(--brand)]">{title}</span>
+        <a href={href} className="flex items-center gap-3 leading-tight">
+          {/* eslint-disable-next-line @next/next/no-img-element -- a static SVG; next/image adds nothing here */}
+          <img src={BRANDS.ais.logo!} alt="Anthony Insurance Services" className="h-8 w-auto" />
+          <span className="border-l border-[var(--border)] pl-3 font-semibold text-[var(--brand)]">{title}</span>
         </a>
         <div className="flex items-center gap-3 text-sm">
           {children}
