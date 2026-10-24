@@ -102,4 +102,5 @@
 | 11 | **Dropdown options** not visible in the original widgets: "How did you hear about us?", event type and level, and others (see `docs/forms-review.md`) | Caitlyn | — |
 | 12 | **Fillable carrier PDFs** for Fitness & Cross-Training, LARP 2026, Martial Arts Instructor and MMA Events, so they fill like SFIC | Anthony | — |
 | 13 | Should the **MMA / Boxing / Kickboxing / Wrestling Events** PDF become a web form? | Anthony | — |
+| 14 | **Custom domain apply.anthonyinsuranceservices.com** for AIS Connect (Todd, "at some point"). Steps: add the domain in Vercel; a CNAME `apply` → `cname.vercel-dns.com` at the anthonyinsuranceservices.com DNS host; switch the app URL (links written to Salesforce and Lead Alchemist, emails, embed codes); add the new Microsoft sign-in redirect URL in Entra; keep the vercel.app address working for existing links and embeds. | Todd (DNS) / Claude | Domain go-live |
 | 15 | **Lead → paid client report:** which Salesforce field shows an active policy (Account Type "Customer", an Opportunity stage, a policy object?), and which Lead Alchemist pipeline/date marks a contact as a lead? | Todd / Anthony | Conversion report |
