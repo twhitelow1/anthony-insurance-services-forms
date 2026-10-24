@@ -88,13 +88,15 @@ async function listFilters(formData: FormData) {
   const p = new URL(backTo(formData), "http://x").searchParams;
   const presence: AccountPresence = { app: yesNo(p.get("app")), sf: yesNo(p.get("sf")), la: yesNo(p.get("la")) };
   const match = (["suggested", "none"] as AccountMatchFilter[]).find((m) => m === p.get("match"));
+  const laMissing = p.get("lacontacts") === "missing";
   const q = (await cookies()).get(CLIENT_SEARCH_COOKIE)?.value ?? "";
   const words = [
     q && `matching "${q}"`,
     ...(["app", "sf", "la"] as const).filter((k) => presence[k]).map((k) => `${{ app: "AIS Connect", sf: "Salesforce", la: "Lead Alchemist" }[k]}: ${presence[k]}`),
     match && `suggested match: ${match === "suggested" ? "yes" : "no"}`,
+    laMissing && "contacts not in Lead Alchemist yet",
   ].filter(Boolean);
-  return { q, presence, match, text: words.length ? `Accounts ${words.join(", ")}` : "All accounts" };
+  return { q, presence, match, laMissing, text: words.length ? `Accounts ${words.join(", ")}` : "All accounts" };
 }
 
 async function bulk(formData: FormData, key: keyof typeof WORK): Promise<never> {
