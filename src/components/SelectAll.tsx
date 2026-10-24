@@ -11,6 +11,8 @@ export function SelectAll({ form, label = "Select all on this page" }: { form: s
         document.querySelectorAll<HTMLInputElement>(`input[type="checkbox"][name="ids"][form="${form}"]`).forEach((box) => {
           box.checked = e.currentTarget.checked;
         });
+        // Lets a "Select all N matching" banner (SelectAllMatching) know the page was selected.
+        document.dispatchEvent(new CustomEvent("selectall", { detail: { form, checked: e.currentTarget.checked } }));
       }}
     />
   );

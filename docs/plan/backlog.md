@@ -148,7 +148,9 @@ Example: an Aerial Yoga Studio with height over 10 ft can only go to two specifi
   - **App → Lead Alchemist Companies**: links or creates Companies and puts the contacts in them;
   - **Past applications → Salesforce**: picks each account's Salesforce Account and queues its applications.
 - **Settings → Integrations** (2026-10-24): enter and test the Salesforce and Lead Alchemist keys in the admin. Encrypted, secrets write-only, and they take the place of the Vercel variables.
-- **Admin → Salesforce** (2026-10-24): every Salesforce Account with Sync, Unsync, Remove from this app (local only, blocked while it has applications) and View in Salesforce; the same for each Contact; and Lead Alchemist matching by email or phone with Link, Unlink here and Create in Lead Alchemist.
+- **Admin → Salesforce** (2026-10-24): every Salesforce Account with Sync, Unsync, Deactivate here (replaced Remove) and View in Salesforce; the same for each Contact; and Lead Alchemist matching by email or phone with Link, Unlink here and Create in Lead Alchemist.
+- **Deactivate, reactivate and re-link** (2026-10-24): unsynced Accounts can be deactivated in this app (kept with their history, hidden from lists and syncs), reactivated, or linked to a different Salesforce Account; every step is in the account's activity. A new application reactivates the account.
+- **Sync all matching** (2026-10-24): the Salesforce list shows its total with pages; ticking the header box offers "Select all N matching" to bring every matching Account in (by search and Account Type), with progress, Stop and Resume, pausing at 80% of the Salesforce API limit.
 - **No deletes** (2026-10-24): the app can't delete anything in Salesforce or Lead Alchemist (a guard refuses it on every request).
 - ⬜ **Automatic sync**: Synced accounts pull Salesforce changes (Salesforce wins) and pass them to Lead Alchemist, daily and with "Sync now", with a run log.
 - **Lead Alchemist Companies**: built (2026-10-24). Linked accounts add new applicants to their Company; a setting creates Companies for new businesses. The token needs the Businesses scopes (`docs/lead-alchemist-companies-plan.md`).

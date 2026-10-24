@@ -58,6 +58,8 @@ export interface SalesforceImportDeps {
   sf: SalesforceApi;
   links: Links;
   timeBudgetMs?: number;
+  /** false skips writing the app's links onto the Salesforce Account and Contacts (saves API calls). */
+  writeLinks?: boolean;
 }
 
 /** The Account's details as the mapping rows store them. */
@@ -91,6 +93,9 @@ export async function proposeForAccount(account: AccountRow): Promise<NewMapping
   if (await isHidden(account.Id)) return { ...base, proposal: "skip", confidence: "none", reason: "Removed from this dashboard (still in Salesforce)" };
 
   const linked = await clientsForAccount(account.Id);
+  if (linked[0]?.deactivatedAt) {
+    return { ...base, proposal: "skip", confidence: "exact", targetId: linked[0].id, targetName: linked[0].name, reason: "Deactivated in this app: reactivate it to sync" };
+  }
   if (linked.length) return { ...base, proposal: "link", confidence: "exact", targetId: linked[0].id, targetName: linked[0].name, reason: "Already linked to this Salesforce Account" };
 
   // Contacts' emails that already belong to app Contacts → their home Accounts.
@@ -192,6 +197,7 @@ export async function applyAccount(
   if (action === "link") {
     const target = targetId ? await getClient(targetId) : undefined;
     if (!target) throw new Error("The app Account to link to no longer exists");
+    if (target.deactivatedAt) throw new Error(`"${target.name}" is deactivated in this app. Reactivate it first.`);
     if (target.sfAccountId && target.sfAccountId !== row.sourceId) throw new Error(`"${target.name}" is already linked to a different Salesforce Account`);
     await setClientSalesforce(target.id, { sfAccountId: row.sourceId, sfStatus: "linked", sfLastError: null, sfSyncPaused: false });
     // Fill in what the app doesn't have yet.
@@ -219,7 +225,7 @@ export async function applyAccount(
     message: `${action === "link" ? "Linked to" : "Imported from"} Salesforce Account ${row.sourceId}${d.contacts?.length ? ` with ${d.contacts.length} contact${d.contacts.length === 1 ? "" : "s"}` : ""}`,
   });
   await unhide([row.sourceId]);
-  await writeLinksBack(row, account.id, deps);
+  if (deps.writeLinks !== false) await writeLinksBack(row, account.id, deps);
   return { account, result: `${action === "link" ? "Linked" : "Created"} "${account.name}"${added ? `, ${added} new contact${added === 1 ? "" : "s"}` : ""}` };
 }
 

@@ -53,7 +53,7 @@ export async function listAccountMap({ q, filter = "all", page = 1, type }: { q?
             ? and(isNotNull(c.ghlCompanyId), isNotNull(c.sfAccountId))
             : undefined;
   const typeWhere = type ? (type === NO_TYPE ? isNull(c.sfAccountType) : eq(c.sfAccountType, type)) : undefined;
-  const where = and(isNull(c.mergedInto), textWhere(c.searchText, q), f, typeWhere);
+  const where = and(isNull(c.mergedInto), isNull(c.deactivatedAt), textWhere(c.searchText, q), f, typeWhere);
   const cid = sql.raw(`"clients"."id"`);
   const people = sql<number>`(select count(*) from ${schema.contacts} ct where ct.client_id = ${cid})`.mapWith(Number);
   const inLa = sql<number>`(select count(*) from ${schema.contacts} ct where ct.client_id = ${cid} and ct.ghl_contact_id is not null)`.mapWith(Number);
@@ -88,7 +88,7 @@ export async function listAccountMap({ q, filter = "all", page = 1, type }: { q?
 export async function mapCounts() {
   const db = await getDb();
   const c = schema.clients;
-  const live = isNull(c.mergedInto);
+  const live = and(isNull(c.mergedInto), isNull(c.deactivatedAt));
   const n = async (w: SQL | undefined) => (await db.select({ n: count() }).from(c).where(and(live, w)))[0].n;
   const ct = schema.contacts;
   const nc = async (w: SQL | undefined) => (await db.select({ n: count() }).from(ct).where(w))[0].n;

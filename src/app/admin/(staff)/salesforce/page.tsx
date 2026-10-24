@@ -1,13 +1,27 @@
 import Link from "next/link";
 import { cookies } from "next/headers";
+import { AutoSubmit } from "@/components/AutoSubmit";
 import { SystemLink } from "@/components/clients";
 import { SelectAll } from "@/components/SelectAll";
+import { SelectAllMatching } from "@/components/SelectAllMatching";
 import { requireStaff } from "@/lib/auth/session";
 import { readFlash } from "@/lib/flash";
 import { links } from "@/lib/integrations/links";
+import { getBulkSync, type BulkSyncRun } from "@/lib/salesforce/bulk-sync";
 import { salesforceClient } from "@/lib/salesforce/client";
 import { accountTypes, appSalesforceCounts, listSalesforceAccounts, MAX_OFFSET, NO_TYPE, PAGE_SIZES, type SfAccountListRow } from "@/lib/salesforce/manager";
-import { resumeAccountAction, searchSalesforceAction, syncAccountAction, syncSelectedAccountsAction, unsyncAccountAction } from "./actions";
+import {
+  reactivateAccountAction,
+  resumeAccountAction,
+  resumeBulkSyncAction,
+  searchSalesforceAction,
+  startBulkSyncAction,
+  stepBulkSyncAction,
+  stopBulkSyncAction,
+  syncAccountAction,
+  syncSelectedAccountsAction,
+  unsyncAccountAction,
+} from "./actions";
 import { SF_SEARCH_COOKIE } from "./search-cookie";
 import { ActionButton, AppStateBadge, FlashMessage } from "./ui";
 
@@ -35,7 +49,8 @@ export default async function SalesforceAccounts({ searchParams }: PageProps<"/a
       error = err instanceof Error ? err.message : String(err);
     }
   }
-  const counts = await appSalesforceCounts();
+  const [counts, bulk] = await Promise.all([appSalesforceCounts(), getBulkSync()]);
+  const bulkActive = bulk?.phase === "running" || bulk?.phase === "paused";
   const qs = (over: Record<string, string | number>) => {
     const p = new URLSearchParams({ ...(type ? { type } : {}), ...(size !== 50 ? { size: String(size) } : {}), ...(offset ? { offset: String(offset) } : {}) });
     for (const [k, v] of Object.entries(over)) {
@@ -61,10 +76,12 @@ export default async function SalesforceAccounts({ searchParams }: PageProps<"/a
         This app never deletes anything in Salesforce or Lead Alchemist: open the record there to delete it.
       </p>
       <p className="mb-4 text-sm">
-        In this app: <strong>{counts.synced}</strong> synced · <strong>{counts.unsynced}</strong> unsynced · <strong>{counts.removed}</strong> removed here
+        In this app: <strong>{counts.synced}</strong> synced · <strong>{counts.unsynced}</strong> unsynced · <strong>{counts.deactivated}</strong> deactivated here
       </p>
 
       <FlashMessage flash={flash} />
+
+      {sf && bulk && <BulkSyncPanel run={bulk} back={back} />}
 
       {!sf ? (
         <p className="callout callout-notice">
@@ -134,6 +151,29 @@ export default async function SalesforceAccounts({ searchParams }: PageProps<"/a
             </span>
           </form>
 
+          {list && list.total !== null && !bulkActive && (
+            <SelectAllMatching form="sf-bulk" onPage={list.rows.length} total={list.total}>
+              <form action={startBulkSyncAction} className="space-y-2">
+                <input type="hidden" name="back" value={back} />
+                <input type="hidden" name="type" value={type} />
+                <p>
+                  Sync all {fmt(list.total)} into this app{q ? ` (name contains "${q}")` : ""}
+                  {type ? ` (Type: ${type === NO_TYPE ? "no type" : type})` : ""}. Each Account and its Contacts come in; deactivated Accounts
+                  are skipped. It runs in batches while this page is open, and you can stop it at any time. Nothing changes in Salesforce unless you
+                  tick the box below.
+                </p>
+                <label className="flex items-center gap-2">
+                  <input type="checkbox" name="writeLinks" value="yes" /> Also write this app&apos;s links onto each Salesforce Account and Contact
+                  (about one Salesforce API call per record)
+                </label>
+                <label className="flex items-center gap-2">
+                  <input type="checkbox" name="confirm" value="yes" required /> Sync all {fmt(list.total)} matching Accounts
+                </label>
+                <button className="btn-primary">Sync all {fmt(list.total)}</button>
+              </form>
+            </SelectAllMatching>
+          )}
+
           {list && <Summary total={list.total} offset={offset} shown={list.rows.length} filtered={!!(q || type)} />}
 
           <div className="overflow-x-auto">
@@ -169,6 +209,65 @@ export default async function SalesforceAccounts({ searchParams }: PageProps<"/a
 }
 
 const fmt = (n: number) => n.toLocaleString("en-US");
+
+/** Progress of a "Sync all matching" run. While it's running the Continue button submits itself. */
+function BulkSyncPanel({ run, back }: { run: BulkSyncRun; back: string }) {
+  const pct = run.total ? Math.min(100, Math.round((run.done / run.total) * 100)) : null;
+  const scope = [run.q && `name contains "${run.q}"`, run.type && `Type: ${run.type === NO_TYPE ? "no type" : run.type}`].filter(Boolean).join(", ");
+  const by = run.startedBy.replace(/^staff:/, "");
+  const finished = run.phase === "done" || run.phase === "stopped";
+  return (
+    <div className={`mb-4 rounded-lg border p-3 text-sm ${finished ? "border-[var(--border)]" : "border-[var(--notice-border)] bg-[var(--notice-bg)]"}`} role="status">
+      <p className="font-semibold">
+        {run.phase === "running" && "Syncing all matching Accounts…"}
+        {run.phase === "paused" && "Sync of all matching Accounts is paused"}
+        {run.phase === "done" && "Sync of all matching Accounts finished"}
+        {run.phase === "stopped" && "Sync of all matching Accounts was stopped"}
+      </p>
+      <p className="mt-1">
+        <strong>{fmt(run.done)}</strong>
+        {run.total !== null && <> of <strong>{fmt(run.total)}</strong></>} done{pct !== null && ` (${pct}%)`}: {fmt(run.created)} added, {fmt(run.linked)} linked
+        or updated, {fmt(run.skipped)} skipped (deactivated or removed here){run.failed ? `, ${fmt(run.failed)} failed` : ""}.
+      </p>
+      <p className="text-xs text-[var(--muted)]">
+        {scope ? `${scope} · ` : "All Accounts · "}
+        {run.writeLinks ? "writing links back to Salesforce" : "not writing to Salesforce"} · started by {by} on{" "}
+        {new Date(run.startedAt).toLocaleString("en-US", { timeZone: process.env.APP_TIMEZONE ?? "America/Chicago" })}
+      </p>
+      {run.pausedReason && <p className="mt-1">{run.pausedReason}</p>}
+      {pct !== null && (
+        <div className="mt-2 h-2 w-full overflow-hidden rounded bg-[var(--border)]" aria-hidden>
+          <div className="h-full bg-[var(--accent)]" style={{ width: `${pct}%` }} />
+        </div>
+      )}
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        {run.phase === "running" && (
+          <form action={stepBulkSyncAction}>
+            <input type="hidden" name="back" value={back} />
+            <AutoSubmit label="Continue" />
+          </form>
+        )}
+        {run.phase === "paused" && (
+          <ActionButton action={resumeBulkSyncAction} fields={{ back }} className="btn-primary">Resume</ActionButton>
+        )}
+        {!finished && <ActionButton action={stopBulkSyncAction} fields={{ back }}>Stop</ActionButton>}
+        {run.phase === "running" && <span className="text-[var(--muted)]">Continues on its own while this page is open.</span>}
+      </div>
+      {run.errors.length > 0 && (
+        <details className="mt-2">
+          <summary className="cursor-pointer">Recent errors ({run.errors.length})</summary>
+          <ul className="mt-1 list-disc pl-5">
+            {run.errors.map((e, i) => (
+              <li key={i}>
+                <strong>{e.name}</strong>: {e.error}
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+    </div>
+  );
+}
 
 /** "Showing 51–100 of 1,234 Salesforce Accounts". */
 function Summary({ total, offset, shown, filtered }: { total: number | null; offset: number; shown: number; filtered: boolean }) {
@@ -259,6 +358,12 @@ function Row({ r, back, sfLink }: { r: SfAccountListRow; back: string; sfLink: s
             <>
               <Link className="btn-secondary" href={`/admin/clients/${r.client.id}`}>Open here</Link>
               <ActionButton action={resumeAccountAction} fields={{ clientId: r.client.id, back }} className="btn-primary">Sync again</ActionButton>
+            </>
+          )}
+          {r.appState === "deactivated" && r.client && (
+            <>
+              <Link className="btn-secondary" href={`/admin/clients/${r.client.id}`}>Open here</Link>
+              <ActionButton action={reactivateAccountAction} fields={{ clientId: r.client.id, back }}>Reactivate</ActionButton>
             </>
           )}
           {(r.appState === "not_in_app" || r.appState === "removed") && (

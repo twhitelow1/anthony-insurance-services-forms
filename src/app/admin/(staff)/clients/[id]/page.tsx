@@ -21,6 +21,9 @@ import { getSettings } from "@/lib/settings";
 import { linkGhlContactAction, userModeAction } from "@/app/admin/actions";
 import { externalDifferences, SOURCE_LABEL } from "@/lib/contacts/external";
 import { ACTIVE, listNotifications } from "@/lib/notifications/repo";
+import { readFlash } from "@/lib/flash";
+import { deactivateAccountAction, reactivateAccountAction, relinkAccountAction } from "../../salesforce/actions";
+import { AccountLifecycle, FlashMessage } from "../../salesforce/ui";
 import {
   addClientNoteAction,
   keepSeparateAction,
@@ -68,6 +71,7 @@ export default async function AccountPage({ params, searchParams }: PageProps<"/
   if (client.id !== id) redirect(`/admin/clients/${client.id}`);
   const sp = await searchParams;
   const one = (k: string) => (typeof sp[k] === "string" ? (sp[k] as string) : null);
+  const flash = await readFlash(sp.f);
 
   const [people, apps, drafts, events, ghlContactId, l, settings, duplicateOf] = await Promise.all([
     listAccountContacts(client.id),
@@ -174,6 +178,14 @@ export default async function AccountPage({ params, searchParams }: PageProps<"/
         </form>
       </div>
 
+      <div className="mb-4">
+        <AccountLifecycle
+          client={client}
+          back={`/admin/clients/${client.id}`}
+          actions={{ deactivate: deactivateAccountAction, reactivate: reactivateAccountAction, relink: relinkAccountAction }}
+        />
+      </div>
+
       {alerts.length > 0 && (
         <div className="mb-4 rounded-lg border border-[var(--notice-border)] bg-[var(--notice-bg)] p-3 text-sm" role="alert">
           <p className="mb-1 font-semibold">Needs attention ({alerts.length})</p>
@@ -223,6 +235,7 @@ export default async function AccountPage({ params, searchParams }: PageProps<"/
       )}
 
       {message && <p className="callout mb-4 text-sm" role="status">{message}</p>}
+      <FlashMessage flash={flash} />
       {duplicateOf && (
         <div className="mb-4 rounded-lg border border-[var(--notice-border)] bg-[var(--notice-bg)] p-3 text-sm" role="alert">
           <p>
