@@ -1,5 +1,5 @@
 import "server-only";
-import { and, eq, inArray, isNull, lt, sql } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, isNull, lt, sql } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
 import type { DirectoryContact } from "@/lib/db/schema";
 import { nameKey, phoneDigits } from "@/lib/clients/text";
@@ -10,7 +10,7 @@ import type { Links } from "@/lib/integrations/urls";
 import { soqlString, type SalesforceApi } from "@/lib/salesforce/api";
 import { visibleFields } from "@/lib/salesforce/fields";
 import { syncAccount, syncContact } from "@/lib/salesforce/manager";
-import { connectSelectedContacts, createContactsInSalesforce, type BulkResult } from "@/lib/mapping/database";
+import { createContactsInSalesforce, syncAccountsToLeadAlchemist, type BulkResult } from "@/lib/mapping/database";
 
 /**
  * The contacts directory behind Admin → Contacts: every person in this app, Salesforce and Lead
@@ -625,9 +625,18 @@ export async function addToApp(groups: string[][], actor: string, deps: { sf: Sa
 export async function sendToLeadAlchemist(values: string[], actor: string, deps: { sf: SalesforceApi | null; links: Links }, createMissing: boolean) {
   const { app, dir } = parseKeys(values);
   const added = dir.length ? await addToApp(dir, actor, deps, 20_000) : { done: 0, notes: [], contactIds: [] };
-  const r = await connectSelectedContacts([...app, ...added.contactIds], actor, { createMissing, timeBudgetMs: 20_000 });
+  const ids = [...new Set([...app, ...added.contactIds])];
+  if (!ids.length) return { done: 0, notes: added.notes };
+  // Account by account, like syncing the account: its Company (linked, same name, or new) once,
+  // then just the selected people linked or created and put in it. Two people on one account
+  // always end up in the same Company.
+  const db = await getDb();
+  const people = await db.select({ id: schema.contacts.id, clientId: schema.contacts.clientId }).from(schema.contacts).where(inArray(schema.contacts.id, ids));
+  const accountIds = [...new Set(people.map((p) => p.clientId))];
+  const r = await syncAccountsToLeadAlchemist(accountIds, actor, deps, { createMissing, contactIds: ids, timeBudgetMs: 25_000 });
+  const linked = await db.$count(schema.contacts, and(inArray(schema.contacts.id, ids), isNotNull(schema.contacts.ghlContactId)));
   await rematch();
-  return { done: r.done, notes: [...added.notes, ...r.notes] };
+  return { done: linked, notes: [...added.notes, ...r.notes] };
 }
 
 /** Selected people → app (if needed) → Salesforce, under their account's Salesforce Account. */

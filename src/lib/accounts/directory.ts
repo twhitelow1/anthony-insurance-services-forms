@@ -149,6 +149,8 @@ export interface AccountDirQuery {
   q?: string;
   presence?: AccountPresence;
   match?: AccountMatchFilter;
+  /** Only AIS Connect accounts with contacts not in Lead Alchemist yet. */
+  laMissing?: boolean;
 }
 
 export interface AccountDirRow {
@@ -165,7 +167,8 @@ export interface AccountDirRow {
   inApp: boolean;
   inSf: boolean;
   inLa: boolean;
-  counts: { appContacts: number; applications: number; sfContacts: number; laContacts: number };
+  /** appNotInLa: AIS Connect contacts on the account not in Lead Alchemist yet. */
+  counts: { appContacts: number; appNotInLa: number; applications: number; sfContacts: number; laContacts: number };
   /** Likely the same business in a system it isn't linked to yet. */
   suggested: {
     app: { id: string; name: string } | null;
@@ -199,6 +202,7 @@ const accountsSql = () => sql`
         sfa.name as sf_name, sfa.type as sf_type, lac.name as la_name,
         case when r.app_id is not null then (select count(*) from contacts ct where ct.client_id = r.app_id::uuid) else 0 end as app_contacts,
         case when r.app_id is not null then (select count(*) from applications a where a.client_id = r.app_id::uuid) else 0 end as apps,
+        case when r.app_id is not null then (select count(*) from contacts ct where ct.client_id = r.app_id::uuid and ct.ghl_contact_id is null) else 0 end as app_not_la,
         case when r.sf_id is not null then (select count(*) from directory_contacts dc where dc.source = 'salesforce' and dc.company_id = r.sf_id) else 0 end as sf_contacts,
         case when r.la_id is not null then (select count(*) from directory_contacts dc where dc.source = 'lead_alchemist' and dc.company_id = r.la_id) else 0 end as la_contacts,
         sug_app.id as sug_app_id, sug_app.name as sug_app_name,
@@ -244,13 +248,14 @@ const accountsSql = () => sql`
 
 const PRESENCE_COLUMN = { app: "in_app", sf: "in_sf", la: "in_la" } as const;
 
-function whereSql({ q, presence = {}, match }: AccountDirQuery) {
+function whereSql({ q, presence = {}, match, laMissing }: AccountDirQuery) {
   const parts = (Object.keys(PRESENCE_COLUMN) as (keyof typeof PRESENCE_COLUMN)[])
     .filter((k) => presence[k] === "yes" || presence[k] === "no")
     .map((k) => `${presence[k] === "no" ? "not " : ""}${PRESENCE_COLUMN[k]}`);
   const anySuggestion = "(sug_app_id is not null or sug_sf_id is not null or sug_la_id is not null or sug_dup_id is not null)";
   if (match === "suggested") parts.push(anySuggestion);
   if (match === "none") parts.push(`not ${anySuggestion}`);
+  if (laMissing) parts.push("app_not_la > 0");
   const term = q?.trim() ? `%${q.trim().toLowerCase().replace(/[\\%_]/g, (c) => `\\${c}`)}%` : null;
   return sql`${sql.raw(parts.length ? parts.join(" and ") : "true")} ${term ? sql`and lower(p.name) like ${term}` : sql``}`;
 }
@@ -270,7 +275,7 @@ function toRow(r: Record<string, unknown>): AccountDirRow {
     inApp: !!r.in_app,
     inSf: !!r.in_sf,
     inLa: !!r.in_la,
-    counts: { appContacts: n(r.app_contacts), applications: n(r.apps), sfContacts: n(r.sf_contacts), laContacts: n(r.la_contacts) },
+    counts: { appContacts: n(r.app_contacts), appNotInLa: n(r.app_not_la), applications: n(r.apps), sfContacts: n(r.sf_contacts), laContacts: n(r.la_contacts) },
     suggested: {
       app: r.sug_app_id ? { id: r.sug_app_id as string, name: r.sug_app_name as string } : null,
       sf: r.sug_sf_id ? { id: r.sug_sf_id as string, name: r.sug_sf_name as string, how: r.sug_sf_how as string } : null,
@@ -309,14 +314,18 @@ export async function accountBreakdown(q?: string) {
   const result = await db.execute(sql`
     ${accountsSql()}
     select in_app, in_sf, in_la, count(*) as n,
-      count(*) filter (where sug_app_id is not null or sug_sf_id is not null or sug_la_id is not null or sug_dup_id is not null) as suggested
+      count(*) filter (where sug_app_id is not null or sug_sf_id is not null or sug_la_id is not null or sug_dup_id is not null) as suggested,
+      count(*) filter (where app_not_la > 0) as la_missing, coalesce(sum(app_not_la), 0) as la_missing_contacts
     from enriched p where ${whereSql({ q })}
     group by in_app, in_sf, in_la`);
-  const rows = rowsOf<{ in_app: boolean; in_sf: boolean; in_la: boolean; n: number | string; suggested: number | string }>(result);
+  const rows = rowsOf<{ in_app: boolean; in_sf: boolean; in_la: boolean; n: number | string; suggested: number | string; la_missing: number | string; la_missing_contacts: number | string }>(result);
   return {
     combos: rows.map((r) => ({ app: !!r.in_app, sf: !!r.in_sf, la: !!r.in_la, count: Number(r.n) })),
     total: rows.reduce((t, r) => t + Number(r.n), 0),
     suggested: rows.reduce((t, r) => t + Number(r.suggested), 0),
+    /** AIS Connect accounts with contacts not in Lead Alchemist yet, and how many contacts. */
+    laMissing: rows.reduce((t, r) => t + Number(r.la_missing), 0),
+    laMissingContacts: rows.reduce((t, r) => t + Number(r.la_missing_contacts), 0),
   };
 }
 

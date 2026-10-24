@@ -62,6 +62,7 @@ export async function AcrossView({ sp, q, flash }: { sp: Record<string, string |
   const str = (k: string) => (typeof sp[k] === "string" ? (sp[k] as string) : "");
   const presence: AccountPresence = { app: yesNo(str("app")), sf: yesNo(str("sf")), la: yesNo(str("la")) };
   const match = (["suggested", "none"] as AccountMatchFilter[]).find((m) => m === str("match"));
+  const laMissing = str("lacontacts") === "missing";
   const paging = pageState(sp);
   const importing = str("importing");
   const [l, laOn, sfOn, counts, sfImport, laImport, list, breakdown, selectionRun] = await Promise.all([
@@ -71,17 +72,17 @@ export async function AcrossView({ sp, q, flash }: { sp: Record<string, string |
     accountDirectoryCounts(),
     getAccountImport("salesforce"),
     getAccountImport("lead_alchemist"),
-    listAccountDirectory({ q, presence, match, limit: paging.pageSize, offset: paging.offset }),
+    listAccountDirectory({ q, presence, match, laMissing, limit: paging.pageSize, offset: paging.offset }),
     accountBreakdown(q),
     getSelectionRun("accounts"),
   ]);
-  const params = { view: "all", app: presence.app, sf: presence.sf, la: presence.la, match };
+  const params = { view: "all", app: presence.app, sf: presence.sf, la: presence.la, match, lacontacts: laMissing ? "missing" : undefined };
   const href = pageHref("/admin/clients", params);
   const back = href(paging.page, paging.pageSize);
   const runActive = selectionRun?.phase === "running";
   const comboHref = (c: Record<SystemKey, boolean>) =>
     `/admin/clients?${new URLSearchParams({ view: "all", app: c.app ? "yes" : "no", sf: c.sf ? "yes" : "no", la: c.la ? "yes" : "no" })}`;
-  const isCombo = (c: Record<SystemKey, boolean>) => !match && SYSTEMS.every((x) => presence[x.key] === (c[x.key] ? "yes" : "no"));
+  const isCombo = (c: Record<SystemKey, boolean>) => !match && !laMissing && SYSTEMS.every((x) => presence[x.key] === (c[x.key] ? "yes" : "no"));
 
   return (
     <div>
@@ -114,7 +115,7 @@ export async function AcrossView({ sp, q, flash }: { sp: Record<string, string |
             <button name="clear" value="1" className="btn-secondary">Clear</button>
           )}
         </form>
-        <form method="get" className="flex flex-wrap items-end gap-2">
+        <form key={JSON.stringify(params)} method="get" className="flex flex-wrap items-end gap-2">
           <input type="hidden" name="view" value="all" />
           {SYSTEMS.map((x) => (
             <label key={x.key} className="text-sm">
@@ -134,8 +135,15 @@ export async function AcrossView({ sp, q, flash }: { sp: Record<string, string |
               <option value="none">None</option>
             </select>
           </label>
+          <label className="text-sm" title="AIS Connect accounts with contacts that aren't in Lead Alchemist yet">
+            <span className="field-label !mb-1">Contacts in Lead Alchemist</span>
+            <select name="lacontacts" defaultValue={laMissing ? "missing" : ""} className="input">
+              <option value="">Any</option>
+              <option value="missing">Some not there yet</option>
+            </select>
+          </label>
           <button className="btn-secondary">Filter</button>
-          {(presence.app || presence.sf || presence.la || match) && (
+          {(presence.app || presence.sf || presence.la || match || laMissing) && (
             <Link className="btn-link text-sm" href="/admin/clients?view=all">Clear filters</Link>
           )}
         </form>
@@ -173,6 +181,17 @@ export async function AcrossView({ sp, q, flash }: { sp: Record<string, string |
                       <td className="text-right font-medium">{fmt(c.count)}</td>
                     </tr>
                   ))}
+                {breakdown.laMissing > 0 && (
+                  <tr>
+                    <td colSpan={3} />
+                    <td>
+                      <Link className="btn-link" href="/admin/clients?view=all&app=yes&lacontacts=missing">
+                        AIS Connect accounts with contacts not in Lead Alchemist yet ({fmt(breakdown.laMissingContacts)} contacts)
+                      </Link>
+                    </td>
+                    <td className="text-right font-medium">{fmt(breakdown.laMissing)}</td>
+                  </tr>
+                )}
                 {breakdown.suggested > 0 && (
                   <tr>
                     <td colSpan={3} />
@@ -188,9 +207,18 @@ export async function AcrossView({ sp, q, flash }: { sp: Record<string, string |
         </section>
       )}
 
+      {laMissing && (
+        <div className="callout mb-4 text-sm">
+          <strong>Put all these contacts in Lead Alchemist:</strong> tick the box at the top of the list, choose <em>Select all matching</em>, keep{" "}
+          <em>Create missing contacts in Lead Alchemist</em> ticked, then press <em>Sync selected to Lead Alchemist (Company + contacts)</em>. Each
+          account gets its Company (the linked one, one with the same name, or a new one) and every contact is linked by email or phone, or created,
+          and put in it. It runs in batches and ends with a report.
+        </div>
+      )}
       {showSelectionRun(selectionRun) && <SelectionRunPanel run={selectionRun} back={back} stepAction={stepAccountsRunAction} stopAction={stopAccountsRunAction} />}
 
-      <form id="acct-bulk" className="mb-3 flex flex-wrap items-center gap-2 text-sm">
+      {/* Keyed so the "Create missing contacts" default follows the filter after in-page navigation. */}
+      <form key={laMissing ? "la-missing" : "all"} id="acct-bulk" className="mb-3 flex flex-wrap items-center gap-2 text-sm">
         <input type="hidden" name="back" value={back} />
         <SubmitButton formAction={addAccountsToAppAction} className="btn-secondary" title="Salesforce Accounts come in with their Contacts; Lead Alchemist Companies become accounts">
           Add selected to AIS Connect
@@ -211,7 +239,7 @@ export async function AcrossView({ sp, q, flash }: { sp: Record<string, string |
           <input type="checkbox" name="useSuggested" value="yes" defaultChecked /> Use suggested matches (link instead of creating)
         </label>
         <label className="flex items-center gap-2" title="Lead Alchemist may start its workflows for new contacts">
-          <input type="checkbox" name="createMissing" value="yes" /> Create missing contacts in Lead Alchemist
+          <input type="checkbox" name="createMissing" value="yes" defaultChecked={laMissing} /> Create missing contacts in Lead Alchemist
         </label>
       </form>
 
@@ -322,6 +350,7 @@ function Row({ r, l }: { r: AccountDirRow; l: Awaited<ReturnType<typeof links>> 
           <>
             <SystemLink title={LA_COMPANY_HINT} className="btn-link" href={l.ghlCompany(r.laId)} missing="">{r.laName ?? "Company"}</SystemLink>
             <div className="text-xs text-[var(--muted)]">{contactsText(r.counts.laContacts)}</div>
+            {r.counts.appNotInLa > 0 && <div className="text-xs"><span className="badge badge-warning">{fmt(r.counts.appNotInLa)} not in Lead Alchemist yet</span></div>}
           </>
         ) : (
           <>
@@ -329,6 +358,7 @@ function Row({ r, l }: { r: AccountDirRow; l: Awaited<ReturnType<typeof links>> 
             {r.suggested.la && (
               <Suggestion label="Matching Company" how={r.suggested.la.how} href={l.ghlCompany(r.suggested.la.id)} name={r.suggested.la.name} title={LA_COMPANY_HINT} />
             )}
+            {r.appId && r.counts.appNotInLa > 0 && <div className="mt-1 text-xs"><span className="badge badge-warning">{fmt(r.counts.appNotInLa)} contact{r.counts.appNotInLa === 1 ? "" : "s"} not in Lead Alchemist yet</span></div>}
           </>
         )}
       </td>

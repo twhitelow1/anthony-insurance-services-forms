@@ -17,7 +17,7 @@ vi.mock("@/lib/ghl/client", async (orig) => {
     ghlConfig: async () => ({ token: "t", locationId: "LOC1" }),
     listBusinesses: async () => {
       if (!la.scope) throw denied("/businesses/?locationId=LOC1");
-      return la.businesses;
+      return [...la.businesses]; // a fresh list, as the API returns
     },
     createBusiness: async (input: { name: string }) => {
       if (!la.scope) throw denied("/businesses/");
@@ -193,5 +193,32 @@ describe("reviewing a suggested Lead Alchemist contact", () => {
     expect(after.ghlContactId).not.toBe(`other-${tag}`);
     expect(after.laMatchDeniedId).toBe(`other-${tag}`);
     expect((await checkLaMatch(person.id)).id).toBeNull(); // never suggested again
+  });
+
+  it("two contacts on an account with no Company: one Company, both in it (Contacts page and the accounts filter)", async () => {
+    const { ensureContact } = await import("@/lib/clients/repo");
+    const { sendToLeadAlchemist } = await import("@/lib/contacts/directory");
+    const { listAccountDirectory } = await import("@/lib/accounts/directory");
+    const tag = uniq();
+    la.scope = true;
+    const clientId = await ensureClient({ email: `one.${tag}@gmail.com`, contactName: `One ${tag}`, businessName: `Two People Gym ${tag}` });
+    const one = (await getContactByEmail(`one.${tag}@gmail.com`))!;
+    const two = await ensureContact({ clientId, name: `Two ${tag}`, email: `two.${tag}@gmail.com` });
+
+    // The Accounts view lists it as having contacts not in Lead Alchemist yet.
+    const before = (await listAccountDirectory({ q: tag, laMissing: true })).rows;
+    expect(before.map((r) => r.appId)).toEqual([clientId]);
+    expect(before[0].counts.appNotInLa).toBe(2);
+
+    const companiesBefore = la.businesses.length;
+    const r = await sendToLeadAlchemist([`a:${one.id}`, `a:${two.id}`], ACTOR, { sf: null, links: LINKS }, true);
+    expect(r.done).toBe(2);
+    expect(la.businesses.slice(companiesBefore).map((b) => b.name)).toEqual([`Two People Gym ${tag}`]); // one Company for the account, not one per person
+    const company = la.businesses.at(-1)!;
+    expect(company.name).toBe(`Two People Gym ${tag}`);
+    expect((await getClient(clientId))!.ghlCompanyId).toBe(company.id);
+    const ids = [(await getContactByEmail(`one.${tag}@gmail.com`))!.ghlContactId, (await getContactByEmail(`two.${tag}@gmail.com`))!.ghlContactId];
+    for (const id of ids) expect(la.contacts.get(id!)!.businessId).toBe(company.id);
+    expect((await listAccountDirectory({ q: tag, laMissing: true })).rows).toEqual([]);
   });
 });
