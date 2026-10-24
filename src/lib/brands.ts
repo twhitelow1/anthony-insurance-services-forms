@@ -25,7 +25,7 @@ export const BRANDS: Record<BrandId, Brand> = {
     id: "ais",
     name: "Anthony Insurance Services",
     site: "https://anthonyinsuranceservices.com",
-    logo: null,
+    logo: "https://anthonyinsuranceservices.com/wp-content/uploads/2016/12/anthony-ins-logo@2x.png",
     vars: {
       "--brand": "#303133", // headings / logo color
       "--button": "#c4461b", // site accent #eb5929, darkened for white text
