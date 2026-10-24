@@ -71,14 +71,14 @@ describe("accounts → Lead Alchemist Companies and contacts", () => {
     const tag = uniq();
     const clientId = await ensureClient({ email: `b.${tag}@gmail.com`, contactName: `Bo ${tag}`, businessName: `Blocked Gym ${tag}` });
     const r = await syncAccountsToLeadAlchemist([clientId], ACTOR, { sf: null, links: LINKS }, { createMissing: true });
-    expect(r.notes[0]).toMatch(/Businesses scopes/);
+    expect(r.notes[0]).toMatch(/Companies scopes/);
     expect((await getClient(clientId))!.ghlCompanyId).toBeNull();
     expect((await getContactByEmail(`b.${tag}@gmail.com`))!.ghlContactId).toBeTruthy();
   });
 
   it("explains a 401 on Companies in plain words", async () => {
     const { leadAlchemistErrorMessage } = await vi.importActual<typeof import("@/lib/ghl/client")>("@/lib/ghl/client");
-    expect(leadAlchemistErrorMessage("GET", "/businesses/?locationId=X", 401)).toMatch(/View Businesses.*Edit Businesses/);
+    expect(leadAlchemistErrorMessage("GET", "/businesses/?locationId=X", 401)).toMatch(/Companies scopes.*businesses\.readonly and businesses\.write/);
     expect(leadAlchemistErrorMessage("GET", "/contacts/abc", 500)).toBe("Lead Alchemist GET /contacts/abc failed: 500");
   });
 });

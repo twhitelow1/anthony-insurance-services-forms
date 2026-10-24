@@ -266,7 +266,7 @@ export interface LeadAlchemistSyncOptions {
 }
 
 const COMPANIES_BLOCKED =
-  "Companies were skipped: the Lead Alchemist token is missing the Businesses scopes (Settings → Private Integrations → add View Businesses and Edit Businesses). Contacts were still linked.";
+  "Companies were skipped: the Lead Alchemist token is missing the Companies scopes (Settings → Private Integrations → add businesses.readonly and businesses.write). Contacts were still linked.";
 
 /**
  * Accounts → Lead Alchemist: link the Company with exactly the same name (or create it), then link

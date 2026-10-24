@@ -54,7 +54,7 @@ const COMPANY_PATHS = /^\/(businesses\b|contacts\/bulk\/business\b)/;
 export function leadAlchemistErrorMessage(method: string, path: string, status: number) {
   const where = path.split("?")[0];
   if ((status === 401 || status === 403) && COMPANY_PATHS.test(path))
-    return `Lead Alchemist won't let the app use Companies (${status}): the token is missing the Businesses scopes. In Lead Alchemist, open Settings → Private Integrations, edit the app's integration, tick "View Businesses" and "Edit Businesses", and save. If it shows a new token, paste it in Admin → Settings → Integrations.`;
+    return `Lead Alchemist won't let the app use Companies (${status}): the token is missing the Companies scopes. In Lead Alchemist, open Settings → Private Integrations, edit the app's integration, add the two Companies scopes (listed as businesses.readonly and businesses.write), and save. If it shows a new token, paste it in Admin → Settings → Integrations.`;
   if (status === 401 || status === 403)
     return `Lead Alchemist refused ${method} ${where} (${status}): the token is invalid or missing a scope. Check it in Admin → Settings → Integrations (Test connection).`;
   return `Lead Alchemist ${method} ${where} failed: ${status}`;

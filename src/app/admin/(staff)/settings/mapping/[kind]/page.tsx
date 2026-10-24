@@ -58,7 +58,7 @@ const FILTERS: { value: RowFilter; label: string }[] = [
 
 const ERRORS: Record<string, string> = {
   salesforce: "Salesforce isn't connected yet: add its keys in Settings → Integrations (docs/salesforce-setup.md).",
-  lead_alchemist: "Lead Alchemist isn't connected: add its token and location ID in Settings → Integrations. The token needs the Businesses scopes.",
+  lead_alchemist: "Lead Alchemist isn't connected: add its token and location ID in Settings → Integrations. The token needs the Companies scopes (businesses.readonly and businesses.write).",
   step_failed: "The last batch stopped with an error (shown below). Fix it and continue.",
   not_review: "There's no reviewed mapping to change or confirm. Scan first.",
   not_confirmed: "Tick the box to confirm you've reviewed the mapping.",
