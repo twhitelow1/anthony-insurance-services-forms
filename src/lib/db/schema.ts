@@ -146,7 +146,12 @@ export const contacts = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [index("contacts_client_idx").on(t.clientId), index("contacts_sf_idx").on(t.sfContactId), index("contacts_ghl_idx").on(t.ghlContactId)],
+  (t) => [
+    index("contacts_client_idx").on(t.clientId),
+    index("contacts_sf_idx").on(t.sfContactId),
+    index("contacts_ghl_idx").on(t.ghlContactId),
+    index("contacts_lower_name_idx").on(sql`lower(${t.name})`),
+  ],
 );
 
 /**
@@ -191,6 +196,8 @@ export const directoryContacts = pgTable(
     /** The Salesforce Account / Lead Alchemist Company the contact is attached to. */
     companyId: text("company_id"),
     companyName: text("company_name"),
+    /** nameKey(companyName), to match it to a Lead Alchemist Company. */
+    companyKey: text("company_key"),
     /** The app's contact for this person, if any. */
     appContactId: uuid("app_contact_id").references(() => contacts.id, { onDelete: "set null" }),
     /** "linked" (saved link), "email" or "phone". */
@@ -202,10 +209,30 @@ export const directoryContacts = pgTable(
     index("directory_contacts_app_idx").on(t.appContactId),
     index("directory_contacts_email_idx").on(t.email),
     index("directory_contacts_phone_idx").on(t.phone),
+    index("directory_contacts_lower_name_idx").on(sql`lower(${t.name})`),
   ],
 );
 
 export type DirectoryContact = typeof directoryContacts.$inferSelect;
+
+/**
+ * Lead Alchemist Companies, copied when the Contacts page reads Lead Alchemist, so the list can
+ * suggest a Company for each person without calling Lead Alchemist. Read-only copy.
+ */
+export const directoryCompanies = pgTable(
+  "directory_companies",
+  {
+    id: text("id").primaryKey(),
+    name: text("name").notNull().default(""),
+    /** nameKey(name). */
+    nameKey: text("name_key").notNull().default(""),
+    /** Last 10 digits. */
+    phone: text("phone"),
+    website: text("website"),
+    fetchedAt: timestamp("fetched_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("directory_companies_name_key_idx").on(t.nameKey), index("directory_companies_phone_idx").on(t.phone)],
+);
 
 /** Every email that belongs to a contact (lower-cased). An email belongs to one contact. */
 export const contactEmails = pgTable(
