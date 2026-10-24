@@ -9,7 +9,7 @@ import { contactUrl, ghlConfig } from "@/lib/ghl/client";
 
 export default async function Applicant({ params, searchParams }: PageProps<"/admin/applicants/[email]">) {
   const { email: raw } = await params;
-  const { ghl: ghlMessage } = await searchParams;
+  const { la: ghlMessage } = await searchParams;
   const email = normalizeEmail(decodeURIComponent(raw));
   await requireStaff(`/admin/applicants/${encodeURIComponent(email)}`);
   const apps = await listForEmail(email);
@@ -69,7 +69,7 @@ export default async function Applicant({ params, searchParams }: PageProps<"/ad
             <button className="btn-secondary">{ghlContactId ? "Re-link" : "Find in Lead Alchemist"}</button>
           </form>
         ) : (
-          <p className="mt-2 text-sm text-[var(--muted)]">Lead Alchemist isn&apos;t connected (GHL_API_TOKEN / GHL_LOCATION_ID).</p>
+          <p className="mt-2 text-sm text-[var(--muted)]">Lead Alchemist isn&apos;t connected (LA_API_TOKEN / LA_LOCATION_ID).</p>
         )}
       </section>
       <div className="card overflow-x-auto !p-0">

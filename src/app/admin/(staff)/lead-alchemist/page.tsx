@@ -2,6 +2,7 @@ import { requireStaff } from "@/lib/auth/session";
 import { GhlError, type GhlPipeline, ghlConfig, listPipelines } from "@/lib/ghl/client";
 import { pipelineConfig, resolvePipeline } from "@/lib/ghl/sync";
 import Link from "next/link";
+import { laEnv } from "@/lib/ghl/env";
 
 export const metadata = { title: "Lead Alchemist pipelines | Anthony Insurance Services" };
 // Always ask Lead Alchemist live; never serve a copy rendered at build time.
@@ -11,7 +12,7 @@ export const dynamic = "force-dynamic";
 export default async function GhlPipelinesPage() {
   await requireStaff("/admin/lead-alchemist");
   const raw = await pipelineConfig();
-  const token = (process.env.GHL_API_TOKEN ?? "").trim();
+  const token = (laEnv("API_TOKEN") ?? "").trim();
 
   // Fetch first, render after: JSX built inside try/catch wouldn't have its render errors caught.
   let pipelines: GhlPipeline[] = [];
@@ -41,7 +42,7 @@ export default async function GhlPipelinesPage() {
 
   let body: React.ReactNode;
   if (!ghlConfig()) {
-    body = <p className="callout callout-notice">Add GHL_API_TOKEN and GHL_LOCATION_ID in Vercel first, then redeploy.</p>;
+    body = <p className="callout callout-notice">Add LA_API_TOKEN and LA_LOCATION_ID in Vercel first, then redeploy.</p>;
   } else if (errorStatus !== null) {
     body = (
       <div className="space-y-2 rounded-lg bg-[var(--danger-bg)] p-3 text-sm text-[var(--danger)]" role="alert">
@@ -52,10 +53,10 @@ export default async function GhlPipelinesPage() {
           {/authClass/i.test(errorMessage)
             ? "This token was created at the agency level. Create the Private Integration inside the Anthony Insurance sub-account (Settings → Private Integrations) and use that token."
             : errorStatus === 401
-              ? "The token is invalid or was revoked. Create a new Private Integration in the sub-account and update GHL_API_TOKEN."
+              ? "The token is invalid or was revoked. Create a new Private Integration in the sub-account and update LA_API_TOKEN."
               : errorStatus === 403
-                ? "The token is missing a scope (needs View/Edit Opportunities), or GHL_LOCATION_ID isn't the sub-account this token belongs to."
-                : "Check GHL_API_TOKEN and GHL_LOCATION_ID in Vercel, then redeploy."}
+                ? "The token is missing a scope (needs View/Edit Opportunities), or LA_LOCATION_ID isn't the sub-account this token belongs to."
+                : "Check LA_API_TOKEN and LA_LOCATION_ID in Vercel, then redeploy."}
         </p>
       </div>
     );
@@ -66,7 +67,7 @@ export default async function GhlPipelinesPage() {
           <section key={p.id} className="card !p-5">
             <h2 className="font-semibold">{p.name}</h2>
             <p className="mb-3 text-sm">
-              GHL_PIPELINE_ID = <code className="rounded bg-[var(--track)] px-1.5 py-0.5">{p.id}</code>
+              LA_PIPELINE_ID = <code className="rounded bg-[var(--track)] px-1.5 py-0.5">{p.id}</code>
               {configured?.pipelineId === p.id && <span className="badge badge-success ml-2">in use</span>}
             </p>
             <table className="data-table">
@@ -108,15 +109,15 @@ export default async function GhlPipelinesPage() {
       <h1 className="text-2xl font-semibold">Lead Alchemist pipelines</h1>
       <p className="mb-6 text-sm text-[var(--muted)]">
         Choose the pipeline, stages and lead pipeline in{" "}
-        <Link className="btn-link" href="/admin/settings#ghl">Settings</Link>. This page shows the connection and every pipeline and stage
+        <Link className="btn-link" href="/admin/settings#lead-alchemist">Settings</Link>. This page shows the connection and every pipeline and stage
         Lead Alchemist returns. To store the reference, link and PDF on each opportunity, create opportunity custom fields named Application
         Reference, Application Status, Application Link and Application PDF.
       </p>
       <dl className="callout mb-6 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
-        <dt className="font-medium">GHL_API_TOKEN</dt>
+        <dt className="font-medium">LA_API_TOKEN</dt>
         <dd>{token ? `set (${token.startsWith("pit-") ? "Private Integration token" : "not a pit- token"}, ${token.length} characters)` : "missing"}</dd>
-        <dt className="font-medium">GHL_LOCATION_ID</dt>
-        <dd>{process.env.GHL_LOCATION_ID ? <code>{process.env.GHL_LOCATION_ID}</code> : "missing"}</dd>
+        <dt className="font-medium">LA_LOCATION_ID</dt>
+        <dd>{laEnv("LOCATION_ID") ? <code>{laEnv("LOCATION_ID")}</code> : "missing"}</dd>
         <dt className="font-medium">Pipeline</dt>
         <dd>{raw?.pipelineId ? <code>{raw.pipelineId}</code> : "not set (no opportunities are created)"}</dd>
         <dt className="font-medium">Stage for new applications</dt>

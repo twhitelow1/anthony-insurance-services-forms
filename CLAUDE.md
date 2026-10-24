@@ -15,8 +15,10 @@ integrations or open questions:
    (folder item id `01ZYJWYFGHFM6I27YFHBAZARM55ZBYNN4X`), replacing the existing copies:
    `1 - App Overview (README).md`, `2 - Feature Backlog.md`, `3 - Roadmap.md`,
    `4 - Decisions and Open Questions.md`.
-3. Call the CRM "Lead Alchemist" in everything user-facing (it's white-labelled GoHighLevel; code and
-   env vars keep the `ghl`/`GHL_` names).
+3. The CRM is **Lead Alchemist**, initials **LA**, everywhere: UI, emails, notes, docs, PRs, commits and chat
+   with Todd. Never write the underlying platform's name or "GHL". Its address is https://app.leadalchemist.io
+   (all "Open in Lead Alchemist" links use it). Vercel variables use the `LA_` prefix (`LA_API_TOKEN`…);
+   the old `GHL_` names are only read as a fallback. Some internal code identifiers still say `ghl`.
 
 # Always give Todd a preview link
 

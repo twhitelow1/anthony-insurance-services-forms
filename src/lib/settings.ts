@@ -2,6 +2,7 @@ import "server-only";
 import { eq } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
 import { isStatus, type ApplicationStatus } from "@/lib/applications/status";
+import { laEnv } from "@/lib/ghl/env";
 
 /**
  * Day-to-day settings staff change in Admin → Settings. Each one is stored in
@@ -47,7 +48,7 @@ function parseStageMap(raw: string | undefined): Partial<Record<ApplicationStatu
       Object.entries(obj).filter(([k, v]) => isStatus(k) && typeof v === "string" && v.trim()),
     ) as Partial<Record<ApplicationStatus, string>>;
   } catch {
-    console.warn("[settings] GHL_STAGE_IDS is not valid JSON — ignoring");
+    console.warn("[settings] LA_STAGE_IDS is not valid JSON — ignoring");
     return {};
   }
 }
@@ -61,11 +62,11 @@ export function envSettings(env: NodeJS.ProcessEnv = process.env): Settings {
     mailFrom: env.MAIL_FROM?.trim() || DEFAULT_MAIL_FROM,
     mailReplyTo: env.MAIL_REPLY_TO?.trim() ?? "",
     carrierEmails: list(env.CARRIER_EMAIL),
-    ghlPipeline: env.GHL_PIPELINE_ID?.trim() ?? "",
-    ghlPipelineStage: env.GHL_PIPELINE_STAGE_ID?.trim() ?? "",
-    ghlLeadPipeline: env.GHL_LEAD_PIPELINE_ID?.trim() ?? "",
-    ghlLeadStage: env.GHL_LEAD_STAGE_ID?.trim() ?? "",
-    ghlStageMap: parseStageMap(env.GHL_STAGE_IDS),
+    ghlPipeline: laEnv("PIPELINE_ID", env)?.trim() ?? "",
+    ghlPipelineStage: laEnv("PIPELINE_STAGE_ID", env)?.trim() ?? "",
+    ghlLeadPipeline: laEnv("LEAD_PIPELINE_ID", env)?.trim() ?? "",
+    ghlLeadStage: laEnv("LEAD_STAGE_ID", env)?.trim() ?? "",
+    ghlStageMap: parseStageMap(laEnv("STAGE_IDS", env)),
   };
 }
 

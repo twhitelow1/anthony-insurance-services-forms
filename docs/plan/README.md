@@ -71,7 +71,7 @@ Staff also have:
 | pdf-lib | Filling carrier PDFs and building the Anthony-format PDFs |
 
 Secrets stay in Vercel: API keys, the database URL and the session secret. Everything else is in **Admin → Settings**.
-In code and in Vercel, Lead Alchemist settings use the `GHL_` prefix, because Lead Alchemist runs on GoHighLevel.
+In Vercel, Lead Alchemist settings use the `LA_` prefix (e.g. `LA_API_TOKEN`); the older names still work until they are renamed. "Open in Lead Alchemist" links go to https://app.leadalchemist.io.
 In everything staff or clients see, it is called **Lead Alchemist**.
 
 ## Key people
