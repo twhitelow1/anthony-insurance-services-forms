@@ -37,7 +37,7 @@ export async function GET(req: NextRequest) {
     // Same admin list as the email link: without this the session is made and then dropped on the next request.
     if (!(await isStaffEmail(user.email))) {
       console.warn("[auth] staff sign-in rejected: not on the admin list");
-      return fail(`${user.email} isn't on the admin list yet. Ask an admin to add it in Admin → Settings.`);
+      return fail("That Microsoft account isn't on the Admins list yet. Ask an admin to add it in Admin → Settings.");
     }
     await createSession({ role: "staff", email: user.email, name: user.name });
   } catch (err) {

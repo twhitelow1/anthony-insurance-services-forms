@@ -45,7 +45,7 @@ Built:
 Built:
 - **One-time email links**, valid 20 minutes, limited to 3 per 15 minutes.
 - **Staff access:** controlled by the Admins list in Settings.
-- **Microsoft 365 single sign-on for staff (built 2026-10-23, switched on once the Entra ID app exists):** staff already signed in to Microsoft 365 in their browser go straight into the admin with no screen at all. Anyone else sees the sign-in page with "Sign in with Microsoft" and the email link. Signing out doesn't sign them straight back in. A Microsoft account that isn't on the Admins list gets a clear message.
+- **Microsoft 365 single sign-on for staff (built 2026-10-23, switched on once the Entra ID app exists):** staff already signed in to Microsoft 365 in their browser go straight into the admin with no screen at all. Anyone else sees the sign-in page with "Sign in with Microsoft" and the email link. Signing out doesn't sign them straight back in. A Microsoft account that isn't on the Admins list gets a clear message. **Any organisation's Microsoft 365** can sign in (2026-10-24) when the email or its domain is approved in Admin → Settings; personal Microsoft accounts can't.
 - **Applicant portal:** shows their applications, a status timeline and PDFs.
 
 ## 🟡 4. Auto-decline answers
