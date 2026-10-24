@@ -120,6 +120,8 @@ export interface UpsertContactInput {
   state?: string;
   postalCode?: string;
   companyName?: string;
+  /** Lead Alchemist's built-in contact type; Anthony's account has the Salesforce Account Types as its options. */
+  type?: string;
   source?: string;
   tags?: string[];
   customFields?: { id: string; field_value: string | string[] | number }[];
@@ -162,7 +164,7 @@ export interface GhlContact {
   city?: string | null;
   state?: string | null;
   postalCode?: string | null;
-  /** Lead Alchemist's built-in contact type ("lead" or "customer"). Read only here. */
+  /** Lead Alchemist's built-in contact type (Anthony's account lists the Salesforce Account Types). */
   type?: string | null;
   tags?: string[];
   customFields?: { id: string; value?: unknown }[];

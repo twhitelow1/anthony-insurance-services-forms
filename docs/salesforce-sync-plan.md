@@ -55,7 +55,7 @@ Salesforce admin are in [salesforce-setup.md](salesforce-setup.md).
 |---|---|---|
 | Account | Company (Businesses API) | One per account, linked or created by the sync; personal-lines accounts too |
 | Contact | Contact, in the account's Company (Business field) | Linked by exact email or phone, else created ("Create missing contacts", on by default); never moved out of another Company |
-| Account Type (read only, from Salesforce) | Contact field "Account Type" (full text) | Written on every sync, never blanked |
+| Account Type (read only, from Salesforce) | Built-in Contact Type (its options are the Salesforce Types) and contact field "Account Type" (full text) | Written on every sync, never blanked |
 | Client tier (AIS Connect: one primary contact per account) | Contact field "Client Tier" (Primary / Secondary) | Written on every sync; not in Salesforce |
 | Everyone AIS Connect syncs | Tags `ais-connect`, `ais-business` / `ais-personal` | Only ever added |
 | Other accounts of a person at several | Tags `company: <name>` | Only ever added |
