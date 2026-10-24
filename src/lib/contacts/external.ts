@@ -4,7 +4,7 @@ import { getDb, schema } from "@/lib/db";
 import type { Contact } from "@/lib/db/schema";
 import { addClientEvent, contactEmailsOf, getClient, getContact, getContactByEmail, normalizeEmail } from "@/lib/clients/repo";
 import { laCompanyName, phoneDigits } from "@/lib/clients/text";
-import { getContact as getLaContact, ghlConfig, updateContact as updateLaContact } from "@/lib/ghl/client";
+import { addTags as addLaTags, getContact as getLaContact, ghlConfig, updateContact as updateLaContact } from "@/lib/ghl/client";
 import { soqlString } from "@/lib/salesforce/api";
 import { salesforceClient } from "@/lib/salesforce/client";
 import { selectList } from "@/lib/salesforce/fields";
@@ -217,14 +217,30 @@ export async function updateLeadAlchemistDetails(contactId: string, actor: strin
   }
   const fields = Object.keys(changes) as LaDetailField[];
   const l = await appLinks();
-  // The links are the app's own fields on the Lead Alchemist contact: always kept current.
-  await ghlLinkWriter
-    .contactLinks(contact.ghlContactId, {
-      clientPage: l.appClient(contact.clientId),
-      salesforceAccount: account?.sfAccountId ? l.salesforce("Account", account.sfAccountId) : null,
-      salesforceContact: contact.sfContactId ? l.salesforce("Contact", contact.sfContactId) : null,
-    })
-    .catch(() => {});
+  const notes: string[] = [];
+  // The links, the Account Type and the client tier are the app's own fields on the Lead
+  // Alchemist contact: always kept current, but an empty Account Type never blanks one there.
+  const written = await ghlLinkWriter
+    .contactLinks(
+      contact.ghlContactId,
+      {
+        clientPage: l.appClient(contact.clientId),
+        salesforceAccount: account?.sfAccountId ? l.salesforce("Account", account.sfAccountId) : null,
+        salesforceContact: contact.sfContactId ? l.salesforce("Contact", contact.sfContactId) : null,
+        accountType: account?.sfAccountType ?? null,
+        clientTier: account ? (account.primaryContactId === contact.id ? "Primary" : "Secondary") : null,
+      },
+      la,
+    )
+    .catch((err: unknown) => {
+      notes.push(`couldn't write the Lead Alchemist link, Account Type and Client Tier fields (${err instanceof Error ? err.message : String(err)})`);
+      return null;
+    });
+  for (const c of written?.changed ?? []) notes.push(`${c.field} changed in Lead Alchemist: ${c.from} → ${c.to}`);
+  if (written?.missing.length) notes.push(`couldn't create the Lead Alchemist field${written.missing.length === 1 ? "" : "s"} ${written.missing.join(", ")} (the token needs the custom fields scope)`);
+  // Tags so marketing can find everyone AIS Connect put in Lead Alchemist (only ever added).
+  const wantTags = ["ais-connect", account?.isIndividual ? "ais-personal" : "ais-business"].filter((tag) => !(la.tags ?? []).includes(tag));
+  if (wantTags.length) await addLaTags(contact.ghlContactId, wantTags).catch((err: unknown) => notes.push(`couldn't add the tags ${wantTags.join(", ")} (${err instanceof Error ? err.message : String(err)})`));
   // And on the Salesforce Contact: its Lead Alchemist contact and the app's account page.
   if (contact.sfContactId) {
     const sf = await salesforceClient();
@@ -236,7 +252,7 @@ export async function updateLeadAlchemistDetails(contactId: string, actor: strin
         .catch(() => {});
     }
   }
-  if (!fields.length) return { contact, fields };
+  if (!fields.length) return { contact, fields, changes: notes };
   try {
     await updateLaContact(contact.ghlContactId, changes);
   } catch (err) {
@@ -251,5 +267,5 @@ export async function updateLeadAlchemistDetails(contactId: string, actor: strin
   await addClientEvent(contact.clientId, "contact_pushed", actor, {
     message: `${contact.name}: Lead Alchemist contact updated from AIS Connect (${fields.map((f) => FIELD_LABEL[f]).join(", ")})`,
   });
-  return { contact, fields };
+  return { contact, fields, changes: notes };
 }

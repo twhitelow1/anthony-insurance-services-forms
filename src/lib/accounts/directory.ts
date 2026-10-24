@@ -151,6 +151,22 @@ export interface AccountDirQuery {
   match?: AccountMatchFilter;
   /** Only AIS Connect accounts with contacts not in Lead Alchemist yet. */
   laMissing?: boolean;
+  /** The Salesforce Account Type (e.g. "Customer"), or NO_TYPE for accounts without one. */
+  type?: string | null;
+}
+
+/** The "no Account Type" choice of the Type filter (same value as Mapping's). */
+export const NO_ACCOUNT_TYPE = "__none__";
+
+/** Every Account Type in AIS Connect and the Salesforce copy, for the Type filter. */
+export async function accountTypesAcross(): Promise<string[]> {
+  const db = await getDb();
+  const result = await db.execute(sql`
+    select t from (
+      select sf_account_type as t from clients where sf_account_type is not null and merged_into is null
+      union select type from directory_accounts where type is not null
+    ) x where t <> '' order by t`);
+  return rowsOf<{ t: string }>(result).map((r) => r.t);
 }
 
 export interface AccountDirRow {
@@ -184,22 +200,23 @@ const accountsSql = () => sql`
     with rows as (
       select 'a:' || c.id::text as key, c.id::text as app_id, c.name, c.name_key, c.is_individual,
         c.sf_account_id as sf_id, c.ghl_company_id as la_id,
-        nullif(right(regexp_replace(coalesce(c.phones->>0, ''), '[^0-9]', '', 'g'), 10), '') as phone, true as in_app
+        nullif(right(regexp_replace(coalesce(c.phones->>0, ''), '[^0-9]', '', 'g'), 10), '') as phone, true as in_app,
+        c.sf_account_type as own_type
       from clients c where c.merged_into is null and c.deactivated_at is null
       union all
-      select 's:' || d.id, null, d.name, d.name_key, false, d.id, null, d.phone, false
+      select 's:' || d.id, null, d.name, d.name_key, false, d.id, null, d.phone, false, d.type
       from directory_accounts d
       where not exists (select 1 from clients c where c.sf_account_id = d.id and c.merged_into is null)
         and not exists (select 1 from salesforce_hidden h where h.sf_id = d.id)
       union all
-      select 'l:' || d.id, null, d.name, d.name_key, false, null, d.id, d.phone, false
+      select 'l:' || d.id, null, d.name, d.name_key, false, null, d.id, d.phone, false, null
       from directory_companies d
       where not exists (select 1 from clients c where c.ghl_company_id = d.id and c.merged_into is null)
         and not exists (select 1 from lead_alchemist_hidden h where h.id = d.id)
     ),
     enriched as (
       select r.*, r.sf_id is not null as in_sf, r.la_id is not null as in_la,
-        sfa.name as sf_name, sfa.type as sf_type, lac.name as la_name,
+        sfa.name as sf_name, coalesce(r.own_type, sfa.type) as sf_type, lac.name as la_name,
         case when r.app_id is not null then (select count(*) from contacts ct where ct.client_id = r.app_id::uuid) else 0 end as app_contacts,
         case when r.app_id is not null then (select count(*) from applications a where a.client_id = r.app_id::uuid) else 0 end as apps,
         case when r.app_id is not null then (select count(*) from contacts ct where ct.client_id = r.app_id::uuid and ct.ghl_contact_id is null) else 0 end as app_not_la,
@@ -248,7 +265,7 @@ const accountsSql = () => sql`
 
 const PRESENCE_COLUMN = { app: "in_app", sf: "in_sf", la: "in_la" } as const;
 
-function whereSql({ q, presence = {}, match, laMissing }: AccountDirQuery) {
+function whereSql({ q, presence = {}, match, laMissing, type }: AccountDirQuery) {
   const parts = (Object.keys(PRESENCE_COLUMN) as (keyof typeof PRESENCE_COLUMN)[])
     .filter((k) => presence[k] === "yes" || presence[k] === "no")
     .map((k) => `${presence[k] === "no" ? "not " : ""}${PRESENCE_COLUMN[k]}`);
@@ -257,7 +274,8 @@ function whereSql({ q, presence = {}, match, laMissing }: AccountDirQuery) {
   if (match === "none") parts.push(`not ${anySuggestion}`);
   if (laMissing) parts.push("app_not_la > 0");
   const term = q?.trim() ? `%${q.trim().toLowerCase().replace(/[\\%_]/g, (c) => `\\${c}`)}%` : null;
-  return sql`${sql.raw(parts.length ? parts.join(" and ") : "true")} ${term ? sql`and lower(p.name) like ${term}` : sql``}`;
+  const typeSql = !type ? sql`` : type === NO_ACCOUNT_TYPE ? sql`and nullif(p.sf_type, '') is null` : sql`and p.sf_type = ${type}`;
+  return sql`${sql.raw(parts.length ? parts.join(" and ") : "true")} ${term ? sql`and lower(p.name) like ${term}` : sql``} ${typeSql}`;
 }
 
 function toRow(r: Record<string, unknown>): AccountDirRow {
@@ -309,14 +327,14 @@ export async function accountDirectoryKeys(query: AccountDirQuery): Promise<stri
 }
 
 /** How many rows are in each combination of AIS Connect, Salesforce and Lead Alchemist, plus how many have a suggested match. */
-export async function accountBreakdown(q?: string) {
+export async function accountBreakdown(q?: string, type?: string | null) {
   const db = await getDb();
   const result = await db.execute(sql`
     ${accountsSql()}
     select in_app, in_sf, in_la, count(*) as n,
       count(*) filter (where sug_app_id is not null or sug_sf_id is not null or sug_la_id is not null or sug_dup_id is not null) as suggested,
       count(*) filter (where app_not_la > 0) as la_missing, coalesce(sum(app_not_la), 0) as la_missing_contacts
-    from enriched p where ${whereSql({ q })}
+    from enriched p where ${whereSql({ q, type })}
     group by in_app, in_sf, in_la`);
   const rows = rowsOf<{ in_app: boolean; in_sf: boolean; in_la: boolean; n: number | string; suggested: number | string; la_missing: number | string; la_missing_contacts: number | string }>(result);
   return {
@@ -439,6 +457,7 @@ export async function accountsToLeadAlchemist(keys: string[], actor: string, dep
     const r = await syncAccountsToLeadAlchemist(ids, actor, deps, { createMissing: opts.createMissing, timeBudgetMs: opts.timeBudgetMs });
     result.done += r.done;
     result.notes.push(...r.notes);
+    result.contacts = r.contacts;
   }
   return finish(result, 0, skipped);
 }

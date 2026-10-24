@@ -1,5 +1,5 @@
 import "server-only";
-import { and, eq, inArray, isNotNull, isNull, lt, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, lt, sql } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
 import type { DirectoryContact } from "@/lib/db/schema";
 import { nameKey, phoneDigits } from "@/lib/clients/text";
@@ -10,7 +10,7 @@ import type { Links } from "@/lib/integrations/urls";
 import { soqlString, type SalesforceApi } from "@/lib/salesforce/api";
 import { visibleFields } from "@/lib/salesforce/fields";
 import { syncAccount, syncContact } from "@/lib/salesforce/manager";
-import { createContactsInSalesforce, syncAccountsToLeadAlchemist, type BulkResult } from "@/lib/mapping/database";
+import { createContactsInSalesforce, syncContactsToLeadAlchemist, type BulkResult } from "@/lib/mapping/database";
 
 /**
  * The contacts directory behind Admin → Contacts: every person in this app, Salesforce and Lead
@@ -266,6 +266,8 @@ export interface DirectoryRow {
   sfAccountId: string | null;
   /** In the app and Lead Alchemist, but Lead Alchemist is missing (or has a different) name, email or phone. */
   laOutdated: boolean;
+  /** Client tier on their AIS Connect account (null when they aren't in AIS Connect). */
+  tier: "primary" | "secondary" | null;
   /** Their AIS Connect account: their own, or (not in AIS Connect yet) the one linked to their Salesforce Account or Lead Alchemist Company. */
   account: { id: string; name: string; sfAccountId: string | null } | null;
   /** The Lead Alchemist Company they're in, or their account is linked to. */
@@ -285,6 +287,8 @@ export interface DirectoryQuery {
   presence?: Presence;
   account?: "yes" | "no";
   company?: CompanyState;
+  /** Client tier on their AIS Connect account. */
+  tier?: "primary" | "secondary";
 }
 
 const FILTER_SQL: Record<DirectoryFilter, string> = {
@@ -307,8 +311,14 @@ const COMPANY_SQL: Record<CompanyState, string> = {
 };
 
 /** The WHERE clause for the list (over `enriched p`). */
-function whereSql({ q, filter = "all", presence, account, company }: DirectoryQuery) {
-  const parts = [FILTER_SQL[filter], presenceSql(presence), account ? `acct_id is ${account === "yes" ? "not " : ""}null` : "true", company ? COMPANY_SQL[company] : "true"];
+function whereSql({ q, filter = "all", presence, account, company, tier }: DirectoryQuery) {
+  const parts = [
+    FILTER_SQL[filter],
+    presenceSql(presence),
+    account ? `acct_id is ${account === "yes" ? "not " : ""}null` : "true",
+    company ? COMPANY_SQL[company] : "true",
+    tier ? `tier = '${tier === "primary" ? "primary" : "secondary"}'` : "true",
+  ];
   return sql`${sql.raw(parts.join(" and "))} ${searchSql(q)}`;
 }
 
@@ -398,6 +408,7 @@ const enrichedSql = () => sql`
     , enriched as (
       select f.*,
         acct.id as acct_id, acct.name as acct_name, acct.sf_account_id as acct_sf_id,
+        case when f.app_id is null or f.client_id is null then null when acct.primary_contact_id::text = f.app_id then 'primary' else 'secondary' end as tier,
         coalesce(acct.ghl_company_id, f.la_company_id) as co_id,
         (select dc.name from directory_companies dc where dc.id = coalesce(acct.ghl_company_id, f.la_company_id)) as co_name,
         sug.id as sug_id, sug.name as sug_name, sug.how as sug_how,
@@ -414,7 +425,7 @@ const enrichedSql = () => sql`
         ) as id
       ) aid on true
       left join lateral (
-        select cl.id::text as id, cl.name, cl.name_key, cl.phones, cl.ghl_company_id, cl.sf_account_id from clients cl where cl.id = aid.id
+        select cl.id::text as id, cl.name, cl.name_key, cl.phones, cl.ghl_company_id, cl.sf_account_id, cl.primary_contact_id from clients cl where cl.id = aid.id
       ) acct on true
       left join lateral (
         select dc.id, dc.name, case when dc.name_key = coalesce(nullif(acct.name_key, ''), f.sf_key) then 'same name' else 'same phone' end as how
@@ -476,6 +487,7 @@ export async function listDirectory({
     laCompanyId: (r.la_company_id as string) ?? null,
     sfAccountId: (r.sf_company_id as string) ?? null,
     laOutdated: !!r.la_outdated,
+    tier: (r.tier as "primary" | "secondary" | null) ?? null,
     account: r.acct_id ? { id: r.acct_id as string, name: (r.acct_name as string) ?? "Account", sfAccountId: (r.acct_sf_id as string) ?? null } : null,
     company: r.co_id ? { id: r.co_id as string, name: (r.co_name as string) ?? (r.la_company as string) ?? null } : null,
     suggestedCompany: r.sug_id ? { id: r.sug_id as string, name: r.sug_name as string, how: r.sug_how as string } : null,
@@ -621,22 +633,15 @@ export async function addToApp(groups: string[][], actor: string, deps: { sf: Sa
   return result;
 }
 
-/** Selected people → app (if needed) → Lead Alchemist, into their account's Company. */
+/** Selected people → app (if needed) → Lead Alchemist, into their account's Company (the same sync as an account). */
 export async function sendToLeadAlchemist(values: string[], actor: string, deps: { sf: SalesforceApi | null; links: Links }, createMissing: boolean) {
   const { app, dir } = parseKeys(values);
   const added = dir.length ? await addToApp(dir, actor, deps, 20_000) : { done: 0, notes: [], contactIds: [] };
   const ids = [...new Set([...app, ...added.contactIds])];
   if (!ids.length) return { done: 0, notes: added.notes };
-  // Account by account, like syncing the account: its Company (linked, same name, or new) once,
-  // then just the selected people linked or created and put in it. Two people on one account
-  // always end up in the same Company.
-  const db = await getDb();
-  const people = await db.select({ id: schema.contacts.id, clientId: schema.contacts.clientId }).from(schema.contacts).where(inArray(schema.contacts.id, ids));
-  const accountIds = [...new Set(people.map((p) => p.clientId))];
-  const r = await syncAccountsToLeadAlchemist(accountIds, actor, deps, { createMissing, contactIds: ids, timeBudgetMs: 25_000 });
-  const linked = await db.$count(schema.contacts, and(inArray(schema.contacts.id, ids), isNotNull(schema.contacts.ghlContactId)));
+  const r = await syncContactsToLeadAlchemist(ids, actor, deps, { createMissing, timeBudgetMs: 25_000 });
   await rematch();
-  return { done: linked, notes: [...added.notes, ...r.notes] };
+  return { done: r.done, notes: [...added.notes, ...r.notes], contacts: r.contacts };
 }
 
 /** Selected people → app (if needed) → Salesforce, under their account's Salesforce Account. */

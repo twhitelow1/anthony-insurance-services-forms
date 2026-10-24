@@ -268,6 +268,44 @@ export async function refreshSearch(clientId: string) {
     .update(clients)
     .set({ searchText, primaryEmail: c.primaryEmail ?? primary?.primaryEmail ?? null, contactName: c.contactName ?? primary?.name ?? null })
     .where(eq(clients.id, clientId));
+  await ensurePrimaryContact(clientId);
+}
+
+/**
+ * Client tier: every account with contacts has one primary contact; the others are secondary.
+ * When it has none (new account, or the primary left), pick one: the contact whose email is the
+ * account's primary email, else the person on the latest application, else the only contact, else
+ * the first contact, flagged for staff to check. Never changes a primary that's still on the account.
+ */
+export async function ensurePrimaryContact(clientId: string): Promise<string | null> {
+  const db = await getDb();
+  const [c] = await db.select().from(clients).where(eq(clients.id, clientId)).limit(1);
+  if (!c) return null;
+  const home = await db.select().from(contacts).where(eq(contacts.clientId, clientId)).orderBy(asc(contacts.createdAt), asc(contacts.id));
+  if (c.primaryContactId && home.some((p) => p.id === c.primaryContactId)) return c.primaryContactId;
+  if (!home.length) {
+    if (c.primaryContactId || c.primaryReview) await db.update(clients).set({ primaryContactId: null, primaryReview: false }).where(eq(clients.id, clientId));
+    return null;
+  }
+  const [latest] = await db
+    .select({ contactId: applications.contactId })
+    .from(applications)
+    .where(and(eq(applications.clientId, clientId), isNotNull(applications.contactId)))
+    .orderBy(desc(applications.createdAt))
+    .limit(1);
+  const byEmail = c.primaryEmail ? home.find((p) => p.primaryEmail && normalizeEmail(p.primaryEmail) === normalizeEmail(c.primaryEmail!)) : undefined;
+  const applicant = latest?.contactId ? home.find((p) => p.id === latest.contactId) : undefined;
+  const pick = byEmail ?? applicant ?? home[0];
+  const review = !byEmail && !applicant && home.length > 1;
+  await db
+    .update(clients)
+    .set({ primaryContactId: pick.id, primaryReview: review, ...(pick.primaryEmail ? { primaryEmail: pick.primaryEmail, contactName: pick.name } : {}) })
+    .where(eq(clients.id, clientId));
+  await addClientEvent(clientId, "primary_changed", "system", {
+    message: `${pick.name} is the primary contact${review ? " (picked automatically as the first of several contacts: please check)" : ""}`,
+    data: { contactId: pick.id, previous: c.primaryContactId, review },
+  });
+  return pick.id;
 }
 
 export interface NewAccount {
@@ -676,7 +714,14 @@ function searchWhere(q: string | undefined): SQL | undefined {
   return digits ? or(ilike(clients.searchText, `%${esc(text)}%`), ilike(clients.searchText, `%${esc(digits)}%`)) : ilike(clients.searchText, `%${esc(text)}%`);
 }
 
-export type ClientFilter = "all" | "review" | "individuals" | "businesses" | "deactivated";
+export type ClientFilter = "all" | "review" | "individuals" | "businesses" | "deactivated" | "no_primary";
+
+/** Accounts with contacts but no primary contact, or one picked automatically that staff should check. */
+export const noPrimaryWhere = () =>
+  or(
+    and(isNull(clients.primaryContactId), sql`exists (select 1 from ${contacts} ct where ct.client_id = ${sql.raw(`"clients"."id"`)})`),
+    eq(clients.primaryReview, true),
+  );
 
 /** Accounts for Admin → Accounts, with counts and their latest application. */
 export async function listClients({
@@ -694,7 +739,9 @@ export async function listClients({
         ? eq(clients.isIndividual, true)
         : filter === "businesses"
           ? eq(clients.isIndividual, false)
-          : undefined;
+          : filter === "no_primary"
+            ? noPrimaryWhere()
+            : undefined;
   // Deactivated accounts show only under their own filter.
   const active = filter === "deactivated" ? isNotNull(clients.deactivatedAt) : isNull(clients.deactivatedAt);
   const where = and(isNull(clients.mergedInto), active, searchWhere(q), filterWhere);
@@ -847,6 +894,8 @@ export async function splitContact(clientId: string, contactId: string, actor: s
     const other = people.find((p) => p.id !== contact.id && p.primaryEmail);
     await db.update(clients).set({ primaryEmail: other?.primaryEmail ?? null, contactName: other?.name ?? null }).where(eq(clients.id, client.id));
   }
+  // The primary left: the account picks a new one (refreshSearch below).
+  if (client.primaryContactId === contact.id) await db.update(clients).set({ primaryContactId: null }).where(eq(clients.id, client.id));
   await refreshSearch(client.id);
   await refreshSearch(created.id);
   const data = { fromId: client.id, newId: created.id, contactId: contact.id };
@@ -855,13 +904,32 @@ export async function splitContact(clientId: string, contactId: string, actor: s
   return created.id;
 }
 
-/** Make another of the Account's Contacts the primary one. */
-export async function setPrimaryContact(clientId: string, contactId: string) {
+/**
+ * "Make primary": this contact becomes the account's one primary contact and the old primary
+ * becomes secondary, in one transaction (one column holds the primary, so there can't be two),
+ * logged on the account with who did it.
+ */
+export async function setPrimaryContact(clientId: string, contactId: string, actor = "system") {
   const db = await getDb();
+  const [account] = await db.select().from(clients).where(eq(clients.id, clientId)).limit(1);
+  if (!account) throw new Error("That account doesn't exist.");
   const people = await listAccountContacts(clientId);
-  const c = people.find((p) => p.id === contactId);
-  if (!c) throw new Error("That contact isn't on this account.");
-  await db.update(clients).set({ primaryEmail: c.primaryEmail, contactName: c.name, updatedAt: new Date() }).where(eq(clients.id, clientId));
+  const c = people.find((p) => p.id === contactId && p.homeHere);
+  if (!c) throw new Error("That contact isn't on this account (a person whose main account is another one is primary there).");
+  const old = account.primaryContactId ? people.find((p) => p.id === account.primaryContactId) : undefined;
+  await db.transaction(async (tx) => {
+    await tx
+      .update(clients)
+      .set({ primaryContactId: c.id, primaryReview: false, ...(c.primaryEmail ? { primaryEmail: c.primaryEmail } : {}), contactName: c.name, updatedAt: new Date() })
+      .where(eq(clients.id, clientId));
+    await tx.insert(clientEvents).values({
+      clientId,
+      type: "primary_changed",
+      actor,
+      message: `${c.name} is now the primary contact${old && old.id !== c.id ? `; ${old.name} is now secondary` : ""} (by ${actorLabel(actor)})`,
+      data: { contactId: c.id, previous: old?.id ?? null },
+    });
+  });
 }
 
 /** Accounts linked to this Salesforce Account. */

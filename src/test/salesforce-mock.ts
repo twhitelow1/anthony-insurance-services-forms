@@ -184,7 +184,7 @@ export function mockGhlLinks() {
   const writer: GhlLinkWriter = {
     async contactLinks(id, data) {
       calls.push({ kind: "contact", id, data });
-      return { missing: [] };
+      return { missing: [], changed: [] };
     },
     async opportunityLinks(id, data) {
       calls.push({ kind: "opportunity", id, data });

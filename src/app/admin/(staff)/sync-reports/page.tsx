@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { skippedOf } from "@/lib/bulk/tally";
 import { ListSummary, pageHref, pageState, Pagination } from "@/components/Pagination";
 import { requireStaff } from "@/lib/auth/session";
 import { listSyncReports } from "@/lib/bulk/report";
@@ -39,7 +40,7 @@ export default async function SyncReports({ searchParams }: PageProps<"/admin/sy
               </tr>
             )}
             {rows.map((r) => {
-              const clean = r.done >= r.total && !r.errors.length && !r.conflicts.length;
+              const clean = r.done >= r.total && !r.errors.length && !r.conflicts.length && !r.skipped.length && (!r.contactCounts || (!r.contactCounts.failed && !skippedOf(r.contactCounts)));
               return (
                 <tr key={r.id}>
                   <td className="whitespace-nowrap text-sm">

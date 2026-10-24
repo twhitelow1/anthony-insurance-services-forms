@@ -81,3 +81,25 @@ describe("accounts across all three", () => {
     la.businesses = [];
   });
 });
+
+describe("Account Type filter", () => {
+  it("filters by the Salesforce Account Type (app accounts and unlinked Salesforce Accounts), combined with the other filters", async () => {
+    const { listAccountDirectory, accountDirectoryKeys, accountTypesAcross, NO_ACCOUNT_TYPE } = await import("./directory");
+    const tag = uniq();
+    const db = await getDb();
+    const cust = await ensureClient({ email: `c.${tag}@gmail.com`, contactName: `Cu ${tag}`, businessName: `Typed Customer ${tag}` });
+    const past = await ensureClient({ email: `p.${tag}@gmail.com`, contactName: `Pa ${tag}`, businessName: `Typed Past ${tag}` });
+    await ensureClient({ email: `n.${tag}@gmail.com`, contactName: `No ${tag}`, businessName: `Typed None ${tag}` });
+    await db.update(schema.clients).set({ sfAccountType: "Customer" }).where(eq(schema.clients.id, cust));
+    await db.update(schema.clients).set({ sfAccountType: "Past Client" }).where(eq(schema.clients.id, past));
+    await db.insert(schema.directoryAccounts).values({ id: `001TY${tag}`, name: `Typed SF ${tag}`, nameKey: `typed sf ${tag}`, type: "Customer" });
+
+    const names = async (q: Parameters<typeof listAccountDirectory>[0]) => (await listAccountDirectory({ q: `Typed`, ...q })).rows.filter((r) => r.name.includes(tag)).map((r) => r.name).sort();
+    expect(await names({ type: "Customer" })).toEqual([`Typed Customer ${tag}`, `Typed SF ${tag}`]);
+    expect(await names({ type: "Customer", presence: { app: "yes" } })).toEqual([`Typed Customer ${tag}`]);
+    expect(await names({ type: "Past Client", laMissing: true })).toEqual([`Typed Past ${tag}`]);
+    expect(await names({ type: NO_ACCOUNT_TYPE })).toEqual([`Typed None ${tag}`]);
+    expect((await accountDirectoryKeys({ q: `Typed Customer ${tag}`, type: "Customer" })).length).toBe(1); // "select all matching" uses the same filter
+    expect(await accountTypesAcross()).toEqual(expect.arrayContaining(["Customer", "Past Client"]));
+  });
+});

@@ -215,7 +215,7 @@ export default async function Mapping({ searchParams }: PageProps<"/admin/mappin
               Link or create selected in Salesforce
             </SubmitButton>
             <label className="flex items-center gap-2" title="Lead Alchemist may start its workflows for new contacts">
-              <input type="checkbox" name="createMissing" value="yes" /> Create missing contacts in Lead Alchemist
+              <input type="checkbox" name="createMissing" value="yes" defaultChecked /> Create missing contacts in Lead Alchemist <span className="text-xs text-[var(--muted)]">(creating Lead Alchemist contacts can start its workflows)</span>
             </label>
           </form>
           {!runActive && <SelectAllMatching form="bulk" onPage={accounts.rows.length} total={accounts.total} noun="accounts" />}
@@ -284,7 +284,7 @@ export default async function Mapping({ searchParams }: PageProps<"/admin/mappin
             </SubmitButton>
             <SubmitButton formAction={contactsToSalesforceAction} className="btn-secondary" disabled={!sfOn}>Link or create selected in Salesforce</SubmitButton>
             <label className="flex items-center gap-2" title="Lead Alchemist may start its workflows for new contacts">
-              <input type="checkbox" name="createMissing" value="yes" /> Create missing contacts in Lead Alchemist
+              <input type="checkbox" name="createMissing" value="yes" defaultChecked /> Create missing contacts in Lead Alchemist <span className="text-xs text-[var(--muted)]">(creating Lead Alchemist contacts can start its workflows)</span>
             </label>
 
           </form>

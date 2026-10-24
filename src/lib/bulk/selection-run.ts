@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
 import { saveSyncReport } from "./report";
+import { addTally, type ContactTally } from "./tally";
 
 /**
  * "Select all N matching" on a list: the bulk button the staff member pressed runs over every row
@@ -26,6 +27,8 @@ export interface SelectionRun {
   position: number;
   done: number;
   notes: string[];
+  /** Lead Alchemist syncs: what happened to each contact so far. */
+  contacts?: ContactTally;
   phase: "running" | "done" | "stopped";
   error?: string;
   /** Set when it finishes or stops: its sync report (Admin → Sync reports). */
@@ -40,6 +43,7 @@ export interface SelectionRun {
 export interface BatchResult {
   done: number;
   notes: string[];
+  contacts?: ContactTally;
 }
 
 /** The most rows one run takes. */
@@ -110,7 +114,8 @@ export async function stepSelectionRun(
     try {
       const r = await fn(chunk, run.startedBy);
       run.done += r.done;
-      run.notes = [...run.notes, ...r.notes].slice(0, 2000);
+      run.notes = [...run.notes, ...r.notes].slice(0, 6000);
+      run.contacts = addTally(run.contacts, r.contacts);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       // Stop rather than skip ahead: a connection or permission problem would fail every batch.
@@ -130,7 +135,7 @@ async function withReport(run: SelectionRun): Promise<SelectionRun> {
   if (run.position < run.ids.length) notes.unshift(`${run.ids.length - run.position} weren't reached: the run ${run.error?.startsWith("Stopped by") ? "was stopped" : "stopped"}.`);
   if (run.error && !run.error.startsWith("Stopped by")) notes.unshift(`Stopped on an error: ${run.error}`);
   try {
-    const r = await saveSyncReport({ title: run.label, scope: `All matching: ${run.scopeText}`, page: PAGE[run.scope], actor: run.startedBy, total: run.ids.length, done: run.done, notes });
+    const r = await saveSyncReport({ title: run.label, scope: `All matching: ${run.scopeText}`, page: PAGE[run.scope], actor: run.startedBy, total: run.ids.length, done: run.done, notes, contacts: run.contacts });
     return { ...run, report: { id: r.report.id, text: r.text, clean: r.clean } };
   } catch (err) {
     console.error("[selection run] couldn't save the report:", err instanceof Error ? err.message : err);

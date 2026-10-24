@@ -2,6 +2,7 @@ import "server-only";
 import { desc, eq, count } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
 import { raiseNotification } from "@/lib/notifications/repo";
+import { describeTally, skippedOf, type ContactTally } from "./tally";
 
 /**
  * Every bulk sync ends with a report: "All 25 synced", or how many were done and each error,
@@ -35,27 +36,33 @@ export function sortNotes(notes: string[]): Sorted {
 const fmt = (n: number) => n.toLocaleString("en-US");
 const plural = (n: number, one: string, many = `${one}s`) => `${fmt(n)} ${n === 1 ? one : many}`;
 
-/** One line for the result message: "All 25 synced." or "22 of 25 done · 2 conflicts · 1 error". */
-export function summarize(r: { title: string; total: number; done: number } & Sorted): { text: string; clean: boolean } {
-  const problems = r.errors.length + r.conflicts.length + r.skipped.length;
-  const clean = r.done >= r.total && !r.errors.length && !r.conflicts.length;
-  if (clean && !problems) return { text: `${r.title}: all ${fmt(r.total)} done, no conflicts or errors.`, clean: true };
+/**
+ * One line for the result message: "All 25 done, no conflicts or errors." only when nothing at all
+ * was skipped, failed or in conflict (for a Lead Alchemist sync: every contact linked or created);
+ * otherwise "Needs attention: 22 of 25 done · 2 conflicts · 1 error · contacts: …".
+ */
+export function summarize(r: { title: string; total: number; done: number; contacts?: ContactTally | null } & Sorted): { text: string; clean: boolean } {
+  const contactProblems = r.contacts ? r.contacts.failed + skippedOf(r.contacts) : 0;
+  const problems = r.errors.length + r.conflicts.length + r.skipped.length + contactProblems;
+  const clean = r.done >= r.total && !problems;
+  const contacts = r.contacts ? ` Contacts: ${describeTally(r.contacts).replace(/^[\d,]+ contacts?: /, "")}.` : "";
+  if (clean) return { text: `${r.title}: all ${fmt(r.total)} done, no conflicts or errors.${contacts}`, clean: true };
   const parts = [`${fmt(Math.min(r.done, r.total))} of ${fmt(r.total)} done`];
   if (r.conflicts.length) parts.push(plural(r.conflicts.length, "conflict"));
   if (r.errors.length) parts.push(plural(r.errors.length, "error"));
   if (r.skipped.length) parts.push(plural(r.skipped.length, "skipped note"));
-  return { text: `${r.title}: ${parts.join(" · ")}.`, clean };
+  return { text: `Needs attention: ${r.title}: ${parts.join(" · ")}.${contacts}`, clean: false };
 }
 
-const clip = (list: string[]) => list.slice(0, 1000).map((s) => s.slice(0, 500));
+const clip = (list: string[]) => list.slice(0, 6000).map((s) => s.slice(0, 500));
 
 /**
  * Save the report of a finished bulk sync and say how it went. A conflict or an error also
  * raises a "Sync needs attention" card on the Notifications board (rows merely skipped don't).
  */
-export async function saveSyncReport(input: { title: string; scope: string; page?: string | null; actor: string; total: number; done: number; notes: string[] }) {
+export async function saveSyncReport(input: { title: string; scope: string; page?: string | null; actor: string; total: number; done: number; notes: string[]; contacts?: ContactTally | null }) {
   const sorted = sortNotes(input.notes);
-  const { text, clean } = summarize({ title: input.title, total: input.total, done: input.done, ...sorted });
+  const { text, clean } = summarize({ title: input.title, total: input.total, done: input.done, contacts: input.contacts, ...sorted });
   const db = await getDb();
   const [report] = await db
     .insert(schema.syncReports)
@@ -70,6 +77,7 @@ export async function saveSyncReport(input: { title: string; scope: string; page
       conflicts: clip(sorted.conflicts),
       skipped: clip(sorted.skipped),
       notes: clip(sorted.notes),
+      contactCounts: input.contacts ?? null,
     })
     .returning();
   const href = `/admin/sync-reports/${report.id}`;

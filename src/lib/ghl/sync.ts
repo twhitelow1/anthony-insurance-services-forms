@@ -42,6 +42,14 @@ export const CONTACT_LINK_FIELDS = {
   salesforceContact: "Salesforce Contact Link",
   clientPage: "Client Page Link",
 } as const;
+/**
+ * Account facts written on every contact by the Lead Alchemist sync: the Salesforce Account Type
+ * (full text, e.g. "Past Client") and the client tier ("Primary" or "Secondary").
+ */
+export const CONTACT_INFO_FIELDS = {
+  accountType: "Account Type",
+  clientTier: "Client Tier",
+} as const;
 export const OPPORTUNITY_LINK_FIELDS = {
   salesforceOpportunity: "Salesforce Opportunity Link",
   application: PORTAL_FIELDS.link,

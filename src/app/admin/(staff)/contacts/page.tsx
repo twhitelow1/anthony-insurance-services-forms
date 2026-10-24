@@ -112,6 +112,7 @@ export default async function Contacts({ searchParams }: PageProps<"/admin/conta
   const presence: Presence = { app: yesNo(str("app")), sf: yesNo(str("sf")), la: yesNo(str("la")) };
   const account = yesNo(str("account"));
   const company = COMPANY_STATES.find((c) => c.value === str("company"))?.value;
+  const tier = str("tier") === "primary" || str("tier") === "secondary" ? (str("tier") as "primary" | "secondary") : undefined;
   const paging = pageState(sp);
   const q = (await cookies()).get(CONTACT_SEARCH_COOKIE)?.value ?? "";
   const importing = str("importing");
@@ -123,14 +124,14 @@ export default async function Contacts({ searchParams }: PageProps<"/admin/conta
     directoryCounts(),
     getImport("salesforce"),
     getImport("lead_alchemist"),
-    listDirectory({ q, filter, presence, account, company, limit: paging.pageSize, offset: paging.offset }),
+    listDirectory({ q, filter, presence, account, company, tier, limit: paging.pageSize, offset: paging.offset }),
   ]);
   const [breakdown, selectionRun] = await Promise.all([directoryBreakdown(q), getSelectionRun("contacts")]);
   const runActive = selectionRun?.phase === "running";
-  const params = { filter: filter !== "all" ? filter : undefined, app: presence.app, sf: presence.sf, la: presence.la, account, company };
+  const params = { filter: filter !== "all" ? filter : undefined, app: presence.app, sf: presence.sf, la: presence.la, account, company, tier };
   const href = pageHref("/admin/contacts", params);
   const comboHref = (c: Record<SystemKey, boolean>) => `/admin/contacts?${new URLSearchParams({ app: c.app ? "yes" : "no", sf: c.sf ? "yes" : "no", la: c.la ? "yes" : "no" })}`;
-  const isCombo = (c: Record<SystemKey, boolean>) => filter === "all" && !account && !company && SYSTEMS.every((x) => presence[x.key] === (c[x.key] ? "yes" : "no"));
+  const isCombo = (c: Record<SystemKey, boolean>) => filter === "all" && !account && !company && !tier && SYSTEMS.every((x) => presence[x.key] === (c[x.key] ? "yes" : "no"));
   const back = href(paging.page, paging.pageSize);
 
   return (
@@ -175,6 +176,14 @@ export default async function Contacts({ searchParams }: PageProps<"/admin/conta
               <option value="">Either</option>
               <option value="yes">Yes</option>
               <option value="no">No</option>
+            </select>
+          </label>
+          <label className="text-sm" title="Primary: the account's one primary contact. Secondary: everyone else on the account.">
+            <span className="field-label !mb-1">Client tier</span>
+            <select name="tier" defaultValue={tier ?? ""} className="input">
+              <option value="">Any</option>
+              <option value="primary">Primary</option>
+              <option value="secondary">Secondary</option>
             </select>
           </label>
           <label className="text-sm" title="The Lead Alchemist Company they're in or their account is linked to, else a Company with the same name or phone">
@@ -263,7 +272,7 @@ export default async function Contacts({ searchParams }: PageProps<"/admin/conta
           Update details in Lead Alchemist
         </SubmitButton>
         <label className="flex items-center gap-2" title="Lead Alchemist may start its workflows for new contacts">
-          <input type="checkbox" name="createMissing" value="yes" defaultChecked /> Create missing contacts in Lead Alchemist
+          <input type="checkbox" name="createMissing" value="yes" defaultChecked /> Create missing contacts in Lead Alchemist <span className="text-xs text-[var(--muted)]">(creating Lead Alchemist contacts can start its workflows)</span>
         </label>
         <label className="flex items-center gap-2" title="Without this, only fields that are empty in Lead Alchemist are filled">
           <input type="checkbox" name="replace" value="yes" /> Replace Lead Alchemist values that differ
@@ -302,6 +311,8 @@ export default async function Contacts({ searchParams }: PageProps<"/admin/conta
                 <td><input type="checkbox" name="ids" value={r.key} form="bulk" aria-label={`Select ${r.name}`} /></td>
                 <td>
                   <span className="font-medium">{r.name}</span>
+                  {r.tier === "primary" && <span className="badge badge-success ml-1">Primary</span>}
+                  {r.tier === "secondary" && <span className="badge badge-neutral ml-1">Secondary</span>}
                   <div className="text-xs text-[var(--muted)]">{[r.email, r.phone].filter(Boolean).join(" · ")}</div>
                 </td>
                 <td className="text-sm">

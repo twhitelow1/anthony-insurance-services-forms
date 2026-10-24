@@ -18,8 +18,10 @@ Lead Alchemist Company, and its contacts are put in that Company. Lead Alchemist
   - It finds each contact by their saved Lead Alchemist ID, else by email.
   - A contact can only be in one Company. Contacts already in a different Company are left there unless "move" is
     ticked, and the result lists them.
-  - People who aren't in Lead Alchemist yet are only created when "Also create Lead Alchemist contacts" is ticked,
-    because creating contacts can start Lead Alchemist workflows.
+  - People who aren't in Lead Alchemist yet are created when "Create missing contacts" is ticked. Since 2026-10-24
+    it starts ticked on every screen; untick it for a link-only run (creating contacts can start Lead Alchemist workflows).
+  - Every contact also gets the fields "Account Type" (the Salesforce Account Type, full text) and "Client Tier"
+    (Primary / Secondary), and the tags `ais-connect` plus `ais-business` or `ais-personal`.
 - **New applications.** When an account has a Company, each new applicant's contact is added to it.
   - With **Settings → Lead Alchemist Companies for new accounts** on (or `LA_COMPANIES_SYNC=1`), a new business also
     gets a Company: the one with the same name, else a new one.
