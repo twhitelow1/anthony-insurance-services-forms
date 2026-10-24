@@ -210,10 +210,31 @@ export const directoryContacts = pgTable(
     index("directory_contacts_email_idx").on(t.email),
     index("directory_contacts_phone_idx").on(t.phone),
     index("directory_contacts_lower_name_idx").on(sql`lower(${t.name})`),
+    index("directory_contacts_company_idx").on(t.source, t.companyId),
   ],
 );
 
 export type DirectoryContact = typeof directoryContacts.$inferSelect;
+
+/**
+ * Salesforce Accounts, copied by Refresh on the Accounts page ("Across all three"), so it can list
+ * and match Accounts that aren't in AIS Connect without calling Salesforce. Read-only copy.
+ */
+export const directoryAccounts = pgTable(
+  "directory_accounts",
+  {
+    id: text("id").primaryKey(),
+    name: text("name").notNull().default(""),
+    /** nameKey(name). */
+    nameKey: text("name_key").notNull().default(""),
+    /** Last 10 digits. */
+    phone: text("phone"),
+    website: text("website"),
+    type: text("type"),
+    fetchedAt: timestamp("fetched_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("directory_accounts_name_key_idx").on(t.nameKey), index("directory_accounts_phone_idx").on(t.phone)],
+);
 
 /**
  * Lead Alchemist Companies, copied when the Contacts page reads Lead Alchemist, so the list can

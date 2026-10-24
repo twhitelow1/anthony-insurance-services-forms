@@ -148,6 +148,13 @@
       "when": 1792875917891,
       "tag": "0020_la_company_directory",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1792877218138,
+      "tag": "0021_account_directory",
+      "breakpoints": true
     }
   ]
 }
