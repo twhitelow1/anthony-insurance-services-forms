@@ -17,7 +17,8 @@ describe("URL builders", () => {
     expect(l.salesforce("Opportunity", "006CCC")).toBe("https://dg0000000i7rimaa.lightning.force.com/lightning/r/Opportunity/006CCC/view");
     expect(l.ghlContact("c1")).toBe("https://app.leadalchemist.example/v2/location/LOC123/contacts/detail/c1");
     expect(l.ghlOpportunity("o1")).toBe("https://app.leadalchemist.example/v2/location/LOC123/opportunities/list/o1?tab=OpportunityDetails");
-    expect(l.ghlCompany("b1")).toBe("https://app.leadalchemist.example/v2/location/LOC123/businesses/detail/b1");
+    expect(l.ghlCompany("b1")).toBe("https://app.leadalchemist.example/v2/location/LOC123/contacts/smart_list/All");
+    expect(l.ghlCompany(null)).toBeNull();
     expect(l.appClient("5f2b")).toBe("https://forms.example.com/admin/clients/5f2b");
     expect(l.appApplication("9a1c")).toBe("https://forms.example.com/admin/applications/9a1c");
     // Every pattern is covered above.

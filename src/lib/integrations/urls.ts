@@ -15,11 +15,11 @@ export const URL_PATTERNS = {
    */
   ghlOpportunity: "{ghl}/v2/location/{locationId}/opportunities/list/{id}?tab=OpportunityDetails",
   /**
-   * Lead Alchemist Company (Business). NOT VERIFIED: HighLevel doesn't document this page's address.
-   * Only used once Companies are connected (docs/lead-alchemist-companies-plan.md); open a company in
-   * Lead Alchemist and copy its address bar to confirm before relying on it.
+   * Lead Alchemist Companies. A Company's own page address isn't documented (the guessed
+   * /businesses/detail/{id} 404s), so Company links open the Contacts list, which has the Companies
+   * tab at the top. Swap in the real pattern (with {id}) once it's copied from the address bar.
    */
-  ghlCompany: "{ghl}/v2/location/{locationId}/businesses/detail/{id}",
+  ghlCompany: "{ghl}/v2/location/{locationId}/contacts/smart_list/All",
   /** The app's Client page (stable internal ID; never an email or phone). */
   appClient: "{app}/admin/clients/{id}",
   /** The app's admin page for one application. */
@@ -63,7 +63,7 @@ export function linksFor(bases: LinkBases) {
     salesforce: (object: SalesforceObject, id?: string | null) => buildUrl("salesforceRecord", { salesforce: bases.salesforce, object, id }),
     ghlContact: (id?: string | null) => buildUrl("ghlContact", { ...ghl, id }),
     ghlOpportunity: (id?: string | null) => buildUrl("ghlOpportunity", { ...ghl, id }),
-    ghlCompany: (id?: string | null) => buildUrl("ghlCompany", { ...ghl, id }),
+    ghlCompany: (id?: string | null) => (id?.trim() ? buildUrl("ghlCompany", { ...ghl, id }) : null),
     appClient: (id?: string | null) => buildUrl("appClient", { app: bases.app, id }),
     appApplication: (id?: string | null) => buildUrl("appApplication", { app: bases.app, id }),
   };

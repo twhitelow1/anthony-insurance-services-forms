@@ -164,7 +164,7 @@ application gets the org's first **open** stage (never Closed Won), "Coverage bo
 | Salesforce record | `<SALESFORCE_LIGHTNING_URL>/lightning/r/<Object>/<Id>/view` | Salesforce's standard Lightning record URL |
 | Lead Alchemist contact | `<Lead Alchemist address>/v2/location/<location ID>/contacts/detail/<id>` | Already used by the app; the address bar on a contact |
 | Lead Alchemist opportunity | `<Lead Alchemist address>/v2/location/<location ID>/opportunities/list/<id>?tab=OpportunityDetails` | HighLevel changelog, "Dynamic Routing for Opportunity Modal" |
-| Lead Alchemist company | `<Lead Alchemist address>/v2/location/<location ID>/businesses/detail/<id>` | **Not verified**; Companies aren't connected yet (see lead-alchemist-companies-plan.md) |
+| Lead Alchemist company | `<Lead Alchemist address>/v2/location/<location ID>/contacts/smart_list/All` (Contacts page; Companies tab at the top) | A Company's own page address isn't known yet; the earlier guess `…/businesses/detail/<id>` was broken |
 | App account page | `<APP_URL>/admin/clients/<account ID>` | The app's own route; never an email or phone in the address |
 | App application | `<APP_URL>/admin/applications/<application ID>` | The app's own route |
 

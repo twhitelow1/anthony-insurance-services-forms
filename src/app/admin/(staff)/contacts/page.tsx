@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { cookies } from "next/headers";
 import { AutoSubmit } from "@/components/AutoSubmit";
-import { SystemLink } from "@/components/clients";
+import { SystemLink, LA_COMPANY_HINT } from "@/components/clients";
 import { ListSummary, pageHref, pageState, Pagination } from "@/components/Pagination";
 import { SelectAll } from "@/components/SelectAll";
 import { SubmitButton } from "@/components/SubmitButton";
@@ -259,7 +259,7 @@ export default async function Contacts({ searchParams }: PageProps<"/admin/conta
                       )}
                       {r.laCompany ? (
                         <div className="text-xs">
-                          <SystemLink className="btn-link" href={r.laCompanyId ? l.ghlCompany(r.laCompanyId) : null} missing="">{r.laCompany}</SystemLink>
+                          <SystemLink title={LA_COMPANY_HINT} className="btn-link" href={r.laCompanyId ? l.ghlCompany(r.laCompanyId) : null} missing="">{r.laCompany}</SystemLink>
                         </div>
                       ) : (
                         <div className="text-xs text-[var(--muted)]">No Company</div>

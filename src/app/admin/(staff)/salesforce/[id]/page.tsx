@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { SystemLink } from "@/components/clients";
+import { SystemLink, LA_COMPANY_HINT } from "@/components/clients";
 import { requireStaff } from "@/lib/auth/session";
 import { listAccountContacts } from "@/lib/clients/repo";
 import { readFlash } from "@/lib/flash";
@@ -117,7 +117,7 @@ export default async function SalesforceAccount({ params, searchParams }: PagePr
             </ActionButton>
           )}
           <SystemLink href={l.salesforce("Account", id)} missing="Add the Lightning URL in Settings → Integrations">View in Salesforce</SystemLink>
-          {client?.ghlCompanyId && <SystemLink href={l.ghlCompany(client.ghlCompanyId)} missing="">View Company in Lead Alchemist</SystemLink>}
+          {client?.ghlCompanyId && <SystemLink title={LA_COMPANY_HINT} href={l.ghlCompany(client.ghlCompanyId)} missing="">View Company in Lead Alchemist</SystemLink>}
         </div>
         {client && (
           <AccountLifecycle

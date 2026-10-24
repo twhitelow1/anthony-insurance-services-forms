@@ -207,7 +207,7 @@ export async function linkAccountCompanyAction(formData: FormData) {
   const client = await getClient(String(formData.get("id") ?? ""));
   if (!client) throw new Error("Account not found");
   const pasted = String(formData.get("business") ?? "").trim();
-  const businessId = String(formData.get("businessId") ?? "").trim() || pasted.match(/businesses\/detail\/([A-Za-z0-9]+)/)?.[1] || (/^[A-Za-z0-9]{6,64}$/.test(pasted) ? pasted : "");
+  const businessId = String(formData.get("businessId") ?? "").trim() || companyIdFrom(pasted);
   let tone: "ok" | "error" = "ok";
   let text: string;
   try {
@@ -346,4 +346,10 @@ export async function pushContactValueAction(formData: FormData) {
   if (clientId) revalidatePath(`/admin/clients/${clientId}`);
   const contact = clientId ? null : await getContact(contactId);
   back(clientId || contact?.clientId || "", error ? { error: error.slice(0, 200) } : { saved: "pushed" });
+}
+
+/** A Company ID from a pasted Lead Alchemist address (its last path segment) or the bare ID. */
+function companyIdFrom(pasted: string) {
+  const id = /^https?:\/\//i.test(pasted) ? (URL.canParse(pasted) ? new URL(pasted).pathname.split("/").filter(Boolean).pop() ?? "" : "") : pasted;
+  return /^[A-Za-z0-9]{6,64}$/.test(id) ? id : "";
 }

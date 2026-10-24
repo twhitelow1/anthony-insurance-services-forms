@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { cookies } from "next/headers";
-import { SystemLink } from "@/components/clients";
+import { SystemLink, LA_COMPANY_HINT } from "@/components/clients";
 import { ListSummary, pageHref, pageOf, pageState, Pagination } from "@/components/Pagination";
 import { SelectAll } from "@/components/SelectAll";
 import { SubmitButton } from "@/components/SubmitButton";
@@ -249,7 +249,7 @@ export default async function Mapping({ searchParams }: PageProps<"/admin/mappin
                     </td>
                     <td>
                       {a.ghlCompanyId ? (
-                        <SystemLink className="btn-link text-sm" href={l.ghlCompany(a.ghlCompanyId)} missing="">Linked</SystemLink>
+                        <SystemLink title={LA_COMPANY_HINT} className="btn-link text-sm" href={l.ghlCompany(a.ghlCompanyId)} missing="">Linked</SystemLink>
                       ) : (
                         <Yes on={false} label="" />
                       )}
@@ -417,7 +417,7 @@ export default async function Mapping({ searchParams }: PageProps<"/admin/mappin
                             )}
                           </td>
                           <td>
-                            <SystemLink className="btn-link text-sm" href={l.ghlCompany(b.id)} missing="">View in Lead Alchemist</SystemLink>
+                            <SystemLink title={LA_COMPANY_HINT} className="btn-link text-sm" href={l.ghlCompany(b.id)} missing="">View in Lead Alchemist</SystemLink>
                           </td>
                         </tr>
                       );
