@@ -24,3 +24,20 @@ describe("only readable Salesforce fields are queried", () => {
     expect(await accountSelect(sf)).toBe("SELECT Id, Name, BillingCity, (SELECT Id, Email, LastName FROM Contacts ORDER BY CreatedDate) FROM Account");
   });
 });
+
+describe("when the integration user can't read Contacts", () => {
+  const noContacts = {
+    describe: async (object: string) => {
+      if (object === "Contact") throw new Error("NOT_FOUND");
+      return { name: object, fields: [{ name: "Id", type: "id" }, { name: "Name", type: "string" }], childRelationships: [] };
+    },
+  } as unknown as SalesforceApi;
+
+  it("leaves the Contacts subquery out, and the access report says what to grant", async () => {
+    const { accessReport } = await import("./fields");
+    expect(await accountSelect(noContacts)).toBe("SELECT Id, Name FROM Account");
+    const report = await accessReport(noContacts);
+    expect(report.find((r) => r.object === "Contact")).toMatchObject({ readable: false });
+    expect(report.find((r) => r.object === "Account")!.missing).toContain("Phone");
+  });
+});

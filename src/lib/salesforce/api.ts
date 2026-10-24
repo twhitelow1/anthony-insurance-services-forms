@@ -22,6 +22,8 @@ export interface FieldDescribe {
 export interface ObjectDescribe {
   name: string;
   fields: FieldDescribe[];
+  /** Related lists, e.g. Account → Contacts. Only those the user can read are listed. */
+  childRelationships?: { relationshipName: string | null; childSObject: string }[];
 }
 
 export interface SalesforceApi {
