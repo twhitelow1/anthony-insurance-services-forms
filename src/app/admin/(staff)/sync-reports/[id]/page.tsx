@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireStaff } from "@/lib/auth/session";
 import { getSyncReport } from "@/lib/bulk/report";
+import { SKIP_REASONS, skippedOf, type SkipReason } from "@/lib/bulk/tally";
 
 export const metadata = { title: "Sync report | AIS Connect" };
 export const dynamic = "force-dynamic";
@@ -29,7 +30,8 @@ export default async function SyncReportPage({ params }: PageProps<"/admin/sync-
   await requireStaff("/admin/sync-reports");
   const report = await getSyncReport((await params).id);
   if (!report) notFound();
-  const clean = report.done >= report.total && !report.errors.length && !report.conflicts.length;
+  const t = report.contactCounts;
+  const clean = report.done >= report.total && !report.errors.length && !report.conflicts.length && !report.skipped.length && (!t || (!t.failed && !skippedOf(t)));
   return (
     <div>
       <p className="mb-2 text-sm">
@@ -55,6 +57,25 @@ export default async function SyncReportPage({ params }: PageProps<"/admin/sync-
           {report.skipped.length} skipped note{report.skipped.length === 1 ? "" : "s"}
         </p>
       </section>
+      {t && (
+        <section className="card mb-4 !p-4">
+          <h2 className="mb-2 text-base font-semibold">Contacts</h2>
+          <table className="text-sm">
+            <tbody>
+              <tr><td className="pr-4">Linked (already in Lead Alchemist) and in their Company</td><td className="font-semibold">{t.linked.toLocaleString("en-US")}</td></tr>
+              <tr><td className="pr-4">Created in Lead Alchemist and put in their Company</td><td className="font-semibold">{t.created.toLocaleString("en-US")}</td></tr>
+              {(Object.keys(SKIP_REASONS) as SkipReason[]).map((k) => (
+                <tr key={k} className={t[k] ? "" : "text-[var(--muted)]"}>
+                  <td className="pr-4">Skipped: {SKIP_REASONS[k]}</td>
+                  <td className="font-semibold">{t[k].toLocaleString("en-US")}</td>
+                </tr>
+              ))}
+              <tr className={t.failed ? "" : "text-[var(--muted)]"}><td className="pr-4">Failed</td><td className="font-semibold">{t.failed.toLocaleString("en-US")}</td></tr>
+            </tbody>
+          </table>
+          <p className="mt-2 text-xs text-[var(--muted)]">Each account&apos;s own counts are in the lists below, one line per account.</p>
+        </section>
+      )}
       <Section title="Errors" items={report.errors} tone="badge-danger" hint="These didn't sync. Fix the cause (often a connection, a permission or a deleted record) and run it again for these rows." />
       <Section
         title="Conflicts"

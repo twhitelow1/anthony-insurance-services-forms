@@ -27,6 +27,7 @@ const FILTERS: { value: ClientFilter; label: string }[] = [
   { value: "businesses", label: "Businesses" },
   { value: "individuals", label: "Individuals" },
   { value: "review", label: "Possible duplicates" },
+  { value: "no_primary", label: "No primary contact (or one to check)" },
   { value: "deactivated", label: "Deactivated" },
 ];
 

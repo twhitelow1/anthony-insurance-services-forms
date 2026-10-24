@@ -16,6 +16,8 @@ import {
   type AccountMatchFilter,
   type AccountPresence,
   type AccountSource,
+  accountTypesAcross,
+  NO_ACCOUNT_TYPE,
 } from "@/lib/accounts/directory";
 import { getSelectionRun, showSelectionRun } from "@/lib/bulk/selection-run";
 import { ghlConfig } from "@/lib/ghl/client";
@@ -63,25 +65,27 @@ export async function AcrossView({ sp, q, flash }: { sp: Record<string, string |
   const presence: AccountPresence = { app: yesNo(str("app")), sf: yesNo(str("sf")), la: yesNo(str("la")) };
   const match = (["suggested", "none"] as AccountMatchFilter[]).find((m) => m === str("match"));
   const laMissing = str("lacontacts") === "missing";
+  const type = str("type").slice(0, 80) || null;
   const paging = pageState(sp);
   const importing = str("importing");
-  const [l, laOn, sfOn, counts, sfImport, laImport, list, breakdown, selectionRun] = await Promise.all([
+  const [l, laOn, sfOn, counts, sfImport, laImport, list, breakdown, selectionRun, types] = await Promise.all([
     links(),
     ghlConfig(),
     salesforceConfig(),
     accountDirectoryCounts(),
     getAccountImport("salesforce"),
     getAccountImport("lead_alchemist"),
-    listAccountDirectory({ q, presence, match, laMissing, limit: paging.pageSize, offset: paging.offset }),
-    accountBreakdown(q),
+    listAccountDirectory({ q, presence, match, laMissing, type, limit: paging.pageSize, offset: paging.offset }),
+    accountBreakdown(q, type),
     getSelectionRun("accounts"),
+    accountTypesAcross(),
   ]);
-  const params = { view: "all", app: presence.app, sf: presence.sf, la: presence.la, match, lacontacts: laMissing ? "missing" : undefined };
+  const params = { view: "all", app: presence.app, sf: presence.sf, la: presence.la, match, lacontacts: laMissing ? "missing" : undefined, type: type ?? undefined };
   const href = pageHref("/admin/clients", params);
   const back = href(paging.page, paging.pageSize);
   const runActive = selectionRun?.phase === "running";
   const comboHref = (c: Record<SystemKey, boolean>) =>
-    `/admin/clients?${new URLSearchParams({ view: "all", app: c.app ? "yes" : "no", sf: c.sf ? "yes" : "no", la: c.la ? "yes" : "no" })}`;
+    `/admin/clients?${new URLSearchParams({ view: "all", app: c.app ? "yes" : "no", sf: c.sf ? "yes" : "no", la: c.la ? "yes" : "no", ...(type ? { type } : {}) })}`;
   const isCombo = (c: Record<SystemKey, boolean>) => !match && !laMissing && SYSTEMS.every((x) => presence[x.key] === (c[x.key] ? "yes" : "no"));
 
   return (
@@ -142,8 +146,18 @@ export async function AcrossView({ sp, q, flash }: { sp: Record<string, string |
               <option value="missing">Some not there yet</option>
             </select>
           </label>
+          <label className="text-sm" title="The Salesforce Account Type: the account's status, changed only in Salesforce">
+            <span className="field-label !mb-1">Account Type</span>
+            <select name="type" defaultValue={type ?? ""} className="input">
+              <option value="">All types</option>
+              {types.map((t) => (
+                <option key={t} value={t}>{t}</option>
+              ))}
+              <option value={NO_ACCOUNT_TYPE}>No type</option>
+            </select>
+          </label>
           <button className="btn-secondary">Filter</button>
-          {(presence.app || presence.sf || presence.la || match || laMissing) && (
+          {(presence.app || presence.sf || presence.la || match || laMissing || type) && (
             <Link className="btn-link text-sm" href="/admin/clients?view=all">Clear filters</Link>
           )}
         </form>
@@ -185,7 +199,7 @@ export async function AcrossView({ sp, q, flash }: { sp: Record<string, string |
                   <tr>
                     <td colSpan={3} />
                     <td>
-                      <Link className="btn-link" href="/admin/clients?view=all&app=yes&lacontacts=missing">
+                      <Link className="btn-link" href={`/admin/clients?view=all&app=yes&lacontacts=missing${type ? `&type=${encodeURIComponent(type)}` : ""}`}>
                         AIS Connect accounts with contacts not in Lead Alchemist yet ({fmt(breakdown.laMissingContacts)} contacts)
                       </Link>
                     </td>
@@ -239,7 +253,7 @@ export async function AcrossView({ sp, q, flash }: { sp: Record<string, string |
           <input type="checkbox" name="useSuggested" value="yes" defaultChecked /> Use suggested matches (link instead of creating)
         </label>
         <label className="flex items-center gap-2" title="Lead Alchemist may start its workflows for new contacts">
-          <input type="checkbox" name="createMissing" value="yes" defaultChecked={laMissing} /> Create missing contacts in Lead Alchemist
+          <input type="checkbox" name="createMissing" value="yes" defaultChecked /> Create missing contacts in Lead Alchemist <span className="text-xs text-[var(--muted)]">(creating Lead Alchemist contacts can start its workflows)</span>
         </label>
       </form>
 

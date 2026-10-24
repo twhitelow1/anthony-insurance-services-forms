@@ -16,7 +16,7 @@ export async function GET(req: NextRequest) {
   const sortParam = req.nextUrl.searchParams.get("sort");
   const sort: ClientSort = sortParam === "name" || sortParam === "applications" ? sortParam : "latest";
   const f = req.nextUrl.searchParams.get("filter");
-  const filter: ClientFilter = f === "review" || f === "individuals" || f === "businesses" ? f : "all";
+  const filter: ClientFilter = f === "review" || f === "individuals" || f === "businesses" || f === "no_primary" ? f : "all";
   const rows = [];
   for (let page = 1; rows.length < MAX_ROWS; page++) {
     const { rows: batch } = await listClients({ q, sort, filter, page, pageSize: 500 });

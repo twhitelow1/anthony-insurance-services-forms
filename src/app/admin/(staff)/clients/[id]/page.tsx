@@ -168,19 +168,26 @@ export default async function AccountPage({ params, searchParams }: PageProps<"/
         <SystemLink href={l.salesforce("Account", client.sfAccountId)} missing="Not linked to a Salesforce Account yet. Use Sync to Salesforce.">
           View Account in Salesforce
         </SystemLink>
-        {client.ghlCompanyId ? (
+        {client.ghlCompanyId && (
           <SystemLink title={LA_COMPANY_HINT} href={l.ghlCompany(client.ghlCompanyId)} missing="">
             View Company in Lead Alchemist
           </SystemLink>
-        ) : (
+        )}
+        {laConnected && (
+          <form action={addToLeadAlchemistAction} className="flex flex-wrap items-center gap-2">
+            <input type="hidden" name="id" value={client.id} />
+            <button className="btn-secondary" title="Link the Lead Alchemist Company (or the one with the same name, or create it), then link or create each contact and put them in it.">
+              Sync to Lead Alchemist (Company + contacts)
+            </button>
+            <label className="flex items-center gap-1 text-sm">
+              <input type="checkbox" name="createMissing" value="yes" defaultChecked /> Create missing contacts
+              <span className="text-xs text-[var(--muted)]">(can start Lead Alchemist workflows)</span>
+            </label>
+          </form>
+        )}
+        {!client.ghlCompanyId && (
           laConnected && (
             <>
-              <form action={addToLeadAlchemistAction}>
-                <input type="hidden" name="id" value={client.id} />
-                <button className="btn-secondary" title="Link the Lead Alchemist Company with the same name, or create it. Contacts can be added to it any time.">
-                  Add Company to Lead Alchemist
-                </button>
-              </form>
               <details className="text-sm">
                 <summary className="btn-secondary cursor-pointer list-none">Link to an existing Company</summary>
                 <form action={linkAccountCompanyAction} className="card mt-2 space-y-2 !p-3">
@@ -328,6 +335,16 @@ export default async function AccountPage({ params, searchParams }: PageProps<"/
 
       <section className="card mb-6 overflow-x-auto !p-0" aria-labelledby="contacts-heading">
         <h2 id="contacts-heading" className="px-5 pt-4 font-semibold">Contacts ({people.length})</h2>
+        {people.some((p) => p.homeHere) && !client.primaryContactId && (
+          <p className="mx-5 mt-2 rounded-lg border border-[var(--notice-border)] bg-[var(--notice-bg)] p-2 text-sm" role="alert">
+            ⚠ This account has no primary contact. Use &quot;Make primary&quot; on the right person.
+          </p>
+        )}
+        {client.primaryContactId && client.primaryReview && (
+          <p className="mx-5 mt-2 rounded-lg border border-[var(--notice-border)] bg-[var(--notice-bg)] p-2 text-sm" role="alert">
+            ⚠ The primary contact was picked automatically (the first of several contacts). Check it, and use &quot;Make primary&quot; on the right person if needed.
+          </p>
+        )}
         <table className="data-table">
           <thead>
             <tr>
@@ -342,13 +359,13 @@ export default async function AccountPage({ params, searchParams }: PageProps<"/
           <tbody>
             {people.map((p) => {
               const mails = contactEmails.get(p.id) ?? [];
-              const primary = !!p.primaryEmail && p.primaryEmail === client.primaryEmail;
+              const primary = p.id === client.primaryContactId;
               return [
                 <tr key={p.id}>
                   <td>
                     <span className="font-medium">{p.name}</span>
                     {p.title && <div className="text-xs text-[var(--muted)]">{p.title}</div>}
-                    {primary && <span className="badge badge-neutral ml-1">Primary</span>}
+                    {p.homeHere && (primary ? <span className="badge badge-success ml-1">Primary</span> : <span className="badge badge-neutral ml-1">Secondary</span>)}
                     {!p.homeHere && <div className="text-xs text-[var(--muted)]">Belongs to another account; filled out an application here</div>}
                   </td>
                   <td className="text-sm">
@@ -392,7 +409,7 @@ export default async function AccountPage({ params, searchParams }: PageProps<"/
                     )}
                   </td>
                   <td className="text-sm">
-                    {!primary && p.primaryEmail && (
+                    {!primary && p.homeHere && (
                       <form action={setPrimaryContactAction}>
                         <input type="hidden" name="id" value={client.id} />
                         <input type="hidden" name="contactId" value={p.id} />

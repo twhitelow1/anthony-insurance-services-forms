@@ -82,6 +82,7 @@ async function listFilters(formData: FormData) {
   const presence: Presence = { app: yesNo(p.get("app")), sf: yesNo(p.get("sf")), la: yesNo(p.get("la")) };
   const account = yesNo(p.get("account"));
   const company = COMPANY.find((c) => c === p.get("company"));
+  const tier = p.get("tier") === "primary" || p.get("tier") === "secondary" ? (p.get("tier") as "primary" | "secondary") : undefined;
   const q = (await cookies()).get(CONTACT_SEARCH_COOKIE)?.value ?? "";
   const words = [
     q && `matching "${q}"`,
@@ -89,8 +90,9 @@ async function listFilters(formData: FormData) {
     ...(["app", "sf", "la"] as const).filter((k) => presence[k]).map((k) => `${{ app: "AIS Connect", sf: "Salesforce", la: "Lead Alchemist" }[k]}: ${presence[k]}`),
     account && `account in AIS Connect: ${account}`,
     company && `Lead Alchemist Company: ${company}`,
+    tier && `client tier: ${tier}`,
   ].filter(Boolean);
-  return { q, filter, presence, account, company, text: words.length ? `Contacts ${words.join(", ")}` : "All contacts" };
+  return { q, filter, presence, account, company, tier, text: words.length ? `Contacts ${words.join(", ")}` : "All contacts" };
 }
 
 async function bulk(formData: FormData, key: keyof typeof WORK): Promise<never> {
@@ -119,7 +121,7 @@ async function bulk(formData: FormData, key: keyof typeof WORK): Promise<never> 
     console.error("[contacts] bulk action failed:", message);
     return finish(backTo(formData), "error", message);
   }
-  const report = await saveSyncReport({ title: verb, scope: `${values.length} ticked on Contacts`, page: backTo(formData), actor, total: values.length, done: r.done, notes: r.notes });
+  const report = await saveSyncReport({ title: verb, scope: `${values.length} ticked on Contacts`, page: backTo(formData), actor, total: values.length, done: r.done, notes: r.notes, contacts: r.contacts });
   return finish(backTo(formData), report.clean ? "ok" : "warn", report.text, report.href);
 }
 

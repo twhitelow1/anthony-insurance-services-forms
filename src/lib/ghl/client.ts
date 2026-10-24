@@ -162,6 +162,10 @@ export interface GhlContact {
   city?: string | null;
   state?: string | null;
   postalCode?: string | null;
+  /** Lead Alchemist's built-in contact type ("lead" or "customer"). Read only here. */
+  type?: string | null;
+  tags?: string[];
+  customFields?: { id: string; value?: unknown }[];
 }
 
 /** The Lead Alchemist contact with this email, if any (Lead Alchemist's own duplicate lookup). */

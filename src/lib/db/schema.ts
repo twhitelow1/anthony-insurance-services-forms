@@ -1,9 +1,10 @@
 import { sql } from "drizzle-orm";
 import { customType } from "drizzle-orm/pg-core";
-import { boolean, index, integer, jsonb, pgTable, primaryKey, serial, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { boolean, index, integer, jsonb, pgTable, primaryKey, serial, text, timestamp, uniqueIndex, uuid, type AnyPgColumn } from "drizzle-orm/pg-core";
 import type { FormValues } from "@/lib/forms/types";
 import type { ApplicationStatus } from "@/lib/applications/status";
 import type { AiReview } from "@/lib/ai/review";
+import type { ContactTally } from "@/lib/bulk/tally";
 
 /**
  * An Account: the business behind one or more applications (an individual instructor's
@@ -55,6 +56,13 @@ export const clients = pgTable(
      * Salesforce is the only place it changes; the app reads it and passes it to Lead Alchemist.
      */
     sfAccountType: text("sf_account_type"),
+    /**
+     * Client tier: the account's one primary contact (every other contact on it is secondary).
+     * One column, so an account can never have two primaries.
+     */
+    primaryContactId: uuid("primary_contact_id").references((): AnyPgColumn => contacts.id, { onDelete: "set null" }),
+    /** The primary was picked automatically (first contact of several): staff should check it. */
+    primaryReview: boolean("primary_review").notNull().default(false),
 
     /** Set when this record was merged into another; it no longer shows in lists. */
     mergedInto: uuid("merged_into"),
@@ -72,6 +80,7 @@ export const clients = pgTable(
     index("clients_sf_account_idx").on(t.sfAccountId),
     index("clients_name_key_idx").on(t.nameKey),
     index("clients_ghl_company_idx").on(t.ghlCompanyId),
+    index("clients_primary_contact_idx").on(t.primaryContactId),
   ],
 );
 
@@ -385,6 +394,7 @@ export const clientEmails = pgTable(
 );
 
 export type ClientEventType =
+  | "primary_changed"
   | "created"
   | "merged"
   | "split"
@@ -736,6 +746,8 @@ export const syncReports = pgTable(
     conflicts: jsonb("conflicts").$type<string[]>().notNull().default([]),
     skipped: jsonb("skipped").$type<string[]>().notNull().default([]),
     notes: jsonb("notes").$type<string[]>().notNull().default([]),
+    /** Lead Alchemist syncs: what happened to each contact (linked, created, skipped by reason, failed). */
+    contactCounts: jsonb("contact_counts").$type<ContactTally>(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [index("sync_reports_created_idx").on(t.createdAt)],

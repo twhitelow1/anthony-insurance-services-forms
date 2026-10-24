@@ -49,6 +49,17 @@ Salesforce admin are in [salesforce-setup.md](salesforce-setup.md).
 - **Lead Alchemist Companies:** built; the token needs the Businesses scopes. See
   [lead-alchemist-companies-plan.md](lead-alchemist-companies-plan.md).
 
+## Lead Alchemist mirror (2026-10-24)
+
+| Salesforce / AIS Connect | Lead Alchemist | How |
+|---|---|---|
+| Account | Company (Businesses API) | One per account, linked or created by the sync; personal-lines accounts too |
+| Contact | Contact, in the account's Company (Business field) | Linked by exact email or phone, else created ("Create missing contacts", on by default); never moved out of another Company |
+| Account Type (read only, from Salesforce) | Contact field "Account Type" (full text) | Written on every sync, never blanked |
+| Client tier (AIS Connect: one primary contact per account) | Contact field "Client Tier" (Primary / Secondary) | Written on every sync; not in Salesforce |
+| Everyone AIS Connect syncs | Tags `ais-connect`, `ais-business` / `ais-personal` | Only ever added |
+| Other accounts of a person at several | Tags `company: <name>` | Only ever added |
+
 ## Source of truth (suggested; open question 8)
 
 - **Salesforce** owns policy data: premium, dates, coverage.

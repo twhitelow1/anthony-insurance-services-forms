@@ -6,7 +6,7 @@ import { ensureClient, getClient, getContactByEmail } from "@/lib/clients/repo";
 const la = vi.hoisted(() => ({
   scope: true,
   businesses: [] as { id: string; name: string }[],
-  contacts: new Map<string, { id: string; email?: string; phone?: string; firstName?: string; lastName?: string; businessId?: string | null; companyName?: string; customFields?: unknown }>(),
+  contacts: new Map<string, { id: string; email?: string; phone?: string; firstName?: string; lastName?: string; businessId?: string | null; companyName?: string; customFields?: unknown; tags?: string[] }>(),
   attached: [] as { ids: string[]; businessId: string }[],
 }));
 vi.mock("@/lib/ghl/client", async (orig) => {
@@ -48,6 +48,11 @@ vi.mock("@/lib/ghl/client", async (orig) => {
       la.contacts.set(c.id, c);
       return { contact: { id: c.id } };
     },
+    addTags: async (id: string, tags: string[]) => {
+      const c = la.contacts.get(id)!;
+      c.tags = [...new Set([...(c.tags ?? []), ...tags])];
+      return {};
+    },
     listCustomFields: async () => [],
     createCustomField: async (name: string) => ({ id: `f-${name}`, name, fieldKey: name }),
   };
@@ -65,7 +70,8 @@ describe("accounts → Lead Alchemist Companies and contacts", () => {
     const clientId = await ensureClient({ email: `own.${tag}@gmail.com`, contactName: `Own ${tag}`, businessName: `Flip Gym ${tag}` });
 
     const without = await syncAccountsToLeadAlchemist([clientId], ACTOR, { sf: null, links: LINKS });
-    expect(without.notes.join(" ")).toMatch(/not in Lead Alchemist \(tick "Create missing contacts"/);
+    expect(without.notes.join(" ")).toMatch(/1 skipped \(1 not in Lead Alchemist and "Create missing contacts" was unticked\)/);
+    expect(without).toMatchObject({ done: 0, contacts: expect.objectContaining({ notCreated: 1, linked: 0, created: 0 }) });
     expect((await getContactByEmail(`own.${tag}@gmail.com`))!.ghlContactId).toBeNull();
 
     const r = await syncAccountsToLeadAlchemist([clientId], ACTOR, { sf: null, links: LINKS }, { createMissing: true });
@@ -127,7 +133,7 @@ describe("finding Lead Alchemist matches for unlinked contacts", () => {
 describe("filling in Lead Alchemist from the app", () => {
   it("gives a phone-only caller their name, email and company, and never overwrites without asking", async () => {
     la.scope = true;
-    const { connectSelectedContacts } = await import("./database");
+    const { syncContactsToLeadAlchemist } = await import("./database");
     const { updateLeadAlchemistDetails } = await import("@/lib/contacts/external");
     const tag = uniq();
     const clientId = await ensureClient({ email: `call.${tag}@gmail.com`, contactName: `Cal Ler${tag}`, businessName: `Ring Gym ${tag}`, phone: "5557771234" });
@@ -137,7 +143,7 @@ describe("filling in Lead Alchemist from the app", () => {
     const { linkLaContact } = await import("@/lib/ghl/match");
     await linkLaContact(person.id, `caller-${tag}`, ACTOR);
 
-    await connectSelectedContacts([person.id], ACTOR);
+    await syncContactsToLeadAlchemist([person.id], ACTOR, { sf: null, links: LINKS });
     const la1 = la.contacts.get(`caller-${tag}`)!;
     expect(la1).toMatchObject({ firstName: "Cal", lastName: `Ler${tag}`, email: `call.${tag}@gmail.com`, companyName: `Ring Gym ${tag}` });
     expect(la1.phone).toBe("+15557771234"); // already there: left as is
@@ -220,5 +226,58 @@ describe("reviewing a suggested Lead Alchemist contact", () => {
     const ids = [(await getContactByEmail(`one.${tag}@gmail.com`))!.ghlContactId, (await getContactByEmail(`two.${tag}@gmail.com`))!.ghlContactId];
     for (const id of ids) expect(la.contacts.get(id!)!.businessId).toBe(company.id);
     expect((await listAccountDirectory({ q: tag, laMissing: true })).rows).toEqual([]);
+  });
+});
+
+describe("the sync report counts every contact", () => {
+  it("links, creates and skips with a reason, needs attention when any is skipped, and writes Type, tier and tags", async () => {
+    la.scope = true;
+    const { syncAccountsToLeadAlchemist } = await import("./database");
+    const { ensureContact } = await import("@/lib/clients/repo");
+    const { listAccountDirectory } = await import("@/lib/accounts/directory");
+    const { saveSyncReport } = await import("@/lib/bulk/report");
+    const { getDb, schema } = await import("@/lib/db");
+    const { eq } = await import("drizzle-orm");
+    const tag = uniq();
+    const clientId = await ensureClient({ email: `a.${tag}@gmail.com`, contactName: `Ann ${tag}`, businessName: `Count Studio ${tag}` });
+    await (await getDb()).update(schema.clients).set({ sfAccountType: "Past Client" }).where(eq(schema.clients.id, clientId));
+    await ensureContact({ clientId, name: `Bea ${tag}`, email: `b.${tag}@gmail.com` }); // new: created
+    await ensureContact({ clientId, name: `Cy ${tag}` }); // no email or phone
+    await ensureContact({ clientId, name: `Di ${tag}`, email: `d.${tag}@gmail.com` }); // already in another Company
+    la.contacts.set(`ann-${tag}`, { id: `ann-${tag}`, email: `a.${tag}@gmail.com` }); // already in Lead Alchemist: linked
+    la.contacts.set(`di-${tag}`, { id: `di-${tag}`, email: `d.${tag}@gmail.com`, businessId: "someone-elses-company" });
+
+    const r = await syncAccountsToLeadAlchemist([clientId], ACTOR, { sf: null, links: LINKS }, { createMissing: true });
+    expect(r.contacts).toMatchObject({ linked: 1, created: 1, noEmailOrPhone: 1, otherCompany: 1, failed: 0 });
+    expect(r.done).toBe(0); // not every contact made it, so the account isn't "done"
+    expect(r.notes).toContainEqual(
+      `Count Studio ${tag}: 4 contacts: 1 linked, 1 created, 2 skipped (1 no email or phone; 1 already in another Company (left there)).`,
+    );
+    expect(la.contacts.get(`di-${tag}`)!.businessId).toBe("someone-elses-company"); // never moved
+
+    // Account Type (full text), client tier and the AIS Connect tags on each contact.
+    const ann = la.contacts.get(`ann-${tag}`)!;
+    expect(ann.customFields).toEqual(expect.arrayContaining([{ id: "f-Account Type", field_value: "Past Client" }, { id: "f-Client Tier", field_value: "Primary" }]));
+    expect(ann.tags).toEqual(expect.arrayContaining(["ais-connect", "ais-business"]));
+    const bea = la.contacts.get((await getContactByEmail(`b.${tag}@gmail.com`))!.ghlContactId!)!;
+    expect(bea.customFields).toEqual(expect.arrayContaining([{ id: "f-Client Tier", field_value: "Secondary" }]));
+
+    // "Contacts in Lead Alchemist" counts the two now in the Company straight away.
+    const [row] = (await listAccountDirectory({ q: `Count Studio ${tag}` })).rows;
+    expect(row.counts.laContacts).toBe(2);
+
+    const report = await saveSyncReport({ title: "Synced to Lead Alchemist", scope: "test", actor: ACTOR, total: 1, done: r.done, notes: r.notes, contacts: r.contacts });
+    expect(report.clean).toBe(false);
+    expect(report.text).toMatch(/^Needs attention: .*Contacts: 1 linked, 1 created, 2 skipped/);
+  });
+
+  it("an empty Account Type never blanks the one in Lead Alchemist", async () => {
+    la.scope = true;
+    const { syncAccountsToLeadAlchemist } = await import("./database");
+    const tag = uniq();
+    const clientId = await ensureClient({ email: `e.${tag}@gmail.com`, contactName: `Eve ${tag}`, businessName: `No Type Gym ${tag}` });
+    la.contacts.set(`eve-${tag}`, { id: `eve-${tag}`, email: `e.${tag}@gmail.com` });
+    await syncAccountsToLeadAlchemist([clientId], ACTOR, { sf: null, links: LINKS });
+    expect(JSON.stringify(la.contacts.get(`eve-${tag}`)!.customFields)).not.toContain("f-Account Type");
   });
 });

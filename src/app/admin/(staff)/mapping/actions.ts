@@ -20,7 +20,7 @@ import {
   type AccountMapFilter,
   type ContactMapFilter,
   companiesToSalesforce,
-  connectSelectedContacts,
+  syncContactsToLeadAlchemist,
   createAccountsInSalesforce,
   createContactsInSalesforce,
   linkCompaniesToAccounts,
@@ -86,7 +86,7 @@ const WORK: Record<string, { tab: Tab; re: RegExp; verb: string; options: string
     re: UUID,
     verb: "Synced to Lead Alchemist",
     options: ["createMissing"],
-    work: (ids, actor, o) => connectSelectedContacts(ids, actor, { createMissing: o.createMissing === "yes" }),
+    work: async (ids, actor, o) => syncContactsToLeadAlchemist(ids, actor, { sf: await salesforceClient(), links: await links() }, { createMissing: o.createMissing === "yes" }),
   },
   contactsToSf: {
     tab: "contacts",
@@ -181,7 +181,7 @@ async function bulk(formData: FormData, key: keyof typeof WORK): Promise<never> 
     return finish(formData, "error", message);
   }
   const tab = new URL(backTo(formData), "http://x").searchParams.get("tab") ?? "accounts";
-  const report = await saveSyncReport({ title: verb, scope: `${ids.length} ticked on Mapping → ${tab}`, page: backTo(formData), actor, total: ids.length, done: r.done, notes: r.notes });
+  const report = await saveSyncReport({ title: verb, scope: `${ids.length} ticked on Mapping → ${tab}`, page: backTo(formData), actor, total: ids.length, done: r.done, notes: r.notes, contacts: r.contacts });
   return finish(formData, report.clean ? "ok" : "warn", report.text, report.href);
 }
 

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { getDb, schema } from "@/lib/db";
 import { eq } from "drizzle-orm";
 import { getSyncReport, saveSyncReport, sortNotes, summarize } from "./report";
+import { describeTally, emptyTally } from "./tally";
 
 describe("sync reports", () => {
   it("sorts the sync messages into errors, conflicts and skipped rows", () => {
@@ -25,9 +26,24 @@ describe("sync reports", () => {
     const empty = { errors: [], conflicts: [], skipped: [], notes: [] };
     expect(summarize({ title: "Synced to Lead Alchemist", total: 25, done: 25, ...empty })).toEqual({ text: "Synced to Lead Alchemist: all 25 done, no conflicts or errors.", clean: true });
     const r = summarize({ title: "Synced", total: 25, done: 22, ...empty, conflicts: ["a", "b"], errors: ["c"] });
-    expect(r).toEqual({ text: "Synced: 22 of 25 done · 2 conflicts · 1 error.", clean: false });
+    expect(r).toEqual({ text: "Needs attention: Synced: 22 of 25 done · 2 conflicts · 1 error.", clean: false });
     // Done but with a conflict note is still not clean.
     expect(summarize({ title: "S", total: 1, done: 1, ...empty, conflicts: ["x"] }).clean).toBe(false);
+    // A skipped row is never "all done" either.
+    expect(summarize({ title: "S", total: 1, done: 1, ...empty, skipped: ["x"] }).clean).toBe(false);
+  });
+
+  it("counts what happened to each contact in a Lead Alchemist sync, and any skipped contact needs attention", () => {
+    const empty = { errors: [], conflicts: [], skipped: [], notes: [] };
+    const contacts = { ...emptyTally(), linked: 3, created: 2 };
+    expect(summarize({ title: "Synced to Lead Alchemist", total: 2, done: 2, ...empty, contacts })).toEqual({
+      text: "Synced to Lead Alchemist: all 2 done, no conflicts or errors. Contacts: 3 linked, 2 created.",
+      clean: true,
+    });
+    const r = summarize({ title: "Synced to Lead Alchemist", total: 2, done: 2, ...empty, contacts: { ...contacts, noEmailOrPhone: 1, failed: 1 } });
+    expect(r.clean).toBe(false);
+    expect(r.text).toBe("Needs attention: Synced to Lead Alchemist: 2 of 2 done. Contacts: 3 linked, 2 created, 1 skipped (1 no email or phone), 1 failed.");
+    expect(describeTally({ ...emptyTally(), linked: 1, otherCompany: 2 })).toBe("3 contacts: 1 linked, 0 created, 2 skipped (2 already in another Company (left there))");
   });
 
   it("saves the report, and raises a Notifications card only when something needs attention", async () => {

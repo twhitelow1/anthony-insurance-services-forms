@@ -106,10 +106,10 @@ export async function splitContactAction(formData: FormData) {
 }
 
 export async function setPrimaryContactAction(formData: FormData) {
-  await requireStaff();
+  const staff = await requireStaff();
   const clientId = String(formData.get("id") ?? "");
   try {
-    await setPrimaryContact(clientId, String(formData.get("contactId") ?? ""));
+    await setPrimaryContact(clientId, String(formData.get("contactId") ?? ""), `staff:${staff.email}`);
   } catch (err) {
     back(clientId, { error: err instanceof Error ? err.message : String(err) });
   }
@@ -169,9 +169,9 @@ export async function refreshContactsAction(formData: FormData) {
 }
 
 /**
- * "Add Company to Lead Alchemist" (no contact needed: people can join the Company later), and
- * "Add to Lead Alchemist" on a contact (creates the Company first if needed, then the contact if
- * Lead Alchemist has no email or phone match, puts them in the Company and fills in their details).
+ * "Sync to Lead Alchemist (Company + contacts)" on the account page (the same sync as the bulk
+ * buttons: the Company, then every contact linked or, with "Create missing contacts", created and
+ * put in it), and "Add to Lead Alchemist" on one contact. Ends with a sync report.
  */
 export async function addToLeadAlchemistAction(formData: FormData) {
   const staff = await requireStaff();
@@ -179,20 +179,25 @@ export async function addToLeadAlchemistAction(formData: FormData) {
   if (!client) throw new Error("Account not found");
   const contactId = String(formData.get("contactId") ?? "");
   const one = UUID_RE.test(contactId);
-  let tone: "ok" | "error" = "ok";
+  const actor = `staff:${staff.email}`;
+  let tone: "ok" | "warn" | "error" = "ok";
   let text: string;
+  let href: string | undefined;
   try {
     const { syncAccountsToLeadAlchemist } = await import("@/lib/mapping/database");
     const { links } = await import("@/lib/integrations/links");
-    const r = await syncAccountsToLeadAlchemist([client.id], `staff:${staff.email}`, { sf: await salesforceClient(), links: await links() }, one ? { createMissing: true, contactIds: [contactId] } : { companyOnly: true });
-    const after = await getClient(client.id);
-    text = [one ? "Added to Lead Alchemist." : after?.ghlCompanyId ? "The Company is in Lead Alchemist." : "No Company was added.", ...r.notes].join(" ");
-    if (!after?.ghlCompanyId && !one) tone = "error";
+    const { saveSyncReport } = await import("@/lib/bulk/report");
+    const createMissing = one || formData.get("createMissing") === "yes";
+    const r = await syncAccountsToLeadAlchemist([client.id], actor, { sf: await salesforceClient(), links: await links() }, one ? { createMissing, contactIds: [contactId] } : { createMissing });
+    const report = await saveSyncReport({ title: "Synced to Lead Alchemist", scope: one ? `One contact on ${client.name}` : `Account ${client.name}`, page: `/admin/clients/${client.id}`, actor, total: 1, done: r.done, notes: r.notes, contacts: r.contacts });
+    tone = report.clean ? "ok" : "warn";
+    text = report.text;
+    href = report.href;
   } catch (err) {
     tone = "error";
     text = err instanceof Error ? err.message : String(err);
   }
-  const f = await setFlash({ tone, text });
+  const f = await setFlash({ tone, text, href });
   revalidatePath(`/admin/clients/${client.id}`);
   redirect(`/admin/clients/${client.id}?f=${f}`);
 }

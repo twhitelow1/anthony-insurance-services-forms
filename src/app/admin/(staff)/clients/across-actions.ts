@@ -10,6 +10,7 @@ import {
   accountsToSalesforce,
   addAccountsToApp,
   linkSuggestedMatches,
+  NO_ACCOUNT_TYPE,
   startAccountImport,
   stepAccountImport,
   type AccountMatchFilter,
@@ -89,14 +90,16 @@ async function listFilters(formData: FormData) {
   const presence: AccountPresence = { app: yesNo(p.get("app")), sf: yesNo(p.get("sf")), la: yesNo(p.get("la")) };
   const match = (["suggested", "none"] as AccountMatchFilter[]).find((m) => m === p.get("match"));
   const laMissing = p.get("lacontacts") === "missing";
+  const type = p.get("type")?.slice(0, 80) || null;
   const q = (await cookies()).get(CLIENT_SEARCH_COOKIE)?.value ?? "";
   const words = [
     q && `matching "${q}"`,
     ...(["app", "sf", "la"] as const).filter((k) => presence[k]).map((k) => `${{ app: "AIS Connect", sf: "Salesforce", la: "Lead Alchemist" }[k]}: ${presence[k]}`),
     match && `suggested match: ${match === "suggested" ? "yes" : "no"}`,
     laMissing && "contacts not in Lead Alchemist yet",
+    type && `Account Type: ${type === NO_ACCOUNT_TYPE ? "none" : type}`,
   ].filter(Boolean);
-  return { q, presence, match, laMissing, text: words.length ? `Accounts ${words.join(", ")}` : "All accounts" };
+  return { q, presence, match, laMissing, type, text: words.length ? `Accounts ${words.join(", ")}` : "All accounts" };
 }
 
 async function bulk(formData: FormData, key: keyof typeof WORK): Promise<never> {
@@ -125,7 +128,7 @@ async function bulk(formData: FormData, key: keyof typeof WORK): Promise<never> 
     console.error("[accounts] bulk action failed:", message);
     return finish(backTo(formData), "error", message);
   }
-  const report = await saveSyncReport({ title: verb, scope: `${keys.length} ticked on Accounts → Across all three`, page: backTo(formData), actor, total: keys.length, done: r.done, notes: r.notes });
+  const report = await saveSyncReport({ title: verb, scope: `${keys.length} ticked on Accounts → Across all three`, page: backTo(formData), actor, total: keys.length, done: r.done, notes: r.notes, contacts: r.contacts });
   return finish(backTo(formData), report.clean ? "ok" : "warn", report.text, report.href);
 }
 
