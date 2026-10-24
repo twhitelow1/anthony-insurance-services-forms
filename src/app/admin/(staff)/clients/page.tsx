@@ -3,29 +3,36 @@ import { cookies } from "next/headers";
 import { fmtDate, StatusBadge } from "@/components/portal";
 import { SalesforceBadge, SystemLink } from "@/components/clients";
 import { requireStaff } from "@/lib/auth/session";
-import { listClients, type ClientSort } from "@/lib/clients/repo";
+import { countPossibleDuplicates, listClients, type ClientFilter, type ClientSort } from "@/lib/clients/repo";
 import { links } from "@/lib/integrations/links";
 import { CLIENT_SEARCH_COOKIE } from "@/lib/clients/search-cookie";
 import { searchClientsAction } from "./actions";
 import { linkAllGhlAction } from "@/app/admin/actions";
 import { ghlConfig } from "@/lib/ghl/client";
 
-export const metadata = { title: "Clients | Anthony Insurance Services" };
+export const metadata = { title: "Accounts | Anthony Insurance Services" };
 
 const SORTS: { value: ClientSort; label: string }[] = [
   { value: "latest", label: "Latest activity" },
   { value: "name", label: "Name (A–Z)" },
   { value: "applications", label: "Most applications" },
 ];
+const FILTERS: { value: ClientFilter; label: string }[] = [
+  { value: "all", label: "All accounts" },
+  { value: "businesses", label: "Businesses" },
+  { value: "individuals", label: "Individuals" },
+  { value: "review", label: "Possible duplicates" },
+];
 const PAGE_SIZE = 50;
 
-export default async function Clients({ searchParams }: PageProps<"/admin/clients">) {
+export default async function Accounts({ searchParams }: PageProps<"/admin/clients">) {
   await requireStaff("/admin/clients");
   const sp = await searchParams;
   const q = (await cookies()).get(CLIENT_SEARCH_COOKIE)?.value ?? "";
   const sort = SORTS.some((s) => s.value === sp.sort) ? (sp.sort as ClientSort) : "latest";
+  const filter = FILTERS.some((f) => f.value === sp.filter) ? (sp.filter as ClientFilter) : "all";
   const page = Math.max(1, Number(sp.page) || 1);
-  const { rows, total } = await listClients({ q, sort, page, pageSize: PAGE_SIZE });
+  const [{ rows, total }, duplicates] = await Promise.all([listClients({ q, sort, filter, page, pageSize: PAGE_SIZE }), countPossibleDuplicates()]);
   const l = await links();
   const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const n = (k: string) => Math.max(0, Number(sp[k]) || 0);
@@ -38,22 +45,22 @@ export default async function Clients({ searchParams }: PageProps<"/admin/client
           ? "Lead Alchemist isn't connected yet."
           : null;
   const qs = (over: Record<string, string | number>) => {
-    const p = new URLSearchParams({ sort, page: String(page), ...Object.fromEntries(Object.entries(over).map(([k, v]) => [k, String(v)])) });
+    const p = new URLSearchParams({ sort, filter, page: String(page), ...Object.fromEntries(Object.entries(over).map(([k, v]) => [k, String(v)])) });
     return `?${p}`;
   };
 
   return (
     <div>
       <div className="mb-2 flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-semibold">Clients</h1>
+        <h1 className="text-2xl font-semibold">Accounts</h1>
         <div className="flex flex-wrap gap-2">
           <a className="btn-secondary" href={`/admin/clients/export${qs({ page: 1 })}`} download>
             Export CSV
           </a>
-          <Link className="btn-secondary" href="/admin/clients/backfill">Link existing Salesforce accounts</Link>
+          <Link className="btn-secondary" href="/admin/settings/mapping">Data mapping (Salesforce, Lead Alchemist)</Link>
           {ghlConfig() && (
             <form action={linkAllGhlAction}>
-              <button className="btn-secondary" title="Find the Lead Alchemist contact for every client that isn't linked yet (50 per click)">
+              <button className="btn-secondary" title="Find the Lead Alchemist contact for every person that isn't linked yet (50 per click)">
                 Link to Lead Alchemist
               </button>
             </form>
@@ -61,13 +68,25 @@ export default async function Clients({ searchParams }: PageProps<"/admin/client
         </div>
       </div>
       <p className="mb-6 text-sm text-[var(--muted)]">
-        Every client and prospect, with all of their applications. Linked to their Salesforce Account and Lead Alchemist contact.
+        Every business (and individual) with their contacts and applications. Each links to its Salesforce Account and Lead Alchemist Company.
       </p>
+      {duplicates > 0 && filter !== "review" && (
+        <p className="mb-4 rounded-lg border border-[var(--notice-border)] bg-[var(--notice-bg)] p-3 text-sm" role="status">
+          {duplicates} new account{duplicates === 1 ? " shares its" : "s share their"} name with an existing one.{" "}
+          <Link className="btn-link" href="?filter=review">Review possible duplicates</Link>
+        </p>
+      )}
 
       {ghlMessage && <p className="callout mb-4 text-sm" role="status">{ghlMessage}</p>}
-      <form action={searchClientsAction} className="card mb-6 grid gap-3 !p-4 sm:grid-cols-[1fr_auto_auto_auto]" role="search">
-        <label className="sr-only" htmlFor="q">Search clients</label>
+      <form action={searchClientsAction} className="card mb-6 grid gap-3 !p-4 sm:grid-cols-[1fr_auto_auto_auto_auto]" role="search">
+        <label className="sr-only" htmlFor="q">Search accounts</label>
         <input id="q" name="q" defaultValue={q} className="input" placeholder="Name, business, email or phone" />
+        <label className="sr-only" htmlFor="filter">Show</label>
+        <select id="filter" name="filter" defaultValue={filter} className="input">
+          {FILTERS.map((f) => (
+            <option key={f.value} value={f.value}>{f.label}</option>
+          ))}
+        </select>
         <label className="sr-only" htmlFor="sort">Sort</label>
         <select id="sort" name="sort" defaultValue={sort} className="input">
           {SORTS.map((s) => (
@@ -76,7 +95,7 @@ export default async function Clients({ searchParams }: PageProps<"/admin/client
         </select>
         <button className="btn-primary">Search</button>
         {q && (
-          <button className="btn-secondary" name="clear" value="1" title="Show every client">
+          <button className="btn-secondary" name="clear" value="1" title="Show every account">
             Clear
           </button>
         )}
@@ -86,9 +105,10 @@ export default async function Clients({ searchParams }: PageProps<"/admin/client
         <table className="data-table">
           <thead>
             <tr>
-              <th>Client</th>
-              <th>Email</th>
+              <th>Account</th>
+              <th>Primary contact</th>
               <th>Phone</th>
+              <th>Contacts</th>
               <th>Applications</th>
               <th>Latest</th>
               <th>Salesforce</th>
@@ -100,10 +120,15 @@ export default async function Clients({ searchParams }: PageProps<"/admin/client
               <tr key={c.id}>
                 <td>
                   <Link className="row-link font-medium" href={`/admin/clients/${c.id}`}>{c.name}</Link>
-                  {c.contactName && c.contactName !== c.name && <div className="text-xs text-[var(--muted)]">{c.contactName}</div>}
+                  {c.isIndividual && <span className="badge badge-neutral ml-1">Individual</span>}
+                  {c.possibleDuplicateOf && <span className="badge badge-warning ml-1" title="Shares its name with another account">Possible duplicate</span>}
                 </td>
-                <td className="text-sm">{c.primaryEmail}</td>
+                <td className="text-sm">
+                  {c.contactName && c.contactName !== c.name ? c.contactName : null}
+                  <div className="text-xs text-[var(--muted)]">{c.primaryEmail}</div>
+                </td>
                 <td className="whitespace-nowrap text-sm">{c.phone ?? "—"}</td>
+                <td>{c.contacts}</td>
                 <td>{c.applications}</td>
                 <td className="whitespace-nowrap text-sm">
                   {c.latestStatus ? (
@@ -127,15 +152,20 @@ export default async function Clients({ searchParams }: PageProps<"/admin/client
                   )}
                 </td>
                 <td className="text-sm">
-                  <SystemLink className="btn-link" href={l.ghlContact(c.ghlContactId)} missing="Not linked to a Lead Alchemist contact yet">
-                    {c.ghlContactId ? "Linked" : "Not linked"}
+                  <SystemLink className="btn-link" href={l.ghlCompany(c.ghlCompanyId)} missing="No Lead Alchemist Company yet (Settings → Data mapping)">
+                    {c.ghlCompanyId ? "Company" : "No Company"}
                   </SystemLink>
+                  <div>
+                    <SystemLink className="btn-link text-xs" href={l.ghlContact(c.ghlContactId)} missing="Primary contact not linked to Lead Alchemist yet">
+                      {c.ghlContactId ? "Contact" : "Contact not linked"}
+                    </SystemLink>
+                  </div>
                 </td>
               </tr>
             ))}
             {!rows.length && (
               <tr>
-                <td colSpan={7} className="py-10 text-center text-[var(--muted)]">{q ? "No clients match that search." : "No clients yet."}</td>
+                <td colSpan={9} className="py-10 text-center text-[var(--muted)]">{q ? "No accounts match that search." : "No accounts yet."}</td>
               </tr>
             )}
           </tbody>
@@ -143,7 +173,7 @@ export default async function Clients({ searchParams }: PageProps<"/admin/client
       </div>
       <nav className="mt-4 flex items-center justify-between text-sm" aria-label="Pages">
         <span className="text-[var(--muted)]">
-          {total} client{total === 1 ? "" : "s"} · page {page} of {pages}
+          {total} account{total === 1 ? "" : "s"} · page {page} of {pages}
         </span>
         <span className="flex gap-3">
           {page > 1 && <Link className="btn-link" href={qs({ page: page - 1 })}>← Previous</Link>}

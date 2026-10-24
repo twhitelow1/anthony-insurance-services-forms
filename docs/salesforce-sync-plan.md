@@ -27,22 +27,27 @@ Salesforce admin are in [salesforce-setup.md](salesforce-setup.md).
 
 ## What's built (feature/salesforce-sync)
 
-- **Admin → Clients**:
-  - one record per client or prospect, grouped by email, with several emails allowed;
-  - search by name, email or phone;
-  - CSV export;
-  - merge and split, with an audit log;
+- **Admin → Accounts** (2026-10-24: organised like Salesforce):
+  - one Account per business (or per individual), with its Contacts; each application records the Contact who filled it out;
+  - same business = same name plus the same phone, business email domain or website; name-only matches are flagged
+    "Possible duplicate" for staff;
+  - search by business, person, email or phone; CSV export;
+  - merge accounts and split a contact off, with an audit log;
   - notes, and the sync status of both systems.
 - **App → Salesforce on submit**, as described in the setup doc:
-  - matching, then creating the Account, Contact and Opportunity;
+  - matching, then creating the Account, Contact and Opportunity, with the applicant as the Opportunity's primary contact role;
   - the PDF as a File, and a Chatter note;
   - links in both directions;
   - mapped Account fields filled only while empty.
   - Test submissions never sync. The sync is queued and retried (5 attempts), never blocks the applicant, and has a
     dry-run mode and an on/off switch in Settings.
-- **One-time backfill:** existing Accounts are linked to clients. A dry run produces a CSV report first. It writes only
-  the link fields, is resumable and paced, and has an admin page and a CLI.
-- **Lead Alchemist Companies:** not connected yet; see [lead-alchemist-companies-plan.md](lead-alchemist-companies-plan.md).
+- **Data mapping (Settings → Data mapping)**: three resumable, visual mapping screens. Each scans (read-only), shows
+  every record next to its proposed match for staff to change, and writes nothing until staff confirm:
+  - Salesforce Accounts → app Accounts (import every Account and its Contacts; link fields written back);
+  - app Accounts → Lead Alchemist Companies (link or create; contacts put in the Company);
+  - past applications → Salesforce (pick each account's Salesforce Account; their syncs are queued).
+- **Lead Alchemist Companies:** built; the token needs the Businesses scopes. See
+  [lead-alchemist-companies-plan.md](lead-alchemist-companies-plan.md).
 
 ## Source of truth (suggested; open question 8)
 

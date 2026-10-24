@@ -1,9 +1,11 @@
 # Salesforce setup (for Anthony Insurance's Salesforce admin)
 
 This connects the online applications app to Anthony Insurance's Salesforce org. When an application
-is submitted, the app finds or creates the client's **Account** and **Contact**, creates an
-**Opportunity** for that application, attaches the application PDF to the Account, and posts a short
-Chatter note. Every record also gets links to the matching records in the app and in Lead Alchemist.
+is submitted, the app finds or creates the business's **Account** and the **Contact** who filled it out, creates an
+**Opportunity** for that application with that Contact as its primary contact role, attaches the application PDF to
+the Account, and posts a short Chatter note. Every record also gets links to the matching records in the app and in
+Lead Alchemist. Staff can also bring every existing Salesforce Account into the app, with a mapping screen to check
+first (section 5).
 
 Nothing here changes how agents use Salesforce today. Do it in a **sandbox first** if you have one.
 
@@ -60,7 +62,8 @@ Create a dedicated user the app signs in as, so its changes are easy to spot in 
 2. Create a permission set **Applications App Integration**:
    - Permission set license: **Salesforce API Integration**.
    - System permission: **API Enabled**.
-   - Object permissions: **Account**, **Contact** and **Opportunity**: Read, Create, Edit (no Delete).
+   - Object permissions: **Account**, **Contact** and **Opportunity**: Read, Create, Edit (no Delete). Opportunity
+     Edit also lets the app add the Opportunity's contact role (OpportunityContactRole).
    - Field permissions: edit on the eight link fields above and on the mapped fields in step 1.
    - Files: Create on Content (ContentVersion). Chatter must be on so the app can post to the Account feed.
 3. Assign the permission set to the integration user.
@@ -98,7 +101,7 @@ org. Never paste them into chat or the code.
 | `SALESFORCE_CLIENT_ID` | Consumer Key from step 3 |
 | `SALESFORCE_CLIENT_SECRET` | Consumer Secret from step 3 |
 | `SALESFORCE_LIGHTNING_URL` | Where staff open records: `https://dg0000000i7rimaa.lightning.force.com` (the sandbox has its own) |
-| `CRON_SECRET` | 32+ random characters. Vercel Cron uses it for the daily retry run; the backfill CLI uses it too |
+| `CRON_SECRET` | 32+ random characters. Vercel Cron uses it for the daily retry run |
 | `SALESFORCE_API_VERSION` | Optional. Default `v62.0` |
 
 Turning the sync on, dry run or live, and the Opportunity stage for each status are all in **Admin → Settings →
@@ -116,24 +119,39 @@ Salesforce**, so they change without a redeploy.
    Press it again: nothing new is created.
 4. **Production, dry run, then live.** Put the production values in Vercel **Production**. Start in Dry run, check a
    real submission's dry-run plan, then switch to Live.
-5. **Link existing Accounts.** Admin → Clients → **Link existing Salesforce accounts** → **Start a dry run**. Download
-   the report (matched, new, ambiguous, skipped) and review it. Then type LINK and **Apply**. Applying only writes the
-   new link fields. Ambiguous Accounts are left alone: merge them in Salesforce or in Admin → Clients, then run again.
-   The same thing from a terminal: `CRON_SECRET=… node scripts/salesforce-backfill.mjs --url https://<app>`.
+5. **Bring in every Salesforce Account.** Admin → Settings → **Data mapping** → *Salesforce Accounts → app Accounts* →
+   **Scan now**. The scan only reads Salesforce. It then lists every Salesforce Account next to the app account it
+   matches ("Already linked", "Strong match", "Check" for a name-only match, or "No match"), with a choice per row:
+   link to one of the listed accounts, create a new one, or skip. Save any changes, tick "I've reviewed the mapping",
+   and **Confirm and apply**. Applying links or creates each account, adds its Contacts, and writes only the link
+   fields back onto the Salesforce Account and Contacts.
+6. **Send past applications.** Data mapping → *Past applications → Salesforce*: the same kind of screen, one row per
+   account with applications not yet in Salesforce, matched to a Salesforce Account. Confirming queues each
+   application's sync (Opportunity, contact role, PDF, Chatter note). Run them with **Run queued syncs now**, or let the
+   daily run pick them up.
 
 ## 6. How the app decides who's who
 
-The org has no duplicate rules, so the app matches carefully and never guesses:
+The app is organised the same way as Salesforce: an **Account** is the business (someone applying for themselves gets
+an Account in their own name, Legal Entity "Individual"), its **Contacts** are the people, and each application records
+the Contact who filled it out. The org has no duplicate rules, so the app matches carefully and never guesses:
 
-1. A **Contact with the applicant's email** → that Contact's Account.
-2. Otherwise an **Account with exactly the same name and the same phone number** (any format) → that Account. A new
-   Contact is added for the email.
-3. Anything uncertain → **Needs review**, and nothing is created. This covers a name match with a different or missing
-   phone, or several Accounts or Contacts matching. Staff see it on the client's page in Admin → Clients.
-4. Otherwise it's a **new client**: new Account, Contact and Opportunity.
+1. An app account already linked to a Salesforce Account (by the sync or the mapping screen) → that Account.
+2. A business: an **Account with exactly the same name and the same phone number** (any format) → that Account. With
+   no Account of that name, a Contact with the applicant's email whose Account has the same name (ignoring
+   punctuation and LLC/Inc) → that Account.
+3. An individual: a **Contact with their email** → that Contact's Account, then name and phone as above.
+4. Anything uncertain → **Needs review**, and nothing is created. This covers a name match with a different or missing
+   phone, or several Accounts or Contacts matching. Staff see it on the account's page in Admin → Accounts, and can
+   pick the right Account on the *Past applications → Salesforce* mapping screen.
+5. Otherwise a **new Account**, with the applicant as its Contact.
 
-Once linked, the client's Salesforce IDs are saved in the app, so later applications go straight to the same Account.
-Running the sync twice never creates duplicates.
+The applicant's **Contact**: the one with their email on that Account; else their one Contact elsewhere in Salesforce
+(tied to this application by the Opportunity's contact role); else a new Contact on the Account. The Opportunity's
+primary contact role is always the person who filled out the application.
+
+Once linked, the Salesforce IDs are saved on the app's account and contact, so later applications go straight to the
+same records. Running the sync twice never creates duplicates.
 
 **Opportunity stage:** set per application status in Admin → Settings → Salesforce. When nothing is set, a submitted
 application gets the org's first **open** stage (never Closed Won), "Coverage bound" gets the first won stage, and
@@ -147,7 +165,7 @@ application gets the org's first **open** stage (never Closed Won), "Coverage bo
 | Lead Alchemist contact | `<Lead Alchemist address>/v2/location/<location ID>/contacts/detail/<id>` | Already used by the app; the address bar on a contact |
 | Lead Alchemist opportunity | `<Lead Alchemist address>/v2/location/<location ID>/opportunities/list/<id>?tab=OpportunityDetails` | HighLevel changelog, "Dynamic Routing for Opportunity Modal" |
 | Lead Alchemist company | `<Lead Alchemist address>/v2/location/<location ID>/businesses/detail/<id>` | **Not verified**; Companies aren't connected yet (see lead-alchemist-companies-plan.md) |
-| App Client page | `<APP_URL>/admin/clients/<client ID>` | The app's own route; never an email or phone in the address |
+| App account page | `<APP_URL>/admin/clients/<account ID>` | The app's own route; never an email or phone in the address |
 | App application | `<APP_URL>/admin/applications/<application ID>` | The app's own route |
 
 The Lead Alchemist address is set in Admin → Settings (the white-label domain; default `https://app.leadalchemist.io`).

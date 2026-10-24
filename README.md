@@ -16,16 +16,19 @@ Applicant ──► form ──► POST /api/forms/<slug>/submit
                          2. save to Postgres  ◄── system of record (nothing lost if Lead Alchemist is down)
                          3. after response:
                             ├─ fill the carrier's own PDF application + make an answer summary; store both privately
-                            ├─ client record (Admin → Clients), grouped by email
+                            ├─ Account (the business) + Contact (who filled it out) in Admin → Accounts
                             ├─ Lead Alchemist: upsert contact + tags + 4 custom fields (incl. PDF link) + opportunity
-                            ├─ Salesforce (when on): Account + Contact + Opportunity + PDF + Chatter note + links
+                            ├─ Lead Alchemist Company: the applicant's contact goes in the Account's Company
+                            ├─ Salesforce (when on): Account + Contact + Opportunity + contact role + PDF + note + links
                             │    queued and retried; never blocks the applicant; test submissions never go
                             ├─ Resend: confirmation email to the applicant
                             └─ Claude: AI pre-review for staff (optional)
 
 Staff  ──► /admin (email sign-in link) ──► search · view · edit · delete · status · notes · PDF · Ask AI
-                         /admin/clients ──► every client and prospect, all their applications, links to Salesforce
-                                            and Lead Alchemist, search by name/email/phone, CSV export, merge/split
+                         /admin/clients ──► Accounts: every business (and individual), its contacts and applications,
+                                            links to Salesforce and Lead Alchemist, search, CSV export, merge/split
+                         /admin/settings/mapping ──► Salesforce → app import, app → Lead Alchemist Companies,
+                                            past applications → Salesforce: visual mapping, confirm before writing
                          "Switch to user mode" ──► the client portal, as yourself or as any applicant
                          status change ──► Lead Alchemist field + tag + opportunity stage; optional client email
                          "Prepare carrier email" ──► Outlook draft (.eml) with the filled carrier PDF + [encrypt] subject
@@ -64,14 +67,25 @@ None of the application answers go to Lead Alchemist.
 Received → In review → Information needed → Submitted to carrier → Quote ready → Coverage bound / Declined / Withdrawn. The wording clients see is in `src/lib/applications/status.ts`.
 
 ## Managing applications (staff)
-- **Clients** (`/admin/clients`): one row per client or prospect (someone who only started an application shows as a prospect).
-  - Search by name, business, email or phone (any phone format). The search is kept in a cookie, never in the address.
+- **Accounts** (`/admin/clients`): one row per business, or per individual applying for themselves (someone who only started an application shows as a prospect).
+  - **How applications are grouped:**
+    - The person is matched by email.
+    - The business is matched by name plus the same phone, business email domain or website.
+    - A new account that only shares a name with an existing one is flagged **Possible duplicate**, so staff can merge it or keep it separate.
+  - Search by business, person, email or phone (any phone format). The search is kept in a cookie, never in the address. Filter by businesses, individuals or possible duplicates.
   - **Export CSV** exports the current list.
-  - A client's page has all of their applications with PDFs, and buttons that open the Account in Salesforce and the contact in Lead Alchemist (greyed out until the record exists).
+  - **An account's page** shows:
+    - its **contacts**, each with their Salesforce and Lead Alchemist links;
+    - its **applications**, each with who filled it out, the PDF, and the Salesforce and Lead Alchemist opportunities;
+    - buttons that open the Salesforce Account and the Lead Alchemist Company (greyed out until the record exists).
   - **Sync to Salesforce** (retry), notes and an activity log.
-  - **Merge** two clients (paste the other's page link), or **split** an email off into its own client.
+  - **Merge** two accounts (paste the other's page link), or **split** a contact off into an account of their own.
   - Its address is `/admin/clients/<id>`, never an email. Old `/admin/applicants/...` links redirect there.
-  - **Link existing Salesforce accounts** runs the one-time backfill: a dry run with a CSV report first, then apply.
+- **Applications** can be listed newest first or grouped by account. Each row shows the account and who filled it out.
+- **Data mapping** (Settings → Data mapping), each with a visual mapping screen and an explicit confirm:
+  - *Salesforce Accounts → app Accounts*: imports every Salesforce Account and its Contacts.
+  - *App Accounts → Lead Alchemist Companies*: links or creates Companies and puts contacts in them (`docs/lead-alchemist-companies-plan.md`).
+  - *Past applications → Salesforce*: sends applications submitted before the sync was on.
 - **Edit answers:** the button on an application page opens the same form, already filled in, and you can jump to any section.
   - Saving runs the same checks as the public form.
   - The activity log records which questions changed.

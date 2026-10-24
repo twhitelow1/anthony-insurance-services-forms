@@ -61,13 +61,13 @@ export function describes({ withoutFields = [] as string[] } = {}): Record<strin
   };
 }
 
-const PREFIX: Record<string, string> = { Account: "001", Contact: "003", Opportunity: "006", ContentVersion: "068", FeedItem: "0D5" };
+const PREFIX: Record<string, string> = { Account: "001", Contact: "003", Opportunity: "006", OpportunityContactRole: "00K", ContentVersion: "068", FeedItem: "0D5" };
 const unq = (s: string) => s.replace(/\\'/g, "'").replace(/\\\\/g, "\\");
 
 export function mockSalesforce(
   opts: { withoutFields?: string[]; failWith?: () => Error | null; usage?: () => { used: number; max: number } } = {},
 ) {
-  const records: Record<string, Rec[]> = { Account: [], Contact: [], Opportunity: [], ContentVersion: [], FeedItem: [] };
+  const records: Record<string, Rec[]> = { Account: [], Contact: [], Opportunity: [], OpportunityContactRole: [], ContentVersion: [], FeedItem: [] };
   const writes: { op: string; object: string; id: string; data: Record<string, unknown> }[] = [];
   const queries: string[] = [];
   const d = describes(opts);
@@ -90,6 +90,8 @@ export function mockSalesforce(
       }));
     if ((m = soql.match(/FROM Account WHERE Name = '((?:[^'\\]|\\.)*)'/))) return records.Account.filter((a) => a.Name === unq(m![1]));
     if ((m = soql.match(/FROM Account WHERE Id = '((?:[^'\\]|\\.)*)'/))) return records.Account.filter((a) => a.Id === unq(m![1]));
+    if ((m = soql.match(/FROM OpportunityContactRole WHERE OpportunityId = '([^']+)' AND ContactId = '([^']+)'/)))
+      return records.OpportunityContactRole.filter((r) => r.OpportunityId === m![1] && r.ContactId === m![2]);
     if (/FROM OpportunityStage/.test(soql))
       return [
         { Id: "s1", MasterLabel: "Prospecting", IsClosed: false, IsWon: false, SortOrder: 1 },
@@ -98,7 +100,7 @@ export function mockSalesforce(
         { Id: "s4", MasterLabel: "Closed Lost", IsClosed: true, IsWon: false, SortOrder: 4 },
       ];
     if (/FROM Account\b/.test(soql) && /\(SELECT/.test(soql)) {
-      // Backfill: accounts with their contacts, ordered by Id.
+      // The import scan: accounts with their contacts, ordered by Id.
       const after = soql.match(/WHERE Id > '([^']+)'/)?.[1];
       return records.Account.filter((a) => !after || a.Id > after)
         .sort((a, b) => a.Id.localeCompare(b.Id))

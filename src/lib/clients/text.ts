@@ -43,3 +43,42 @@ export function csvCell(value: unknown): string {
 export function toCsv(header: string[], rows: unknown[][]): string {
   return [header, ...rows].map((r) => r.map(csvCell).join(",")).join("\r\n") + "\r\n";
 }
+
+const NAME_NOISE = /\b(the|llc|l l c|inc|incorporated|corp|corporation|co|company|ltd|limited|pllc|lp|llp)\b/g;
+
+/**
+ * A business name reduced for matching: lower case, "&" as "and", punctuation and
+ * LLC/Inc/Co/The dropped. "The Dance Co., LLC" and "dance co" both → "dance".
+ * Migration 0011 applies the same rule in SQL.
+ */
+export function nameKey(name: string | null | undefined): string {
+  return (name ?? "")
+    .toLowerCase()
+    .replace(/&/g, " and ")
+    .replace(/[^a-z0-9 ]/g, " ")
+    .replace(NAME_NOISE, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/** Email providers anyone can use: a shared domain there says nothing about the business. */
+const FREE_EMAIL_DOMAINS = new Set([
+  "gmail.com", "googlemail.com", "yahoo.com", "ymail.com", "hotmail.com", "outlook.com", "live.com", "msn.com", "aol.com",
+  "icloud.com", "me.com", "mac.com", "comcast.net", "att.net", "sbcglobal.net", "verizon.net", "protonmail.com", "proton.me",
+  "gmx.com", "mail.com", "zoho.com", "yandex.com", "charter.net", "cox.net", "bellsouth.net", "earthlink.net",
+]);
+
+/** The email's domain when it belongs to a business (not gmail.com and the like), else null. */
+export function businessDomain(email: string | null | undefined): string | null {
+  const domain = (email ?? "").trim().toLowerCase().split("@")[1];
+  if (!domain || FREE_EMAIL_DOMAINS.has(domain)) return null;
+  return domain;
+}
+
+/** A website as a bare domain: "https://www.acme.com/about" → "acme.com". */
+export function websiteDomain(url: string | null | undefined): string | null {
+  const s = (url ?? "").trim().toLowerCase();
+  if (!s) return null;
+  const host = s.replace(/^[a-z]+:\/\//, "").split(/[/?#]/)[0].replace(/^www\./, "");
+  return /^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(host) ? host : null;
+}

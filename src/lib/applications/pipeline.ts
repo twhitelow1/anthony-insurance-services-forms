@@ -9,7 +9,7 @@ import { emailLayout, sendMail } from "@/lib/mail";
 import { aiClient } from "@/lib/ai/client";
 import { reviewApplication } from "@/lib/ai/review";
 import { applicationPdfUrl, createApplicationPdf, createCarrierPdf, mainDocument } from "./documents";
-import { addEvent, getApplicant, linkApplicantGhl, saveAiReview, setGhlIds } from "./repo";
+import { addEvent, getApplicant, getApplication, linkApplicantGhl, saveAiReview, setGhlIds } from "./repo";
 import { STATUSES, type ApplicationStatus } from "./status";
 import { libraryForForm, libraryUrl } from "@/lib/library";
 import { getForm } from "@/forms";
@@ -17,7 +17,8 @@ import { complianceAttachments } from "@/lib/compliance";
 import { confirmationEmail, statusEmail } from "@/lib/mail/templates";
 import { missingUploads } from "@/lib/forms/validate";
 import { standardContactFields } from "@/lib/ghl/sync";
-import { assignApplicationClient, assignDraftClient } from "@/lib/clients/repo";
+import { assignApplicationClient, assignDraftClient, setContactGhl } from "@/lib/clients/repo";
+import { companyForApplicant } from "@/lib/ghl/companies";
 import { links } from "@/lib/integrations/links";
 import { salesforceConfig } from "@/lib/salesforce/config";
 import { enqueueSalesforceSync, runJob } from "@/lib/salesforce/jobs";
@@ -44,14 +45,17 @@ const clientDetails = (form: FormDefinition, values: Application["values"], emai
   const c = standardContactFields(form, values);
   return {
     email,
+    firstName: c.firstName,
+    lastName: c.lastName,
     contactName: name,
     businessName: business,
     phone: c.phone,
+    website: c.website,
     address: { street: c.address1, city: c.city, state: c.state, postalCode: c.postalCode },
   };
 };
 
-/** Attach the application to its client (created on first application). Never throws. */
+/** Attach the application to its Account and the Contact who filled it out (created when new). Never throws. */
 async function linkClient(form: FormDefinition, app: Application): Promise<string | null> {
   try {
     return await assignApplicationClient(app.id, clientDetails(form, app.values, app.applicantEmail, app.applicantName, app.businessName));
@@ -144,6 +148,9 @@ export async function pushToGhl(form: FormDefinition, app: Application, clientId
     const r = await syncNewApplication(form, app, pdf ? applicationPdfUrl(app) : undefined, saved?.ghlContactId, clientPage);
     await setGhlIds(app.id, { contactId: r.contactId, opportunityId: r.opportunityId });
     await linkApplicantGhl(app.applicantEmail, r.contactId);
+    const contactId = app.contactId ?? (await getApplication(app.id))?.contactId;
+    if (contactId) await setContactGhl(contactId, r.contactId);
+    const company = await companyForApplicant(clientId ?? app.clientId, r.contactId).catch((err) => `Lead Alchemist Company: ${describe(err)}`);
     const missing = [
       r.missingFields.length ? `contact fields: ${r.missingFields.join(", ")}` : null,
       r.missingOpportunityFields?.length ? `opportunity fields: ${r.missingOpportunityFields.join(", ")}` : null,
@@ -157,6 +164,7 @@ export async function pushToGhl(form: FormDefinition, app: Application, clientId
             : "created this application's opportunity"
           : null,
         missing.length ? `create these Lead Alchemist custom fields to fill them in: ${missing.join("; ")}` : null,
+        company,
       ]
         .filter(Boolean)
         .join("; ")}`,

@@ -122,6 +122,8 @@ export interface GhlContact {
   lastName?: string | null;
   contactName?: string | null;
   companyName?: string | null;
+  /** The Lead Alchemist Company the contact belongs to (a contact has at most one). */
+  businessId?: string | null;
 }
 
 /** The Lead Alchemist contact with this email, if any (Lead Alchemist's own duplicate lookup). */
@@ -230,4 +232,69 @@ export async function listPipelines(): Promise<GhlPipeline[]> {
     cache: "no-store",
   });
   return data.pipelines ?? [];
+}
+
+// ── Companies (the API calls them "businesses") ─────────────────────
+// Scopes: businesses.readonly, businesses.write (and contacts.write to attach contacts).
+
+export interface GhlBusiness {
+  id: string;
+  name: string;
+  phone?: string | null;
+  email?: string | null;
+  website?: string | null;
+  address?: string | null;
+  city?: string | null;
+  state?: string | null;
+  postalCode?: string | null;
+  country?: string | null;
+  description?: string | null;
+}
+
+export type BusinessInput = Omit<GhlBusiness, "id">;
+
+/** Every Company in the sub-account (paged 100 at a time). */
+export async function listBusinesses(max = 10_000): Promise<GhlBusiness[]> {
+  const { locationId } = ghlConfig()!;
+  const all: GhlBusiness[] = [];
+  for (let skip = 0; skip < max; skip += 100) {
+    const q = new URLSearchParams({ locationId, limit: "100", skip: String(skip) });
+    const data = await ghlFetch<{ businesses?: GhlBusiness[] }>(`/businesses/?${q}`, { cache: "no-store" });
+    const page = data.businesses ?? [];
+    all.push(...page);
+    if (page.length < 100) break;
+  }
+  return all;
+}
+
+const businessBody = (input: Partial<BusinessInput>) =>
+  Object.fromEntries(Object.entries(input).filter(([, v]) => typeof v === "string" && v.trim()).map(([k, v]) => [k, (v as string).trim()]));
+
+export async function createBusiness(input: BusinessInput): Promise<GhlBusiness> {
+  const { locationId } = ghlConfig()!;
+  // The API spells the response key "buiseness".
+  const data = await ghlFetch<{ buiseness?: GhlBusiness; business?: GhlBusiness }>("/businesses/", {
+    method: "POST",
+    body: JSON.stringify({ ...businessBody(input), name: input.name, locationId }),
+    cache: "no-store",
+  });
+  const created = data.buiseness ?? data.business;
+  if (!created?.id) throw new Error("Lead Alchemist didn't return the new Company");
+  return created;
+}
+
+export async function updateBusiness(id: string, input: Partial<BusinessInput>) {
+  return ghlFetch(`/businesses/${id}`, { method: "PUT", body: JSON.stringify(businessBody(input)), cache: "no-store" });
+}
+
+/** Put contacts in a Company (up to 50 per call; a contact can only be in one Company). */
+export async function addContactsToBusiness(contactIds: string[], businessId: string) {
+  const { locationId } = ghlConfig()!;
+  for (let i = 0; i < contactIds.length; i += 50) {
+    await ghlFetch("/contacts/bulk/business", {
+      method: "POST",
+      body: JSON.stringify({ locationId, ids: contactIds.slice(i, i + 50), businessId }),
+      cache: "no-store",
+    });
+  }
 }

@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { requireStaff } from "@/lib/auth/session";
 import { STATUSES, STATUS_KEYS } from "@/lib/applications/status";
 import { type GhlPipeline, ghlConfig, listPipelines } from "@/lib/ghl/client";
@@ -123,6 +124,21 @@ export default async function SettingsPage({ searchParams }: PageProps<"/admin/s
             The address your team opens Lead Alchemist at (the white-label domain), without a path. Blank uses{" "}
             <code>{env.ghlAppUrl || DEFAULT_GHL_APP_URL}</code>.
           </Hint>
+          <label className="field-label mt-4" htmlFor="ghlCompaniesSync">Lead Alchemist Companies for new accounts</label>
+          <select
+            id="ghlCompaniesSync"
+            name="ghlCompaniesSync"
+            className="input"
+            defaultValue={saved.ghlCompaniesSync === undefined ? "" : saved.ghlCompaniesSync ? "on" : "off"}
+          >
+            <option value="">{`Use Vercel value (${env.ghlCompaniesSync ? "on" : "off"})`}</option>
+            <option value="on">On: find or create the Company and add the applicant</option>
+            <option value="off">Off: only accounts linked on the mapping screen</option>
+          </select>
+          <Hint>
+            Accounts linked to a Company (Data mapping, below) always add new applicants to it. Turned on, a new business also gets its
+            Company: the one with the same name, or a new one. Individuals never get a Company.
+          </Hint>
           <p className="mb-3 mt-4 text-sm text-[var(--muted)]">Every application becomes its own opportunity in this pipeline.</p>
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
@@ -181,10 +197,19 @@ export default async function SettingsPage({ searchParams }: PageProps<"/admin/s
           <Hint>Pick stages from the applications pipeline. Bound, declined and withdrawn also mark the opportunity won, lost or abandoned.</Hint>
         </section>
 
+        <section className="card !p-5" aria-labelledby="mapping">
+          <h2 id="mapping" className="mb-1 font-semibold">Data mapping</h2>
+          <p className="mb-3 text-sm text-[var(--muted)]">
+            Bring every Salesforce Account into the app, link the app&apos;s accounts to Lead Alchemist Companies, and send past applications to
+            Salesforce. Each one shows its proposed matches side by side for you to check and change, and writes nothing until you confirm.
+          </p>
+          <Link className="btn-secondary" href="/admin/settings/mapping">Open data mapping</Link>
+        </section>
+
         <section className="card !p-5" aria-labelledby="salesforce">
           <h2 id="salesforce" className="mb-1 font-semibold">Salesforce</h2>
           <p className="mb-3 text-sm text-[var(--muted)]">
-            Submitted applications (never test ones) create or link the client&apos;s Account and Contact and an Opportunity, upload the PDF and
+            Submitted applications (never test ones) create or link the business&apos;s Account, the Contact who filled it out and an Opportunity, upload the PDF and
             post a note. Set up in docs/salesforce-setup.md.
           </p>
           <div className="grid gap-4 sm:grid-cols-2">

@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { aerialInstructorApplication as form } from "@/forms/aerial-instructor-application";
 import { createApplication, getApplication, setGhlIds } from "@/lib/applications/repo";
 import { createApplicationPdf } from "@/lib/applications/documents";
-import { getClient } from "@/lib/clients/repo";
+import { getClient, getContact } from "@/lib/clients/repo";
 import { linksFor } from "@/lib/integrations/urls";
 import type { FormValues } from "@/lib/forms/types";
 import { mockGhlLinks, mockSalesforce } from "@/test/salesforce-mock";
@@ -55,7 +55,7 @@ describe("matching", () => {
     const sf = mockSalesforce();
     const acc = await sf.api.create("Account", { Name: "Alexa Prussin", Phone: "555-010-0100" });
     const con = await sf.api.create("Contact", { AccountId: acc.id, Email: "Alexa@Example.com", LastName: "P" });
-    expect(await matchSalesforce(sf.api, { email: "  alexa@example.com ", accountName: "Someone Else" })).toMatchObject({
+    expect(await matchSalesforce(sf.api, { email: "  alexa@example.com ", accountName: "Someone Else", isIndividual: true })).toMatchObject({
       kind: "contact",
       accountId: acc.id,
       contactId: con.id,
@@ -80,7 +80,18 @@ describe("matching", () => {
     const a2 = await sf.api.create("Account", { Name: "Two" });
     await sf.api.create("Contact", { AccountId: a1.id, Email: "dup@example.com" });
     await sf.api.create("Contact", { AccountId: a2.id, Email: "dup@example.com" });
-    expect(await matchSalesforce(sf.api, { email: "dup@example.com", accountName: "X" })).toMatchObject({ kind: "review" });
+    expect(await matchSalesforce(sf.api, { email: "dup@example.com", accountName: "X", isIndividual: true })).toMatchObject({ kind: "review" });
+  });
+
+  it("for a business, uses the applicant's Contact only when its Account is the same business", async () => {
+    const sf = mockSalesforce();
+    const acc = await sf.api.create("Account", { Name: "Bounce Barn, LLC", Phone: "555-999-0000" });
+    await sf.api.create("Contact", { AccountId: acc.id, Email: "owner@example.com", LastName: "O" });
+    // A Contact on a differently named Account is the person, not this business.
+    const other = await sf.api.create("Account", { Name: "Owner's Other Gym" });
+    await sf.api.create("Contact", { AccountId: other.id, Email: "staff@example.com", LastName: "S" });
+    expect(await matchSalesforce(sf.api, { email: "owner@example.com", accountName: "Bounce Barn" })).toMatchObject({ kind: "contact", accountId: acc.id });
+    expect(await matchSalesforce(sf.api, { email: "staff@example.com", accountName: "Bounce Barn" })).toEqual({ kind: "new" });
   });
 
   it("is a new client when nothing matches", async () => {
@@ -165,7 +176,9 @@ describe("sync an application to Salesforce", () => {
     await setGhlIds(app.id, { contactId: "lac1", opportunityId: "lao1" });
     const out = await syncApplicationToSalesforce(app.id, deps(sf, ghl));
     expect(out.status).toBe("synced");
-    expect(sf.creates().map((w) => w.object)).toEqual(["Account", "Contact", "Opportunity", "ContentVersion", "FeedItem"]);
+    expect(sf.creates().map((w) => w.object)).toEqual(["Account", "Contact", "Opportunity", "OpportunityContactRole", "ContentVersion", "FeedItem"]);
+    // The person who filled it out is the Opportunity's primary contact.
+    expect(sf.creates().find((w) => w.object === "OpportunityContactRole")!.data).toMatchObject({ IsPrimary: true });
 
     const account = sf.records.Account[0];
     expect(account).toMatchObject({
@@ -192,8 +205,9 @@ describe("sync an application to Salesforce", () => {
     expect(sf.records.ContentVersion[0]).toMatchObject({ FirstPublishLocationId: account.Id });
     expect(String(sf.records.FeedItem[0].Body)).toContain(app.reference);
 
-    // Stored on the client and the application.
-    expect(client).toMatchObject({ sfAccountId: account.Id, sfContactId: sf.records.Contact[0].Id, sfStatus: "linked" });
+    // Stored on the account, the contact who filled it out, and the application.
+    expect(client).toMatchObject({ sfAccountId: account.Id, sfStatus: "linked" });
+    expect((await getContact(synced!.contactId!))!.sfContactId).toBe(sf.records.Contact[0].Id);
     expect(synced).toMatchObject({ sfOpportunityId: sf.records.Opportunity[0].Id, sfSyncStatus: "synced" });
 
     // And the Salesforce links went back into Lead Alchemist, with one note.
@@ -279,6 +293,7 @@ describe("sync an application to Salesforce", () => {
       "create Account",
       "create Contact",
       "create Opportunity",
+      "create OpportunityContactRole",
       "upload ContentVersion",
       "post FeedItem",
       "update Account",

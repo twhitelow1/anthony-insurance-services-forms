@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { sign } from "@/lib/auth/session";
-import { ensureClient, clientEmailsOf } from "@/lib/clients/repo";
+import { ensureClient, listAccountContacts } from "@/lib/clients/repo";
 import { CLIENT_SEARCH_COOKIE } from "@/lib/clients/search-cookie";
 
 // A cookie jar standing in for the browser, so the real session checks run.
@@ -22,7 +22,7 @@ beforeEach(() => jar.clear());
 afterEach(() => vi.unstubAllEnvs());
 
 describe("admin-only access", () => {
-  it("the clients CSV export needs a staff session", async () => {
+  it("the accounts CSV export needs a staff session", async () => {
     const { GET } = await import("./export/route");
     const req = () => new NextRequest("https://forms.example.com/admin/clients/export?sort=name");
     expect((await GET(req())).status).toBe(401);
@@ -37,21 +37,20 @@ describe("admin-only access", () => {
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toContain("text/csv");
     const csv = await res.text();
-    expect(csv.split("\r\n")[0]).toContain("Client,Contact name,Email,Phone");
-    expect(csv).toContain(`CSV Studio,,${email},(555) 444-3333`);
+    expect(csv.split("\r\n")[0]).toContain("Account,Type,Primary contact,Email,Phone");
+    expect(csv).toContain(`CSV Studio,Business,${email},${email},(555) 444-3333`);
     expect(csv.trim().split("\r\n")).toHaveLength(2);
   });
 
-  it("the backfill API takes staff or the CLI secret, nobody else", async () => {
-    const { GET, POST } = await import("@/app/api/admin/salesforce-backfill/route");
-    const url = "https://forms.example.com/api/admin/salesforce-backfill";
-    expect((await GET(new NextRequest(url))).status).toBe(401);
-    expect((await POST(new NextRequest(url, { method: "POST", body: "{}" }))).status).toBe(401);
-    vi.stubEnv("CRON_SECRET", "a-long-enough-cron-secret-value");
-    expect((await GET(new NextRequest(url, { headers: { authorization: "Bearer wrong-secret-of-some-length" } }))).status).toBe(401);
-    expect((await GET(new NextRequest(url, { headers: { authorization: "Bearer a-long-enough-cron-secret-value" } }))).status).toBe(200);
-    await signIn("staff", "amy@anthonyinsuranceservices.com");
-    expect((await GET(new NextRequest(url))).status).toBe(200);
+  it("mapping actions refuse anyone who isn't staff", async () => {
+    const { startScanAction, confirmAction, saveDecisionsAction } = await import("@/app/admin/(staff)/settings/mapping/actions");
+    const { getRun } = await import("@/lib/mapping/runs");
+    const fd = new FormData();
+    fd.set("kind", "lead-alchemist-companies");
+    fd.set("reviewed", "yes");
+    await signIn("client", "someone@example.com");
+    for (const action of [startScanAction, confirmAction, saveDecisionsAction]) await expect(action(fd)).rejects.toThrow(/NEXT_REDIRECT/);
+    expect(await getRun("la_companies")).toBeNull();
   });
 
   it("the retry cron needs the secret", async () => {
@@ -62,8 +61,8 @@ describe("admin-only access", () => {
     expect(ok.status).toBe(200);
   });
 
-  it("client actions refuse anyone who isn't staff", async () => {
-    const { mergeClientAction, splitEmailAction } = await import("./actions");
+  it("account actions refuse anyone who isn't staff", async () => {
+    const { mergeClientAction, splitContactAction } = await import("./actions");
     const a = await ensureClient({ email: `act-a.${Math.random().toString(36).slice(2, 8)}@example.com` });
     const b = await ensureClient({ email: `act-b.${Math.random().toString(36).slice(2, 8)}@example.com` });
     const fd = new FormData();
@@ -71,7 +70,7 @@ describe("admin-only access", () => {
     fd.set("other", b);
     await signIn("client", "someone@example.com");
     await expect(mergeClientAction(fd)).rejects.toThrow(/NEXT_REDIRECT/);
-    await expect(splitEmailAction(fd)).rejects.toThrow(/NEXT_REDIRECT/);
-    expect(await clientEmailsOf(a)).toHaveLength(1); // nothing merged
+    await expect(splitContactAction(fd)).rejects.toThrow(/NEXT_REDIRECT/);
+    expect(await listAccountContacts(a)).toHaveLength(1); // nothing merged
   });
 });

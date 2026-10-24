@@ -5,7 +5,7 @@ import { cookies } from "next/headers";
 import { CLIENT_SEARCH_COOKIE } from "@/lib/clients/search-cookie";
 import { redirect } from "next/navigation";
 import { requireStaff } from "@/lib/auth/session";
-import { addClientEvent, getClient, listClientApplications, mergeClients, setPrimaryEmail, splitClientEmail } from "@/lib/clients/repo";
+import { addClientEvent, getClient, keepSeparate, listClientApplications, mergeClients, setPrimaryContact, splitContact } from "@/lib/clients/repo";
 import { getApplication } from "@/lib/applications/repo";
 import { syncNow } from "@/lib/salesforce/jobs";
 import { defaultSyncDeps } from "@/lib/salesforce/sync";
@@ -17,7 +17,7 @@ const back = (clientId: string, params: Record<string, string>): never =>
   redirect(`/admin/clients/${clientId}?${new URLSearchParams(params).toString()}`);
 
 /**
- * Results go on the application's and client's activity log (shown on return), not in the address:
+ * Results go on the application's and account's activity log (shown on return), not in the address:
  * they can name the client, and names, emails and phones never go in URLs.
  */
 
@@ -33,11 +33,11 @@ export async function syncApplicationAction(formData: FormData) {
   redirect(`/admin/applications/${app.id}?sf=${r.error ? "error" : "done"}`);
 }
 
-/** "Sync to Salesforce" on a client: every submitted, non-test application, oldest first. */
+/** "Sync to Salesforce" on an Account: every submitted, non-test application, oldest first. */
 export async function syncClientAction(formData: FormData) {
   await requireStaff();
   const client = await getClient(String(formData.get("id") ?? ""));
-  if (!client) throw new Error("Client not found");
+  if (!client) throw new Error("Account not found");
   const deps = await defaultSyncDeps();
   if ("off" in deps) back(client.id, { sf: "off" });
   const apps = (await listClientApplications(client.id)).filter((a) => !a.isTest).reverse();
@@ -51,9 +51,9 @@ export async function syncClientAction(formData: FormData) {
 export async function mergeClientAction(formData: FormData) {
   const staff = await requireStaff();
   const targetId = String(formData.get("id") ?? "");
-  // Staff paste the other client's page link or ID.
+  // Staff paste the other account's page link or ID.
   const sourceId = String(formData.get("other") ?? "").match(UUID_RE)?.[0] ?? "";
-  if (!sourceId) back(targetId, { error: "Paste the other client's page link (or its ID) to merge it in." });
+  if (!sourceId) back(targetId, { error: "Paste the other account's page link (or its ID) to merge it in." });
   try {
     await mergeClients(targetId, sourceId, `staff:${staff.email}`);
   } catch (err) {
@@ -63,12 +63,36 @@ export async function mergeClientAction(formData: FormData) {
   back(targetId, { saved: "merged" });
 }
 
-export async function splitEmailAction(formData: FormData) {
+/** "Possible duplicate": merge this new Account into the existing one it looks like. */
+export async function mergeIntoDuplicateAction(formData: FormData) {
+  const staff = await requireStaff();
+  const id = String(formData.get("id") ?? "");
+  const client = await getClient(id);
+  if (!client?.possibleDuplicateOf) back(id, { error: "This account isn't flagged as a possible duplicate." });
+  let targetId = "";
+  try {
+    targetId = await mergeClients(client!.possibleDuplicateOf!, client!.id, `staff:${staff.email}`);
+  } catch (err) {
+    back(id, { error: err instanceof Error ? err.message : String(err) });
+  }
+  revalidatePath("/admin/clients");
+  back(targetId, { saved: "merged" });
+}
+
+export async function keepSeparateAction(formData: FormData) {
+  const staff = await requireStaff();
+  const id = String(formData.get("id") ?? "");
+  await keepSeparate(id, `staff:${staff.email}`);
+  revalidatePath("/admin/clients");
+  back(id, { saved: "separate" });
+}
+
+export async function splitContactAction(formData: FormData) {
   const staff = await requireStaff();
   const clientId = String(formData.get("id") ?? "");
   let newId = "";
   try {
-    newId = await splitClientEmail(clientId, String(formData.get("email") ?? ""), `staff:${staff.email}`);
+    newId = await splitContact(clientId, String(formData.get("contactId") ?? ""), `staff:${staff.email}`);
   } catch (err) {
     back(clientId, { error: err instanceof Error ? err.message : String(err) });
   }
@@ -76,11 +100,11 @@ export async function splitEmailAction(formData: FormData) {
   back(newId, { saved: "split" });
 }
 
-export async function setPrimaryEmailAction(formData: FormData) {
+export async function setPrimaryContactAction(formData: FormData) {
   await requireStaff();
   const clientId = String(formData.get("id") ?? "");
   try {
-    await setPrimaryEmail(clientId, String(formData.get("email") ?? ""));
+    await setPrimaryContact(clientId, String(formData.get("contactId") ?? ""));
   } catch (err) {
     back(clientId, { error: err instanceof Error ? err.message : String(err) });
   }
@@ -97,15 +121,16 @@ export async function addClientNoteAction(formData: FormData) {
 }
 
 /**
- * The Clients search box. The query (often an email or phone) is kept in a short-lived,
+ * The Accounts search box. The query (often an email or phone) is kept in a short-lived,
  * staff-only cookie instead of the address, so it never lands in URLs, history or logs.
  */
 export async function searchClientsAction(formData: FormData) {
   await requireStaff();
   const q = formData.get("clear") ? "" : String(formData.get("q") ?? "").trim().slice(0, 100);
   const sort = String(formData.get("sort") ?? "latest").replace(/[^a-z]/g, "");
+  const filter = String(formData.get("filter") ?? "all").replace(/[^a-z]/g, "");
   const jar = await cookies();
   if (q) jar.set(CLIENT_SEARCH_COOKIE, q, { httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "lax", path: "/admin/clients", maxAge: 3600 });
   else jar.delete({ name: CLIENT_SEARCH_COOKIE, path: "/admin/clients" });
-  redirect(`/admin/clients?sort=${sort}`);
+  redirect(`/admin/clients?sort=${sort}&filter=${filter}`);
 }

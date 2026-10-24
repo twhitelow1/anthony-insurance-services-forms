@@ -63,8 +63,8 @@ Typed or drawn signature (#8) · Save progress + "Started" status (E) · Documen
 ## Phase 7: Salesforce and the three-way bridge (nice to have)
 | Item | Needs |
 |---|---|
-| #11 Accounts, contacts, opportunities and PDFs synced to Salesforce, with three-way links and Admin → Clients | 🟡 Built (feature/salesforce-sync). Next: Salesforce admin setup, sandbox dry run, live, then the backfill |
-| G Two-way across all three systems (Salesforce → app and Lead Alchemist; Lead Alchemist Companies) | Companies scopes; the conflict rule (open question 8) |
+| #11 Accounts, contacts, opportunities and PDFs synced to Salesforce, with three-way links and Admin → Accounts | 🟡 Built (feature/salesforce-sync). Next: Salesforce admin setup, sandbox dry run, live, then the mapping screens (Salesforce → app, past applications → Salesforce) |
+| G Two-way across all three systems | 🟡 Salesforce → app import and app → Lead Alchemist Companies built, with visual mapping (2026-10-24). Next: the Businesses scopes on the Lead Alchemist token; ongoing Salesforce → app updates need the conflict rule (open question 8) |
 | #15 Commission and revenue tracking | To learn where policy and premium data lives |
 
 ## Already done

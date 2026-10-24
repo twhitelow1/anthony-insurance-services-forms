@@ -30,7 +30,8 @@ Applicants fill in an online application. The app then:
 
 Staff work in the **admin**:
 - **Applications:** status, notes, PDFs, edit answers, activity log.
-- **Clients:** every client and prospect with all of their applications, searchable by name, email or phone, with CSV export, merge and split. Buttons open the client in Salesforce and Lead Alchemist.
+- **Accounts:** every business (or individual) with its contacts and applications, each application showing who filled it out. Searchable by business, person, email or phone, with CSV export, merge and split, and a "possible duplicate" check. Buttons open the account in Salesforce and Lead Alchemist.
+- **Data mapping:** pull every Salesforce Account into the app, link accounts to Lead Alchemist Companies, and send past applications to Salesforce. Each shows the proposed matches side by side and writes nothing until staff confirm.
 - **Salesforce (built 2026-10-23, waiting on Anthony's Salesforce admin):** each submitted application creates or links the client's Account and Contact, adds an Opportunity, the PDF and a Chatter note, and links all three systems to each other. Setup: `docs/salesforce-setup.md`.
 - **Ask AI:** questions about application data in plain English.
 - **Lead Alchemist setup:** shows the connection and every pipeline and stage.

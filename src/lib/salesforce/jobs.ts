@@ -118,6 +118,28 @@ export async function runDueJobs(limit = 5): Promise<JobResult[]> {
   return results;
 }
 
+/** Run due jobs until the time budget is used up (the mapping screen's "Run queued syncs now"). */
+export async function runQueuedJobs(budgetMs = 40_000): Promise<{ ran: number; failed: number; remaining: number; off?: string }> {
+  // Sync off or not connected: the jobs stay queued for later.
+  const deps = await defaultSyncDeps();
+  if ("off" in deps) return { ran: 0, failed: 0, remaining: await queuedJobCount(), off: deps.off };
+  const started = Date.now();
+  let ran = 0;
+  let failed = 0;
+  while (Date.now() - started < budgetMs) {
+    const results = await runDueJobs(1);
+    if (!results.length) break;
+    ran++;
+    if (results[0].error) failed++;
+  }
+  return { ran, failed, remaining: await queuedJobCount() };
+}
+
+export async function queuedJobCount(): Promise<number> {
+  const db = await getDb();
+  return db.$count(schema.syncJobs, and(eq(schema.syncJobs.kind, "salesforce_application"), inArray(schema.syncJobs.status, ["pending", "running"])));
+}
+
 /** Staff "Sync to Salesforce": queue it (resetting a failed one) and run it now. */
 export async function syncNow(applicationId: string, depsOverride?: SyncDeps): Promise<JobResult> {
   const db = await getDb();

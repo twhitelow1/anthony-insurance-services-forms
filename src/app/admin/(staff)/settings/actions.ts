@@ -68,6 +68,7 @@ export async function saveSettingsAction(formData: FormData) {
     ghlLeadStage: str(formData, "ghlLeadStage") || null,
     ghlStageMap: Object.keys(stageMap).length ? stageMap : null,
     ghlAppUrl: ghlAppUrl || null,
+    ghlCompaniesSync: onOff("ghlCompaniesSync", "on", "off"),
     salesforceEnabled: onOff("salesforceEnabled", "on", "off"),
     salesforceDryRun: onOff("salesforceDryRun", "dry", "live"),
     salesforceStageMap: Object.keys(sfStageMap).length ? sfStageMap : null,

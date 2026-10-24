@@ -25,6 +25,7 @@ const SF_LABELS: Record<SalesforceStatus | ApplicationSfStatus, { label: string;
   needs_review: { label: "Needs review", tone: "badge-warning" },
   error: { label: "Sync failed", tone: "badge-danger" },
   skipped: { label: "Not sent", tone: "badge-neutral" },
+  create_confirmed: { label: "New Account queued", tone: "badge-active" },
 };
 
 export function SalesforceBadge({ status, title }: { status: SalesforceStatus | ApplicationSfStatus; title?: string | null }) {

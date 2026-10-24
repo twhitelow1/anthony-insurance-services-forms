@@ -2,12 +2,12 @@ import "server-only";
 import { createHash } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
-import type { Application, Client } from "@/lib/db/schema";
+import type { Application, Client, Contact } from "@/lib/db/schema";
 import { getForm } from "@/forms";
 import { STATUSES } from "@/lib/applications/status";
 import { addEvent, getApplication } from "@/lib/applications/repo";
 import { mainDocument } from "@/lib/applications/documents";
-import { addClientEvent, assignApplicationClient, clientGhlContactId, getClient, setClientSalesforce } from "@/lib/clients/repo";
+import { addClientEvent, assignApplicationClient, clientGhlContactId, getClient, getContact, setClientSalesforce, setContactSalesforce } from "@/lib/clients/repo";
 import { standardContactFields } from "@/lib/ghl/sync";
 import { ghlLinks, type GhlLinkWriter } from "@/lib/ghl/links";
 import { links as configuredLinks } from "@/lib/integrations/links";
@@ -26,11 +26,12 @@ import {
   type OpportunityStage,
   type Skipped,
 } from "./mapping";
-import { matchSalesforce } from "./match";
+import { matchContact, matchSalesforce } from "./match";
 
 /**
  * App → Salesforce, for one submitted application (see docs/salesforce-sync-plan.md):
- * find or create the Account and Contact, create this application's Opportunity, upload the
+ * find or create the Account (the business) and the Contact who filled it out, create this
+ * application's Opportunity with that Contact as its primary contact role, upload the
  * PDF to the Account, post a Chatter note, and write the three-way links on every record
  * (and back into Lead Alchemist). Safe to run again: stored IDs are reused, files and notes
  * aren't repeated, and new IDs are saved the moment they're created.
@@ -107,13 +108,22 @@ export async function syncApplicationToSalesforce(applicationId: string, deps: S
   const contactFields = standardContactFields(form, app.values);
   const details = {
     email: app.applicantEmail,
+    firstName: contactFields.firstName,
+    lastName: contactFields.lastName,
     contactName: app.applicantName,
     businessName: app.businessName,
     phone: contactFields.phone,
+    website: contactFields.website,
     address: { street: contactFields.address1, city: contactFields.city, state: contactFields.state, postalCode: contactFields.postalCode },
   };
-  const clientId = app.clientId ?? (await assignApplicationClient(app.id, details));
+  let clientId = app.clientId;
+  let appContactId = app.contactId;
+  if (!clientId || !appContactId) {
+    clientId = await assignApplicationClient(app.id, details);
+    appContactId = (await getApplication(app.id))?.contactId ?? null;
+  }
   const client = (await getClient(clientId)) as Client;
+  const person = appContactId ? ((await getContact(appContactId)) as Contact | undefined) : undefined;
 
   const live = !deps.dryRun;
   const api = deps.dryRun ? dryRunApi(deps.sf) : deps.sf;
@@ -129,9 +139,9 @@ export async function syncApplicationToSalesforce(applicationId: string, deps: S
   ]);
 
   // ── Account and Contact ───────────────────────────────────────────
-  const accountName = (app.businessName ?? app.applicantName).trim() || app.applicantEmail;
+  const accountName = client.name.trim() || (app.businessName ?? app.applicantName).trim() || app.applicantEmail;
   let accountId = client.sfAccountId;
-  let contactId = client.sfContactId;
+  let contactId = person?.sfContactId ?? null;
   let matched = "saved link";
   // The Opportunity is named after the Account as it's called in Salesforce.
   let sfAccountName = accountName;
@@ -146,7 +156,11 @@ export async function syncApplicationToSalesforce(applicationId: string, deps: S
   }
   let isNewAccount = false;
   if (!accountId) {
-    const m = await matchSalesforce(deps.sf, { email: app.applicantEmail, accountName, phone: contactFields.phone });
+    // Staff already confirmed "create new" on the mapping screen: don't match again.
+    const m =
+      client.sfStatus === "create_confirmed"
+        ? ({ kind: "new" } as const)
+        : await matchSalesforce(deps.sf, { email: app.applicantEmail, accountName, phone: contactFields.phone, isIndividual: client.isIndividual });
     if (m.kind === "review") {
       if (live) {
         await setAppSf(app.id, { sfSyncStatus: "needs_review", sfLastError: m.reason });
@@ -158,7 +172,7 @@ export async function syncApplicationToSalesforce(applicationId: string, deps: S
     }
     if (m.kind === "contact") {
       accountId = m.accountId;
-      contactId = m.contactId;
+      contactId = contactId ?? m.contactId;
       sfAccountName = m.accountName;
       matched = "Contact with the same email";
     } else if (m.kind === "account") {
@@ -171,7 +185,7 @@ export async function syncApplicationToSalesforce(applicationId: string, deps: S
         {
           Name: accountName,
           Type: "Customer",
-          Phone: contactFields.phone,
+          Phone: client.phones[0] ?? contactFields.phone,
           BillingStreet: contactFields.address1,
           BillingCity: contactFields.city,
           BillingState: contactFields.state,
@@ -187,7 +201,10 @@ export async function syncApplicationToSalesforce(applicationId: string, deps: S
       created.push("Account");
       matched = "new client";
     }
-    if (live) await setClientSalesforce(client.id, { sfAccountId: accountId, sfContactId: contactId, sfStatus: "linked", sfLastError: null });
+    if (live) {
+      await setClientSalesforce(client.id, { sfAccountId: accountId, sfStatus: "linked", sfLastError: null });
+      if (person && contactId && !person.sfContactId) await setContactSalesforce(person.id, contactId);
+    }
   }
 
   if (!isNewAccount) {
@@ -205,12 +222,10 @@ export async function syncApplicationToSalesforce(applicationId: string, deps: S
   }
 
   if (!contactId) {
-    const [existing] = accountId!.startsWith("dry-run:")
-      ? []
-      : await deps.sf.query<{ Id: string }>(
-          `SELECT Id FROM Contact WHERE AccountId = ${soqlString(accountId!)} AND Email = ${soqlString(app.applicantEmail)} LIMIT 1`,
-        );
-    if (existing) contactId = existing.Id;
+    // The person who filled it out: on this Account, else their one Contact elsewhere (they're
+    // tied to this application by the Opportunity's contact role), else a new Contact here.
+    const existing = accountId!.startsWith("dry-run:") ? null : await matchContact(deps.sf, accountId!, app.applicantEmail);
+    if (existing) contactId = existing;
     else {
       const first = str(app.values.first_name);
       const last = str(app.values.last_name) || app.applicantName || app.applicantEmail;
@@ -233,7 +248,7 @@ export async function syncApplicationToSalesforce(applicationId: string, deps: S
       contactId = (await api.create("Contact", data)).id;
       created.push("Contact");
     }
-    if (live) await setClientSalesforce(client.id, { sfContactId: contactId });
+    if (live && person) await setContactSalesforce(person.id, contactId);
   }
 
   // ── Opportunity (one per application / policy year) ───────────────
@@ -242,7 +257,7 @@ export async function syncApplicationToSalesforce(applicationId: string, deps: S
   if (stage.note) warnings.push(stage.note);
   const appLink = deps.links.appApplication(app.id);
   const clientLink = deps.links.appClient(client.id);
-  const ghlContactId = app.ghlContactId ?? (await clientGhlContactId(client.id));
+  const ghlContactId = app.ghlContactId ?? person?.ghlContactId ?? (await clientGhlContactId(client.id));
   const laOppLink = deps.links.ghlOpportunity(app.ghlOpportunityId);
   const missingLinkFields: string[] = [];
   const linkData = (describe: ObjectDescribe, wanted: Record<string, string | null>) => {
@@ -266,6 +281,18 @@ export async function syncApplicationToSalesforce(applicationId: string, deps: S
     opportunityId = (await api.create("Opportunity", { ...data, ...oppLinks })).id;
     created.push("Opportunity");
     if (live) await setAppSf(app.id, { sfOpportunityId: opportunityId });
+  }
+
+  // ── The person who filled it out, as the Opportunity's primary contact ──
+  const realIds = !opportunityId!.startsWith("dry-run:") && !contactId!.startsWith("dry-run:");
+  const [role] = realIds
+    ? await deps.sf.query<{ Id: string }>(
+        `SELECT Id FROM OpportunityContactRole WHERE OpportunityId = ${soqlString(opportunityId!)} AND ContactId = ${soqlString(contactId!)} LIMIT 1`,
+      )
+    : [];
+  if (!role) {
+    await api.create("OpportunityContactRole", { OpportunityId: opportunityId, ContactId: contactId, IsPrimary: true });
+    created.push("Contact role");
   }
 
   // ── The application PDF, as a File on the Account (once per version) ──
@@ -343,7 +370,7 @@ export async function syncApplicationToSalesforce(applicationId: string, deps: S
             `🔗 ${app.reference}: linked to Salesforce`,
             sfAccountLink ? `Salesforce Account: ${sfAccountLink}` : null,
             sfOppLink ? `Salesforce Opportunity: ${sfOppLink}` : null,
-            clientLink ? `Client page (all applications): ${clientLink}` : null,
+            clientLink ? `Account page (all applications): ${clientLink}` : null,
             appLink ? `This application: ${appLink}` : null,
           ]
             .filter(Boolean)
@@ -366,7 +393,8 @@ export async function syncApplicationToSalesforce(applicationId: string, deps: S
     sfFeedItemId: feedItemId,
     ghlLinksNotedAt: notedAt,
   });
-  await setClientSalesforce(client.id, { sfAccountId: accountId, sfContactId: contactId, sfStatus: "linked", sfSyncedAt: now, sfLastError: null });
+  await setClientSalesforce(client.id, { sfAccountId: accountId, sfStatus: "linked", sfSyncedAt: now, sfLastError: null });
+  if (person && person.sfContactId !== contactId) await setContactSalesforce(person.id, contactId);
   const summary = `Synced to Salesforce (${matched})${created.length ? `: created ${created.join(", ")}` : ": records already existed, links updated"}${
     missingLinkFields.length ? `. Missing fields: ${missingLinkFields.join(", ")}` : ""
   }${skipped.length ? `. Skipped: ${skipped.map((s) => s.reason).join("; ")}` : ""}${warnings.length ? `. ${warnings.join(" ")}` : ""}`;
