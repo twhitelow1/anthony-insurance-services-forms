@@ -21,6 +21,7 @@ export const KIND_LABELS: Record<NotificationKind, string> = {
   unmapped: "Not mapped",
   renewal_due: "Renewal due",
   possible_duplicate: "Possible existing account",
+  sync_issues: "Sync needs attention",
   other: "Other",
 };
 

@@ -155,6 +155,13 @@
       "when": 1792877218138,
       "tag": "0021_account_directory",
       "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1792877847993,
+      "tag": "0022_sync_reports",
+      "breakpoints": true
     }
   ]
 }

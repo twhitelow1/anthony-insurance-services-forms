@@ -2,6 +2,7 @@ import "server-only";
 import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
+import { saveSyncReport } from "./report";
 
 /**
  * "Select all N matching" on a list: the bulk button the staff member pressed runs over every row
@@ -27,6 +28,8 @@ export interface SelectionRun {
   notes: string[];
   phase: "running" | "done" | "stopped";
   error?: string;
+  /** Set when it finishes or stops: its sync report (Admin → Sync reports). */
+  report?: { id: string; text: string; clean: boolean };
   /** The filters it was started from, in words. */
   scopeText: string;
   startedBy: string;
@@ -107,22 +110,38 @@ export async function stepSelectionRun(
     try {
       const r = await fn(chunk, run.startedBy);
       run.done += r.done;
-      run.notes = [...run.notes, ...r.notes].slice(-20);
+      run.notes = [...run.notes, ...r.notes].slice(0, 2000);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       // Stop rather than skip ahead: a connection or permission problem would fail every batch.
-      return save({ ...run, phase: "stopped", error: message.slice(0, 300) });
+      return save(await withReport({ ...run, phase: "stopped", error: message.slice(0, 300) }));
     }
     run.position += chunk.length;
   }
   if (run.position >= run.ids.length) run.phase = "done";
-  return save(run);
+  return save(run.phase === "done" ? await withReport(run) : run);
+}
+
+const PAGE: Record<SelectionScope, string> = { contacts: "/admin/contacts", mapping: "/admin/mapping", accounts: "/admin/clients?view=all" };
+
+/** A finished or stopped run's report: rows not reached count as not done, and why it stopped is an error. */
+async function withReport(run: SelectionRun): Promise<SelectionRun> {
+  const notes = [...run.notes];
+  if (run.position < run.ids.length) notes.unshift(`${run.ids.length - run.position} weren't reached: the run ${run.error?.startsWith("Stopped by") ? "was stopped" : "stopped"}.`);
+  if (run.error && !run.error.startsWith("Stopped by")) notes.unshift(`Stopped on an error: ${run.error}`);
+  try {
+    const r = await saveSyncReport({ title: run.label, scope: `All matching: ${run.scopeText}`, page: PAGE[run.scope], actor: run.startedBy, total: run.ids.length, done: run.done, notes });
+    return { ...run, report: { id: r.report.id, text: r.text, clean: r.clean } };
+  } catch (err) {
+    console.error("[selection run] couldn't save the report:", err instanceof Error ? err.message : err);
+    return run;
+  }
 }
 
 export async function stopSelectionRun(scope: SelectionScope, actor: string) {
   const run = await getSelectionRun(scope);
   if (!run || run.phase !== "running") return run;
-  return save({ ...run, phase: "stopped", error: `Stopped by ${actor.replace(/^staff:/, "")}` });
+  return save(await withReport({ ...run, phase: "stopped", error: `Stopped by ${actor.replace(/^staff:/, "")}` }));
 }
 
 /** Shown on the list while it runs, and for a while after. */

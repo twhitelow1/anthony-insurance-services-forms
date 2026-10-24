@@ -21,10 +21,31 @@ export function AppStateBadge({ state }: { state: AppState }) {
 
 export function FlashMessage({ flash }: { flash: Flash | null }) {
   if (!flash) return null;
-  return flash.tone === "ok" ? (
-    <p className="callout mb-4 text-sm" role="status">{flash.text}</p>
-  ) : (
-    <p className="mb-4 rounded-lg bg-[var(--danger-bg)] p-3 text-sm text-[var(--danger)]" role="alert">{flash.text}</p>
+  const more = flash.href ? (
+    <>
+      {" "}
+      <a className="btn-link font-semibold" href={flash.href}>See the full report</a>
+    </>
+  ) : null;
+  if (flash.tone === "ok")
+    return (
+      <p className="callout mb-4 text-sm" role="status">
+        {flash.text}
+        {more}
+      </p>
+    );
+  if (flash.tone === "warn")
+    return (
+      <p className="mb-4 rounded-lg border border-[var(--notice-border)] bg-[var(--notice-bg)] p-3 text-sm" role="status">
+        <strong>Needs attention.</strong> {flash.text}
+        {more}
+      </p>
+    );
+  return (
+    <p className="mb-4 rounded-lg bg-[var(--danger-bg)] p-3 text-sm text-[var(--danger)]" role="alert">
+      {flash.text}
+      {more}
+    </p>
   );
 }
 

@@ -30,6 +30,13 @@ export function SelectionRunPanel({
         {run.scopeText} · started by {by} on {new Date(run.startedAt).toLocaleString("en-US", { timeZone: process.env.APP_TIMEZONE ?? "America/Chicago" })}
       </p>
       {run.error && <p className="mt-1">{run.error}</p>}
+      {run.report && (
+        <p className={`mt-1 font-medium ${run.report.clean ? "text-[var(--success)]" : ""}`}>
+          {run.report.clean ? "✓ " : "⚠ "}
+          {run.report.text}{" "}
+          <a className="btn-link" href={`/admin/sync-reports/${run.report.id}`}>See the full report</a>
+        </p>
+      )}
       <div className="mt-2 h-2 w-full overflow-hidden rounded bg-[var(--border)]" aria-hidden>
         <div className="h-full bg-[var(--accent)]" style={{ width: `${pct}%` }} />
       </div>
@@ -46,11 +53,11 @@ export function SelectionRunPanel({
           <span className="text-[var(--muted)]">Continues on its own while this page is open.</span>
         </div>
       )}
-      {run.notes.length > 0 && (
+      {!run.report && run.notes.length > 0 && (
         <details className="mt-2">
-          <summary className="cursor-pointer">Notes ({run.notes.length})</summary>
+          <summary className="cursor-pointer">Notes so far ({run.notes.length})</summary>
           <ul className="mt-1 list-disc pl-5">
-            {run.notes.map((n, i) => (
+            {run.notes.slice(-20).map((n, i) => (
               <li key={i}>{n}</li>
             ))}
           </ul>

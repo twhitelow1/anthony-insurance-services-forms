@@ -358,13 +358,13 @@ export async function addAccountsToApp(keys: string[], actor: string, deps: Acco
   const result: BulkResult = { done: 0, notes: [] };
   const over = budget(opts);
   const rows = await rowsByKeys(keys);
-  const skipped = { "already in AIS Connect": 0 };
+  const skipped: Record<string, number> = {};
   let left = rows.length;
   for (const r of rows) {
     if (over()) break;
     left--;
     if (r.inApp) {
-      skipped["already in AIS Connect"]++;
+      result.done++; // already in AIS Connect
       continue;
     }
     try {

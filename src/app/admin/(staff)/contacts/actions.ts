@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { requireStaff } from "@/lib/auth/session";
+import { saveSyncReport } from "@/lib/bulk/report";
 import { startSelectionRun, stepSelectionRun, stopSelectionRun, type BatchResult } from "@/lib/bulk/selection-run";
 import {
   addSelectedToApp,
@@ -31,9 +32,9 @@ const backTo = (formData: FormData) => {
   return b.startsWith("/admin/contacts") && !b.includes("//") ? b : "/admin/contacts";
 };
 
-async function finish(to: string, tone: "ok" | "error", text: string): Promise<never> {
+async function finish(to: string, tone: "ok" | "warn" | "error", text: string, href?: string): Promise<never> {
   const back = to.replace(/([?&])(f|importing)=[^&]*&?/g, "$1").replace(/[?&]$/, "");
-  const f = await setFlash({ tone, text });
+  const f = await setFlash({ tone, text, href });
   revalidatePath("/admin/contacts");
   redirect(`${back}${back.includes("?") ? "&" : "?"}f=${f}`);
 }
@@ -118,7 +119,8 @@ async function bulk(formData: FormData, key: keyof typeof WORK): Promise<never> 
     console.error("[contacts] bulk action failed:", message);
     return finish(backTo(formData), "error", message);
   }
-  return finish(backTo(formData), "ok", `${verb}: ${r.done} of ${values.length}.${r.notes.length ? ` ${r.notes.slice(0, 6).join(" ")}` : ""}`);
+  const report = await saveSyncReport({ title: verb, scope: `${values.length} ticked on Contacts`, page: backTo(formData), actor, total: values.length, done: r.done, notes: r.notes });
+  return finish(backTo(formData), report.clean ? "ok" : "warn", report.text, report.href);
 }
 
 /** One batch of a "select all matching" run; the progress panel submits this again until it's done. */
