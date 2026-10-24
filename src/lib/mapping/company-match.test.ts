@@ -60,3 +60,11 @@ describe("matching Lead Alchemist Companies to accounts", () => {
     expect(nameSimilarity("peak", "bounce barn")).toBe(0);
   });
 });
+
+describe("Lead Alchemist Company name", () => {
+  it("uses the Salesforce Account's name when linked, else the account's", async () => {
+    const { laCompanyName } = await import("@/lib/clients/text");
+    expect(laCompanyName({ name: "Jane Doe", sfSnapshot: { name: "Jane Doe Aerial" } })).toBe("Jane Doe Aerial");
+    expect(laCompanyName({ name: "Jane Doe", sfSnapshot: null })).toBe("Jane Doe");
+  });
+});

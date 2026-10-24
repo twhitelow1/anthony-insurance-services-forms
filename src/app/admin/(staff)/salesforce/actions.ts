@@ -5,6 +5,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { requireStaff } from "@/lib/auth/session";
 import { getClient, getContact } from "@/lib/clients/repo";
+import { laCompanyName } from "@/lib/clients/text";
 import { setFlash } from "@/lib/flash";
 import { ghlConfig, upsertContact } from "@/lib/ghl/client";
 import { exactMatch, laCandidates, laName, linkLaContact, unlinkLaContact } from "@/lib/ghl/match";
@@ -223,7 +224,7 @@ export async function createLaContactAction(formData: FormData) {
       firstName: contact.firstName ?? (contact.lastName ? undefined : contact.name),
       lastName: contact.lastName ?? undefined,
       phone: contact.phones[0],
-      companyName: account && !account.isIndividual ? account.name : undefined,
+      companyName: account ? laCompanyName(account) : undefined,
       source: "Online Applications App",
     });
     await linkLaContact(contact.id, res.contact.id, actor);

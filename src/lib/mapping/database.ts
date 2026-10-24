@@ -3,7 +3,7 @@ import { and, asc, count, eq, ilike, inArray, isNotNull, isNull, or, sql, type S
 import { getDb, schema } from "@/lib/db";
 import type { Client, Contact } from "@/lib/db/schema";
 import { accountsOfContact, addClientEvent, listAccountContacts, contactEmailsOf, createAccount, getClient, getContact, setClientSalesforce, setContactSalesforce } from "@/lib/clients/repo";
-import { nameKey, searchTerms } from "@/lib/clients/text";
+import { laCompanyName, nameKey, searchTerms } from "@/lib/clients/text";
 import { addContactsToBusiness, addTags, createBusiness, getContact as getLaContact, ghlConfig, isScopeError, listBusinesses, upsertContact, type GhlBusiness } from "@/lib/ghl/client";
 import { exactMatch, laCandidates, linkLaContact } from "@/lib/ghl/match";
 import type { Links } from "@/lib/integrations/urls";
@@ -292,7 +292,8 @@ export async function syncAccountsToLeadAlchemist(
     if (!account) continue;
     let companyId = account.ghlCompanyId;
     if (!companyId && companies) {
-      const same = companies.filter((b) => nameKey(b.name) === account.nameKey);
+      const companyName = laCompanyName(account);
+      const same = companies.filter((b) => nameKey(b.name) === nameKey(companyName));
       if (same.length > 1) {
         result.notes.push(`${account.name}: ${same.length} Lead Alchemist Companies have this name; pick one on the account's mapping row.`);
         continue;
@@ -301,7 +302,7 @@ export async function syncAccountsToLeadAlchemist(
         if (same[0]) companyId = same[0].id;
         else {
           const created = await createBusiness({
-            name: account.name,
+            name: companyName,
             phone: account.phones[0] ?? null,
             email: account.primaryEmail,
             website: account.website,
@@ -323,7 +324,7 @@ export async function syncAccountsToLeadAlchemist(
       }
     }
     const people = await db.select().from(schema.contacts).where(eq(schema.contacts.clientId, account.id));
-    const r = await connectContactsToCompany(people, companies ? companyId : null, actor, { ...opts, companyName: account.isIndividual ? null : account.name });
+    const r = await connectContactsToCompany(people, companies ? companyId : null, actor, { ...opts, companyName: laCompanyName(account) });
     if (r.blocked) companies = null;
     if (r.notes.length) result.notes.push(...r.notes.map((n) => `${account.name}: ${n}`));
     if (deps.sf && account.sfAccountId) await writeAccountLinks(deps.sf, deps.links, { ...account, ghlCompanyId: companyId }).catch(() => {});
@@ -415,7 +416,7 @@ export async function connectSelectedContacts(contactIds: string[], actor: strin
   if (!(await ghlConfig())) throw new Error("Lead Alchemist isn't connected. Add the keys in Settings → Integrations.");
   const db = await getDb();
   const rows = await db
-    .select({ contact: schema.contacts, account: { id: schema.clients.id, name: schema.clients.name, isIndividual: schema.clients.isIndividual, companyId: schema.clients.ghlCompanyId } })
+    .select({ contact: schema.contacts, account: { id: schema.clients.id, name: schema.clients.name, sfSnapshot: schema.clients.sfSnapshot, companyId: schema.clients.ghlCompanyId } })
     .from(schema.contacts)
     .innerJoin(schema.clients, eq(schema.clients.id, schema.contacts.clientId))
     .where(inArray(schema.contacts.id, contactIds.slice(0, 100)));
@@ -427,7 +428,7 @@ export async function connectSelectedContacts(contactIds: string[], actor: strin
   for (const { account, people } of byAccount.values()) {
     if (!account.companyId) noCompany += people.length;
     const before = people.filter((p) => p.ghlContactId).length;
-    const r = await connectContactsToCompany(people, blocked ? null : account.companyId, actor, { ...opts, companyName: account.isIndividual ? null : account.name });
+    const r = await connectContactsToCompany(people, blocked ? null : account.companyId, actor, { ...opts, companyName: laCompanyName(account) });
     blocked ||= !!r.blocked;
     // Done = now linked in Lead Alchemist (and in the Company where there is one).
     const linkedNow = (await db.select({ id: schema.contacts.id }).from(schema.contacts).where(and(inArray(schema.contacts.id, people.map((p) => p.id)), isNotNull(schema.contacts.ghlContactId)))).length;

@@ -82,3 +82,11 @@ export function websiteDomain(url: string | null | undefined): string | null {
   const host = s.replace(/^[a-z]+:\/\//, "").split(/[/?#]/)[0].replace(/^www\./, "");
   return /^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(host) ? host : null;
 }
+
+/**
+ * The Lead Alchemist Company name for an Account: the Salesforce Account's name when it's linked
+ * (so the two match), else the Account's own name. Individuals get a Company too, named the same way.
+ */
+export function laCompanyName(account: { name: string; sfSnapshot?: { name?: string | null } | null }): string {
+  return account.sfSnapshot?.name?.trim() || account.name;
+}
