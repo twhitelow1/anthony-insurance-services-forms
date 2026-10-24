@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { cookies } from "next/headers";
 import { SystemLink } from "@/components/clients";
+import { ListSummary, pageHref, pageOf, pageState, Pagination } from "@/components/Pagination";
 import { SelectAll } from "@/components/SelectAll";
 import { requireStaff } from "@/lib/auth/session";
 import { readFlash } from "@/lib/flash";
@@ -12,6 +13,7 @@ import {
   listAccountMap,
   listContactMap,
   mapCounts,
+  countMultiAccountContacts,
   multiAccountContacts,
   NO_TYPE,
   type AccountMapFilter,
@@ -76,7 +78,8 @@ export default async function Mapping({ searchParams }: PageProps<"/admin/mappin
   const sp = await searchParams;
   const str = (k: string) => (typeof sp[k] === "string" ? (sp[k] as string) : "");
   const tab: Tab = TABS.includes(str("tab") as Tab) ? (str("tab") as Tab) : "accounts";
-  const page = Math.max(1, Number(str("page")) || 1);
+  const paging = pageState(sp, 100);
+  const { page } = paging;
   const type = str("type").slice(0, 80);
   const q = (await cookies()).get(MAP_SEARCH_COOKIE)?.value ?? "";
   const flash = await readFlash(sp.f);
@@ -93,11 +96,12 @@ export default async function Mapping({ searchParams }: PageProps<"/admin/mappin
     }
     return `?${p}`;
   };
-  const back = `/admin/mapping${qs({ page: page > 1 ? page : 0 })}`;
+  const back = `/admin/mapping${qs({ page: page > 1 ? page : 0, size: paging.pageSize !== 100 ? paging.pageSize : 0 })}`;
+  const href = pageHref("/admin/mapping", { tab, filter: str("filter") || undefined, type: type || undefined }, 100);
 
   let laError: string | null = null;
-  const accounts = tab === "accounts" ? await listAccountMap({ q, filter: accountFilter, page, type: type || null }) : null;
-  const contacts = tab === "contacts" ? await listContactMap({ q, filter: contactFilter, page }) : null;
+  const accounts = tab === "accounts" ? await listAccountMap({ q, filter: accountFilter, page, type: type || null, pageSize: paging.pageSize }) : null;
+  const contacts = tab === "contacts" ? await listContactMap({ q, filter: contactFilter, page, pageSize: paging.pageSize }) : null;
   let companies: Awaited<ReturnType<typeof listCompanyMatches>> | null = null;
   if (tab === "companies" && laOn) {
     try {
@@ -106,8 +110,8 @@ export default async function Mapping({ searchParams }: PageProps<"/admin/mappin
       laError = err instanceof Error ? err.message : String(err);
     }
   }
-  const multi = tab === "multi" ? await multiAccountContacts() : [];
-  const pages = (total: number, size: number) => Math.max(1, Math.ceil(total / size));
+  const [multi, multiTotal] = tab === "multi" ? await Promise.all([multiAccountContacts(paging.pageSize, paging.offset), countMultiAccountContacts()]) : [[], 0];
+  const companyRows = companies ? pageOf(companies.rows, paging) : [];
 
   return (
     <div>
@@ -197,6 +201,7 @@ export default async function Mapping({ searchParams }: PageProps<"/admin/mappin
               <input type="checkbox" name="createMissing" value="yes" /> Create missing contacts in Lead Alchemist
             </label>
           </form>
+          <ListSummary total={accounts.total} state={paging} noun="account" />
           <div className="overflow-x-auto">
             <table className="data-table">
               <thead>
@@ -247,7 +252,7 @@ export default async function Mapping({ searchParams }: PageProps<"/admin/mappin
               </tbody>
             </table>
           </div>
-          <Pager page={page} pages={pages(accounts.total, accounts.pageSize)} qs={qs} />
+          <Pagination total={accounts.total} state={paging} noun="account" href={href} />
         </>
       )}
 
@@ -264,6 +269,7 @@ export default async function Mapping({ searchParams }: PageProps<"/admin/mappin
             </label>
 
           </form>
+          <ListSummary total={contacts.total} state={paging} noun="contact" />
           <div className="overflow-x-auto">
             <table className="data-table">
               <thead>
@@ -309,7 +315,7 @@ export default async function Mapping({ searchParams }: PageProps<"/admin/mappin
               </tbody>
             </table>
           </div>
-          <Pager page={page} pages={pages(contacts.total, contacts.pageSize)} qs={qs} />
+          <Pagination total={contacts.total} state={paging} noun="contact" href={href} />
         </>
       )}
 
@@ -338,6 +344,7 @@ export default async function Mapping({ searchParams }: PageProps<"/admin/mappin
                 <button formAction={addCompaniesToAppAction} className="btn-secondary">Add selected to this app as new accounts</button>
                 <button formAction={companiesToSalesforceAction} className="btn-secondary" disabled={!sfOn}>Link or create selected in Salesforce</button>
               </form>
+              <ListSummary total={companies.rows.length} state={paging} noun="Company" />
               <div className="overflow-x-auto">
                 <table className="data-table">
                   <thead>
@@ -353,7 +360,7 @@ export default async function Mapping({ searchParams }: PageProps<"/admin/mappin
                     {!companies.rows.length && (
                       <tr><td colSpan={5} className="text-[var(--muted)]">No Companies in this list.</td></tr>
                     )}
-                    {companies.rows.slice(0, 500).map(({ business: b, linked, suggestions }) => {
+                    {companyRows.map(({ business: b, linked, suggestions }) => {
                       const shown = linked ?? suggestions[0]?.account ?? null;
                       return (
                         <tr key={b.id}>
@@ -399,6 +406,7 @@ export default async function Mapping({ searchParams }: PageProps<"/admin/mappin
                   </tbody>
                 </table>
               </div>
+              <Pagination total={companies.rows.length} state={paging} noun="Company" href={href} />
             </>
           ) : null}
         </>
@@ -414,6 +422,7 @@ export default async function Mapping({ searchParams }: PageProps<"/admin/mappin
             <input type="hidden" name="back" value={back} />
             <button formAction={companyTagsAction} className="btn-primary" disabled={!laOn}>Add company tags in Lead Alchemist for selected</button>
           </form>
+          <ListSummary total={multiTotal} state={paging} noun="person" />
           <div className="overflow-x-auto">
             <table className="data-table">
               <thead>
@@ -455,21 +464,9 @@ export default async function Mapping({ searchParams }: PageProps<"/admin/mappin
               </tbody>
             </table>
           </div>
+          <Pagination total={multiTotal} state={paging} noun="person" href={href} />
         </>
       )}
-    </div>
-  );
-}
-
-function Pager({ page, pages, qs }: { page: number; pages: number; qs: (o: Record<string, string | number>) => string }) {
-  if (pages <= 1) return null;
-  return (
-    <div className="mt-4 flex items-center gap-3 text-sm">
-      {page > 1 && <Link className="btn-secondary" href={qs({ page: page - 1 })}>← Previous</Link>}
-      <span>
-        Page {page} of {pages}
-      </span>
-      {page < pages && <Link className="btn-secondary" href={qs({ page: page + 1 })}>Next →</Link>}
     </div>
   );
 }

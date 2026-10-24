@@ -1,3 +1,4 @@
+import { ListSummary, pageHref, pageState, Pagination } from "@/components/Pagination";
 import Link from "next/link";
 import { cookies } from "next/headers";
 import { fmtDate, StatusBadge } from "@/components/portal";
@@ -24,18 +25,16 @@ const FILTERS: { value: ClientFilter; label: string }[] = [
   { value: "review", label: "Possible duplicates" },
   { value: "deactivated", label: "Deactivated" },
 ];
-const PAGE_SIZE = 50;
-
 export default async function Accounts({ searchParams }: PageProps<"/admin/clients">) {
   await requireStaff("/admin/clients");
   const sp = await searchParams;
   const q = (await cookies()).get(CLIENT_SEARCH_COOKIE)?.value ?? "";
   const sort = SORTS.some((s) => s.value === sp.sort) ? (sp.sort as ClientSort) : "latest";
   const filter = FILTERS.some((f) => f.value === sp.filter) ? (sp.filter as ClientFilter) : "all";
-  const page = Math.max(1, Number(sp.page) || 1);
-  const [{ rows, total }, duplicates] = await Promise.all([listClients({ q, sort, filter, page, pageSize: PAGE_SIZE }), countPossibleDuplicates()]);
+  const paging = pageState(sp);
+  const { page } = paging;
+  const [{ rows, total }, duplicates] = await Promise.all([listClients({ q, sort, filter, page, pageSize: paging.pageSize }), countPossibleDuplicates()]);
   const l = await links();
-  const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const n = (k: string) => Math.max(0, Number(sp[k]) || 0);
   const ghlMessage =
     sp.la === "bulk"
@@ -102,6 +101,7 @@ export default async function Accounts({ searchParams }: PageProps<"/admin/clien
         )}
       </form>
 
+      <ListSummary total={total} state={paging} noun="account" />
       <div className="card overflow-x-auto !p-0">
         <table className="data-table">
           <thead>
@@ -172,15 +172,7 @@ export default async function Accounts({ searchParams }: PageProps<"/admin/clien
           </tbody>
         </table>
       </div>
-      <nav className="mt-4 flex items-center justify-between text-sm" aria-label="Pages">
-        <span className="text-[var(--muted)]">
-          {total} account{total === 1 ? "" : "s"} · page {page} of {pages}
-        </span>
-        <span className="flex gap-3">
-          {page > 1 && <Link className="btn-link" href={qs({ page: page - 1 })}>← Previous</Link>}
-          {page < pages && <Link className="btn-link" href={qs({ page: page + 1 })}>Next →</Link>}
-        </span>
-      </nav>
+      <Pagination total={total} state={paging} noun="account" href={pageHref("/admin/clients", { sort, filter })} />
     </div>
   );
 }

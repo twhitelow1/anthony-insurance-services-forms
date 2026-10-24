@@ -1,3 +1,4 @@
+import { ListSummary, pageHref, pageState, Pagination } from "@/components/Pagination";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { forms } from "@/forms";
@@ -12,6 +13,8 @@ import {
   listAccountContacts,
   listClientApplications,
   listClientDrafts,
+  countClientEvents,
+  lastSalesforceEvent,
   listClientEvents,
 } from "@/lib/clients/repo";
 import { links } from "@/lib/integrations/links";
@@ -73,11 +76,14 @@ export default async function AccountPage({ params, searchParams }: PageProps<"/
   const one = (k: string) => (typeof sp[k] === "string" ? (sp[k] as string) : null);
   const flash = await readFlash(sp.f);
 
-  const [people, apps, drafts, events, ghlContactId, l, settings, duplicateOf] = await Promise.all([
+  const activityPaging = pageState(sp, 25, "activity");
+  const [people, apps, drafts, events, eventTotal, lastSfEvent, ghlContactId, l, settings, duplicateOf] = await Promise.all([
     listAccountContacts(client.id),
     listClientApplications(client.id),
     listClientDrafts(client.id),
-    listClientEvents(client.id),
+    listClientEvents(client.id, { limit: activityPaging.pageSize, offset: activityPaging.offset }),
+    countClientEvents(client.id),
+    lastSalesforceEvent(client.id),
     clientGhlContactId(client.id),
     links(),
     getSettings(),
@@ -91,7 +97,6 @@ export default async function AccountPage({ params, searchParams }: PageProps<"/
   const alerts = await listNotifications({ clientId: client.id, status: ACTIVE, limit: 20 });
   const diffs = new Map(await Promise.all(people.map(async (p) => [p.id, await externalDifferences(p)] as const)));
   const snap = client.sfSnapshot;
-  const lastSfEvent = events.find((e) => e.type.startsWith("sf_"));
   const address = [client.address?.street, client.address?.city, [client.address?.state, client.address?.postalCode].filter(Boolean).join(" ")]
     .filter(Boolean)
     .join(", ");
@@ -267,7 +272,7 @@ export default async function AccountPage({ params, searchParams }: PageProps<"/
       )}
 
       <section className="card mb-6 overflow-x-auto !p-0" aria-labelledby="contacts-heading">
-        <h2 id="contacts-heading" className="px-5 pt-4 font-semibold">Contacts</h2>
+        <h2 id="contacts-heading" className="px-5 pt-4 font-semibold">Contacts ({people.length})</h2>
         <table className="data-table">
           <thead>
             <tr>
@@ -377,7 +382,7 @@ export default async function AccountPage({ params, searchParams }: PageProps<"/
       </section>
 
       <section className="card mb-6 overflow-x-auto !p-0" aria-labelledby="apps-heading">
-        <h2 id="apps-heading" className="px-5 pt-4 font-semibold">Applications</h2>
+        <h2 id="apps-heading" className="px-5 pt-4 font-semibold">Applications ({apps.length})</h2>
         <table className="data-table">
           <thead>
             <tr>
@@ -465,6 +470,7 @@ export default async function AccountPage({ params, searchParams }: PageProps<"/
             <textarea id="message" name="message" rows={2} className="input" required placeholder="Internal note about this account" />
             <button className="btn-secondary">Add note</button>
           </form>
+          <ListSummary total={eventTotal} state={activityPaging} noun="activity entry" />
           <ol className="space-y-2 text-sm">
             {events.map((e) => (
               <li key={e.id} className="border-l-2 border-[var(--border)] pl-3">
@@ -476,6 +482,12 @@ export default async function AccountPage({ params, searchParams }: PageProps<"/
             ))}
             {!events.length && <li className="text-[var(--muted)]">Nothing yet.</li>}
           </ol>
+          <Pagination
+            total={eventTotal}
+            state={activityPaging}
+            noun="activity entry"
+            href={pageHref(`/admin/clients/${client.id}`, {}, 25, "activity", "activity-heading")}
+          />
         </section>
       </div>
     </div>

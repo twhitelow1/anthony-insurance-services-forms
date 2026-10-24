@@ -1,3 +1,4 @@
+import { ListSummary, pageHref, pageOf, pageState, Pagination } from "@/components/Pagination";
 import { forms } from "@/forms";
 import { CopyButton } from "@/components/CopyButton";
 import { requireStaff } from "@/lib/auth/session";
@@ -16,6 +17,8 @@ export default async function FormsPage({ searchParams }: PageProps<"/admin/form
     .map((f) => ({ form: f, brand: defaultBrand(f) as BrandId }))
     .filter((x) => !only || x.brand === only)
     .sort((a, b) => a.brand.localeCompare(b.brand) || a.form.title.localeCompare(b.form.title));
+  const paging = pageState(sp, 25);
+  const shown = pageOf(list, paging);
 
   return (
     <div className="mx-auto max-w-4xl">
@@ -32,8 +35,9 @@ export default async function FormsPage({ searchParams }: PageProps<"/admin/form
           <a key={b.id} className={`badge ${only === b.id ? "badge-success" : ""}`} href={`/admin/forms?brand=${b.id}`}>{b.name}</a>
         ))}
       </nav>
+      <ListSummary total={list.length} state={paging} noun="form" />
       <div className="space-y-4">
-        {list.map(({ form, brand }) => {
+        {shown.map(({ form, brand }) => {
           const snippet = `<div data-ais-form="${form.slug}" data-ais-brand="${brand}"></div>\n<script src="${base}/embed.js" async></script>`;
           const preview = `/forms/${form.slug}?brand=${brand}`;
           return (
@@ -62,6 +66,7 @@ export default async function FormsPage({ searchParams }: PageProps<"/admin/form
           );
         })}
       </div>
+      <Pagination total={list.length} state={paging} noun="form" href={pageHref("/admin/forms", { brand: only ?? undefined }, 25)} />
     </div>
   );
 }

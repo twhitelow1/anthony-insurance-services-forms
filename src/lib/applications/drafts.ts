@@ -1,6 +1,6 @@
 import "server-only";
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, isNotNull } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
 import type { Draft } from "@/lib/db/schema";
 import type { FormDefinition, FormValues } from "@/lib/forms/types";
@@ -109,15 +109,17 @@ export async function markResumeEmailed(id: string) {
 }
 
 /** Unfinished applications that have an email (anonymous ones can't be followed up), newest first. */
-export async function listUnfinished(limit = 200): Promise<Draft[]> {
+const unfinished = () => and(eq(drafts.status, "started"), isNotNull(drafts.email));
+
+/** Started applications with an email, newest first, one page at a time. */
+export async function listUnfinished({ limit = 50, offset = 0 }: { limit?: number; offset?: number } = {}): Promise<Draft[]> {
   const db = await getDb();
-  const rows = await db
-    .select()
-    .from(drafts)
-    .where(eq(drafts.status, "started"))
-    .orderBy(desc(drafts.updatedAt))
-    .limit(limit);
-  return rows.filter((d) => d.email);
+  return db.select().from(drafts).where(unfinished()).orderBy(desc(drafts.updatedAt)).limit(Math.min(limit, 200)).offset(offset);
+}
+
+export async function countUnfinished() {
+  const db = await getDb();
+  return db.$count(drafts, unfinished());
 }
 
 export async function getDraftById(id: string): Promise<Draft | undefined> {

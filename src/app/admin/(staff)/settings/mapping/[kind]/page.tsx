@@ -1,3 +1,4 @@
+import { ListSummary, pageHref, pageState, Pagination } from "@/components/Pagination";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AutoSubmit } from "@/components/AutoSubmit";
@@ -13,7 +14,6 @@ import { KIND_SLUGS } from "../kinds";
 
 export const metadata = { title: "Data mapping | Anthony Insurance Services" };
 
-const PAGE_SIZE = 100;
 
 /** Per mapping: what the two sides are called and how to link to them. */
 const SIDES: Record<MappingKind, { source: string; target: string; createLabel: string; intro: string }> = {
@@ -116,19 +116,19 @@ export default async function MappingKindPage({ params, searchParams }: PageProp
   const sp = await searchParams;
   const one = (k: string) => (typeof sp[k] === "string" ? (sp[k] as string) : null);
   const filter = (FILTERS.some((f) => f.value === one("filter")) ? one("filter") : "all") as RowFilter;
-  const pageNo = Math.max(1, Number(one("page")) || 1);
+  const paging = pageState(sp, 100);
+  const pageNo = paging.page;
 
   const run = await getRun(kind);
   const [l, summary, list, queued, settings] = await Promise.all([
     links(),
     run ? summarize(run.runId) : null,
-    run && run.phase !== "scanning" ? listRows(run.runId, { filter, page: pageNo, pageSize: PAGE_SIZE }) : null,
+    run && run.phase !== "scanning" ? listRows(run.runId, { filter, page: pageNo, pageSize: paging.pageSize }) : null,
     kind === "salesforce_push" ? queuedJobCount() : Promise.resolve(0),
     getSettings(),
   ]);
   const sides = SIDES[kind];
-  const pages = list ? Math.max(1, Math.ceil(list.total / PAGE_SIZE)) : 1;
-  const qs = (over: Record<string, string | number>) => `?${new URLSearchParams({ filter, page: String(pageNo), ...Object.fromEntries(Object.entries(over).map(([k, v]) => [k, String(v)])) })}`;
+  const qs = (over: Record<string, string | number>) => `?${new URLSearchParams({ filter, page: String(pageNo), ...(paging.pageSize !== 100 ? { size: String(paging.pageSize) } : {}), ...Object.fromEntries(Object.entries(over).map(([k, v]) => [k, String(v)])) })}`;
   const editable = run?.phase === "review";
   const error = one("error");
 
@@ -233,6 +233,7 @@ export default async function MappingKindPage({ params, searchParams }: PageProp
           <form action={saveDecisionsAction}>
             <input type="hidden" name="kind" value={slug} />
             <input type="hidden" name="back" value={qs({})} />
+            <ListSummary total={list.total} state={paging} noun="record" />
             <div className="card overflow-x-auto !p-0">
               <table className="data-table">
                 <thead>
@@ -320,14 +321,12 @@ export default async function MappingKindPage({ params, searchParams }: PageProp
                 </tbody>
               </table>
             </div>
-            <div className="mt-3 flex flex-wrap items-center justify-between gap-3 text-sm">
-              <span className="text-[var(--muted)]">
-                {list.total} shown · page {pageNo} of {pages}{" "}
-                {pageNo > 1 && <Link className="btn-link ml-2" href={qs({ page: pageNo - 1 })}>← Previous</Link>}
-                {pageNo < pages && <Link className="btn-link ml-2" href={qs({ page: pageNo + 1 })}>Next →</Link>}
-              </span>
-              {editable && <button className="btn-secondary">Save choices on this page</button>}
-            </div>
+            {editable && (
+              <div className="mt-3 flex justify-end">
+                <button className="btn-secondary">Save choices on this page</button>
+              </div>
+            )}
+            <Pagination total={list.total} state={paging} noun="record" href={pageHref(`/admin/settings/mapping/${slug}`, { filter }, 100)} />
           </form>
         </>
       )}
