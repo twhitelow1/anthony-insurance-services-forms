@@ -44,6 +44,10 @@ export const clients = pgTable(
     sfLastError: text("sf_last_error"),
     /** Lead Alchemist Company (Business). Only set once Companies are connected. */
     ghlCompanyId: text("ghl_company_id"),
+    /** Unsynced on the Salesforce screen: stays linked, but nothing syncs either way until synced again. */
+    sfSyncPaused: boolean("sf_sync_paused").notNull().default(false),
+    /** Last time the automatic sync pulled this Account's Salesforce details. */
+    sfPulledAt: timestamp("sf_pulled_at", { withTimezone: true }),
 
     /** Set when this record was merged into another; it no longer shows in lists. */
     mergedInto: uuid("merged_into"),
@@ -86,6 +90,8 @@ export const contacts = pgTable(
     primaryEmail: text("primary_email"),
     phones: jsonb("phones").$type<string[]>().notNull().default([]),
     sfContactId: text("sf_contact_id"),
+    /** Unsynced on the Salesforce screen: stays linked, but isn't updated from Salesforce. */
+    sfSyncPaused: boolean("sf_sync_paused").notNull().default(false),
     /** The Lead Alchemist contact. */
     ghlContactId: text("ghl_contact_id"),
     searchText: text("search_text").notNull().default(""),
@@ -173,6 +179,18 @@ export interface MappingDetail {
 }
 export type MappingRow = typeof mappingRows.$inferSelect;
 
+/**
+ * Salesforce records removed from this dashboard (never from Salesforce). The import and the
+ * automatic sync leave them out until staff sync them again.
+ */
+export const salesforceHidden = pgTable("salesforce_hidden", {
+  sfId: text("sf_id").primaryKey(),
+  kind: text("kind").$type<"account" | "contact">().notNull(),
+  name: text("name").notNull(),
+  removedBy: text("removed_by").notNull(),
+  removedAt: timestamp("removed_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 /** Superseded by contact_emails (kept until the old rows are no longer needed). Every email that belonged to a client. */
 export const clientEmails = pgTable(
   "client_emails",
@@ -199,7 +217,12 @@ export type ClientEventType =
   | "contact_moved"
   | "imported"
   | "la_company_linked"
-  | "duplicate_resolved";
+  | "duplicate_resolved"
+  | "sf_sync_paused"
+  | "sf_sync_resumed"
+  | "sf_pulled"
+  | "contact_removed"
+  | "la_contact_linked";
 
 /** Audit log and notes for a client (merges, splits, syncs, staff notes). */
 export const clientEvents = pgTable(

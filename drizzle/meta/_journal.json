@@ -85,6 +85,13 @@
       "when": 1792854034753,
       "tag": "0011_accounts_contacts_mapping",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1792857133339,
+      "tag": "0012_salesforce_manager",
+      "breakpoints": true
     }
   ]
 }

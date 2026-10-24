@@ -148,6 +148,12 @@ export async function ensureContact(input: NewContact): Promise<Contact> {
   return created;
 }
 
+export async function getContactBySalesforceId(sfContactId: string): Promise<Contact | undefined> {
+  const db = await getDb();
+  const [row] = await db.select().from(contacts).where(eq(contacts.sfContactId, sfContactId)).limit(1);
+  return row;
+}
+
 export async function setContactSalesforce(contactId: string, sfContactId: string | null) {
   const db = await getDb();
   await db.update(contacts).set({ sfContactId, updatedAt: new Date() }).where(eq(contacts.id, contactId));
@@ -384,7 +390,7 @@ export async function assignDraftClient(draftId: string, details: ClientDetails)
 
 export async function setClientSalesforce(
   clientId: string,
-  patch: Partial<Pick<Client, "sfAccountId" | "sfStatus" | "sfSyncedAt" | "sfLastError" | "ghlCompanyId">>,
+  patch: Partial<Pick<Client, "sfAccountId" | "sfStatus" | "sfSyncedAt" | "sfLastError" | "ghlCompanyId" | "sfSyncPaused" | "sfPulledAt">>,
 ) {
   const db = await getDb();
   await db.update(clients).set({ ...patch, updatedAt: new Date() }).where(eq(clients.id, clientId));

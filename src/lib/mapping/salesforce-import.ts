@@ -11,6 +11,7 @@ import {
   ensureContact,
   getClient,
   getContactByEmail,
+  getContactBySalesforceId,
   isStrongMatch,
   normalizeEmail,
   refreshSearch,
@@ -19,6 +20,7 @@ import {
 import { nameKey } from "@/lib/clients/text";
 import type { Links } from "@/lib/integrations/urls";
 import { soqlString, type SalesforceApi } from "@/lib/salesforce/api";
+import { hiddenSet, isHidden, unhide } from "@/lib/salesforce/hidden";
 import { LINK_FIELDS, prepareFields } from "@/lib/salesforce/mapping";
 import { addRows, applyBatch, finalChoice, saveRun, type MappingRun, type NewMappingRow } from "./runs";
 
@@ -33,8 +35,8 @@ import { addRows, applyBatch, finalChoice, saveRun, type MappingRun, type NewMap
  * Applying (after staff confirm) links or creates the Account, adds its Contacts, and writes
  * the app's link back onto the Salesforce Account and Contacts (only the link fields).
  */
-type ContactRow = { Id: string; Email: string | null; FirstName: string | null; LastName: string | null; Phone: string | null; Title: string | null } & Record<string, unknown>;
-type AccountRow = {
+export type ContactRow = { Id: string; Email: string | null; FirstName: string | null; LastName: string | null; Phone: string | null; Title: string | null } & Record<string, unknown>;
+export type AccountRow = {
   Id: string;
   Name: string;
   Phone: string | null;
@@ -48,16 +50,21 @@ type AccountRow = {
 
 const PAGE = 200;
 
+/** The Account fields (and its Contacts) the import and the Salesforce screen read. */
+export const ACCOUNT_SELECT =
+  "SELECT Id, Name, Phone, Website, BillingStreet, BillingCity, BillingState, BillingPostalCode, LastModifiedDate, " +
+  "(SELECT Id, Email, FirstName, LastName, Phone, Title FROM Contacts ORDER BY CreatedDate) FROM Account";
+
 export interface SalesforceImportDeps {
   sf: SalesforceApi;
   links: Links;
   timeBudgetMs?: number;
 }
 
-/** What to propose for one Salesforce Account. Reads the app only. */
-export async function proposeForAccount(account: AccountRow): Promise<NewMappingRow> {
+/** The Account's details as the mapping rows store them. */
+export function accountDetail(account: AccountRow): MappingDetail {
   const contacts = account.Contacts?.records ?? [];
-  const detail: MappingDetail = {
+  return {
     phone: account.Phone,
     website: account.Website,
     street: account.BillingStreet,
@@ -74,7 +81,14 @@ export async function proposeForAccount(account: AccountRow): Promise<NewMapping
       title: c.Title,
     })),
   };
+}
+
+/** What to propose for one Salesforce Account. Reads the app only. */
+export async function proposeForAccount(account: AccountRow): Promise<NewMappingRow> {
+  const detail = accountDetail(account);
   const base = { sourceId: account.Id, sourceName: account.Name, sourceDetail: detail };
+
+  if (await isHidden(account.Id)) return { ...base, proposal: "skip", confidence: "none", reason: "Removed from this dashboard (still in Salesforce)" };
 
   const linked = await clientsForAccount(account.Id);
   if (linked.length) return { ...base, proposal: "link", confidence: "exact", targetId: linked[0].id, targetName: linked[0].name, reason: "Already linked to this Salesforce Account" };
@@ -127,10 +141,7 @@ export async function scanSalesforceBatch(run: MappingRun, deps: SalesforceImpor
   const budget = deps.timeBudgetMs ?? 40_000;
   while (Date.now() - started < budget) {
     const where = run.cursor ? `WHERE Id > ${soqlString(run.cursor)} ` : "";
-    const soql =
-      "SELECT Id, Name, Phone, Website, BillingStreet, BillingCity, BillingState, BillingPostalCode, " +
-      "(SELECT Id, Email, FirstName, LastName, Phone, Title FROM Contacts ORDER BY CreatedDate) " +
-      `FROM Account ${where}ORDER BY Id LIMIT ${PAGE}`;
+    const soql = `${ACCOUNT_SELECT} ${where}ORDER BY Id LIMIT ${PAGE}`;
     const { records } = await deps.sf.queryPage<AccountRow>(soql);
     if (!records.length) {
       run.phase = "review";
@@ -159,6 +170,21 @@ export async function scanSalesforceBatch(run: MappingRun, deps: SalesforceImpor
 async function applyRow(row: MappingRow, deps: SalesforceImportDeps, actor: string): Promise<string> {
   const { action, targetId } = finalChoice(row);
   if (action === "skip") return "Skipped";
+  return (await applyAccount(row, action, targetId, deps, actor)).result;
+}
+
+/**
+ * Link a Salesforce Account to an app Account (or create one), add its Contacts and write the
+ * app's links back. Used by the mapping screen and the Salesforce screen's Sync button.
+ */
+export async function applyAccount(
+  row: Pick<MappingRow, "sourceId" | "sourceName" | "sourceDetail">,
+  action: "link" | "create",
+  targetId: string | null,
+  deps: SalesforceImportDeps,
+  actor: string,
+  opts: { possibleDuplicateOf?: string | null } = {},
+): Promise<{ account: Client; result: string }> {
   const d = row.sourceDetail;
   const address = { street: d.street ?? undefined, city: d.city ?? undefined, state: d.state ?? undefined, postalCode: d.postalCode ?? undefined };
 
@@ -167,18 +193,22 @@ async function applyRow(row: MappingRow, deps: SalesforceImportDeps, actor: stri
     const target = targetId ? await getClient(targetId) : undefined;
     if (!target) throw new Error("The app Account to link to no longer exists");
     if (target.sfAccountId && target.sfAccountId !== row.sourceId) throw new Error(`"${target.name}" is already linked to a different Salesforce Account`);
-    await setClientSalesforce(target.id, { sfAccountId: row.sourceId, sfStatus: "linked", sfLastError: null });
+    await setClientSalesforce(target.id, { sfAccountId: row.sourceId, sfStatus: "linked", sfLastError: null, sfSyncPaused: false });
     // Fill in what the app doesn't have yet.
     const fill = { ...(!target.website && d.website ? { website: d.website } : {}), ...(!target.address && Object.values(address).some(Boolean) ? { address } : {}) };
     if (Object.keys(fill).length) await (await getDb()).update(schema.clients).set(fill).where(eq(schema.clients.id, target.id));
     account = target;
   } else {
-    account = await createAccount({ name: row.sourceName, phone: d.phone, website: d.website, address, sfAccountId: row.sourceId }, actor);
+    account = await createAccount({ name: row.sourceName, phone: d.phone, website: d.website, address, sfAccountId: row.sourceId, possibleDuplicateOf: opts.possibleDuplicateOf }, actor);
   }
 
   let added = 0;
+  // Contacts removed from the dashboard stay out, and unsynced ones aren't updated.
+  const hiddenContacts = await hiddenSet((d.contacts ?? []).map((c) => c.sfId).filter((x): x is string => !!x));
   for (const c of d.contacts ?? []) {
-    const before = c.email ? await getContactByEmail(c.email) : undefined;
+    if (c.sfId && hiddenContacts.has(c.sfId)) continue;
+    const before = (c.email ? await getContactByEmail(c.email) : undefined) ?? (c.sfId ? await getContactBySalesforceId(c.sfId) : undefined);
+    if (before?.sfSyncPaused) continue;
     await ensureContact({ clientId: account.id, email: c.email, firstName: c.firstName, lastName: c.lastName, name: c.name, title: c.title, phone: c.phone, sfContactId: c.sfId });
     if (!before) added++;
   }
@@ -186,12 +216,13 @@ async function applyRow(row: MappingRow, deps: SalesforceImportDeps, actor: stri
   await addClientEvent(account.id, "imported", actor, {
     message: `${action === "link" ? "Linked to" : "Imported from"} Salesforce Account ${row.sourceId}${d.contacts?.length ? ` with ${d.contacts.length} contact${d.contacts.length === 1 ? "" : "s"}` : ""}`,
   });
+  await unhide([row.sourceId]);
   await writeLinksBack(row, account.id, deps);
-  return `${action === "link" ? "Linked" : "Created"} "${account.name}"${added ? `, ${added} new contact${added === 1 ? "" : "s"}` : ""}`;
+  return { account, result: `${action === "link" ? "Linked" : "Created"} "${account.name}"${added ? `, ${added} new contact${added === 1 ? "" : "s"}` : ""}` };
 }
 
 /** Only the link fields, and only when they'd change. Missing fields are skipped. */
-async function writeLinksBack(row: MappingRow, clientId: string, deps: SalesforceImportDeps) {
+async function writeLinksBack(row: Pick<MappingRow, "sourceId" | "sourceDetail">, clientId: string, deps: SalesforceImportDeps) {
   const [accountDescribe, contactDescribe] = await Promise.all([deps.sf.describe("Account"), deps.sf.describe("Contact")]);
   const ghlContactId = await clientGhlContactId(clientId);
   const page = deps.links.appClient(clientId);

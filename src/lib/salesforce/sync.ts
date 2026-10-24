@@ -123,6 +123,11 @@ export async function syncApplicationToSalesforce(applicationId: string, deps: S
     appContactId = (await getApplication(app.id))?.contactId ?? null;
   }
   const client = (await getClient(clientId)) as Client;
+  // Unsynced on the Salesforce screen: leave it alone until it's synced again.
+  if (client.sfSyncPaused) {
+    await setAppSf(app.id, { sfSyncStatus: "skipped", sfLastError: null });
+    return { status: "skipped", reason: `Salesforce sync is off for "${client.name}" (Salesforce → Accounts).` };
+  }
   const person = appContactId ? ((await getContact(appContactId)) as Contact | undefined) : undefined;
 
   const live = !deps.dryRun;
