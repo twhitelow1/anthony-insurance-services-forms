@@ -1,6 +1,7 @@
 import "server-only";
 import { GhlError, ghlConfig, listCustomFields, listPipelines } from "@/lib/ghl/client";
 import { salesforceClient } from "@/lib/salesforce/client";
+import { accessReport } from "@/lib/salesforce/fields";
 import { checkSalesforce } from "@/lib/salesforce/health";
 
 /** One line on the Integrations dashboard: a check and whether it passed. */
@@ -26,7 +27,17 @@ export async function testSalesforce(): Promise<Check[]> {
     const h = await checkSalesforce(sf);
     const checks: Check[] = [
       { label: "Sign in", ok: true, detail: "Signed in as the integration user." },
-      { label: "Accounts, Contacts, Opportunities", ok: true, detail: "Readable." },
+      ...(await accessReport(sf)).map(
+        (r): Check => ({
+          label: r.object === "Account" ? "Accounts" : r.object === "Contact" ? "Contacts" : "Opportunities",
+          ok: r.readable && !r.missing.length,
+          detail: !r.readable
+            ? "Can't read this object. In Salesforce, give the permission set Read, Create and Edit on it."
+            : r.missing.length
+              ? `Readable, but these fields aren't visible to the integration user (add Read/Edit in the permission set's field permissions): ${r.missing.join(", ")}`
+              : "Readable, with every field the app uses.",
+        }),
+      ),
       {
         label: "Link fields",
         ok: !h.missingFields.length,

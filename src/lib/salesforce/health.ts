@@ -23,7 +23,10 @@ export interface SalesforceHealth {
 const PICKLISTS = ["Type", "Legal_Entity__c", "Program__c", "Renewal_Status__c", "Current_Coverage__c"];
 
 export async function checkSalesforce(api: SalesforceApi): Promise<Omit<SalesforceHealth, "configured" | "checkedAt">> {
-  const [account, contact, opp] = await Promise.all([api.describe("Account"), api.describe("Contact"), api.describe("Opportunity")]);
+  // Sign-in problems throw; an object the integration user can't read just counts as having no fields.
+  await api.describe("Account");
+  const readable = (o: string) => api.describe(o).catch(() => ({ name: o, fields: [] as { name: string; picklistValues?: { value: string; active: boolean }[] }[] }));
+  const [account, contact, opp] = await Promise.all([readable("Account"), readable("Contact"), readable("Opportunity")]);
   const has = (d: { fields: { name: string }[] }, n: string) => d.fields.some((f) => f.name.toLowerCase() === n.toLowerCase());
   const missing = [
     ...Object.values(LINK_FIELDS.Account).filter((n) => !has(account, n)).map((n) => `Account.${n}`),
@@ -34,7 +37,7 @@ export async function checkSalesforce(api: SalesforceApi): Promise<Omit<Salesfor
   const stages = (
     await api.query<{ MasterLabel: string; IsClosed: boolean; IsWon: boolean; SortOrder: number }>(
       "SELECT MasterLabel, IsClosed, IsWon, SortOrder FROM OpportunityStage WHERE IsActive = true ORDER BY SortOrder",
-    )
+    ).catch(() => [])
   ).map((r) => ({ label: r.MasterLabel, isClosed: r.IsClosed, isWon: r.IsWon, sortOrder: r.SortOrder }));
   const picklists = Object.fromEntries(
     PICKLISTS.map((n) => account.fields.find((f) => f.name === n))
