@@ -4,6 +4,7 @@ import { accountSelect, visibleFields } from "./fields";
 
 // The integration user can't see Account.Phone or Website (no field-level access): describe leaves them out.
 const sf = {
+  query: async () => [],
   describe: async (object: string) => ({
     name: object,
     fields: (object === "Account" ? ["Id", "Name", "BillingCity", "OwnerId", "Program__c"] : ["Id", "Email", "LastName"]).map((name) => ({ name, type: "string" })),
@@ -27,9 +28,16 @@ describe("only readable Salesforce fields are queried", () => {
 
 describe("when the integration user can't read Contacts", () => {
   const noContacts = {
+    // Describe can list the relationship, yet the query is refused.
+    query: async () => {
+      throw new Error("INVALID_TYPE: Didn't understand relationship 'Contacts'");
+    },
     describe: async (object: string) => {
-      if (object === "Contact") throw new Error("NOT_FOUND");
-      return { name: object, fields: [{ name: "Id", type: "id" }, { name: "Name", type: "string" }], childRelationships: [] };
+      return {
+        name: object,
+        fields: [{ name: "Id", type: "id" }, { name: "Name", type: "string" }],
+        childRelationships: [{ relationshipName: "Contacts", childSObject: "Contact" }],
+      };
     },
   } as unknown as SalesforceApi;
 

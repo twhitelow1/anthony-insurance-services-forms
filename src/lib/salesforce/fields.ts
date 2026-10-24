@@ -26,15 +26,22 @@ export const CONTACT_FIELDS = ["Email", "FirstName", "LastName", "Phone", "Mobil
 
 /**
  * Whether the integration user can read Contacts under an Account. Without Read on the Contact
- * object, Salesforce hides the Account → Contacts relationship ("Didn't understand relationship").
+ * object Salesforce rejects the Account → Contacts subquery ("Didn't understand relationship"),
+ * even when describe lists it, so this asks with a one-row test query. Remembered for 5 minutes.
  */
-export async function contactsReadable(sf: SalesforceApi): Promise<boolean> {
-  try {
-    const [account] = await Promise.all([sf.describe("Account"), sf.describe("Contact")]);
-    return !account.childRelationships || account.childRelationships.some((r) => r.relationshipName === "Contacts");
-  } catch {
-    return false;
-  }
+const contactsProbe = new WeakMap<SalesforceApi, { at: number; value: Promise<boolean> }>();
+export function contactsReadable(sf: SalesforceApi): Promise<boolean> {
+  const hit = contactsProbe.get(sf);
+  if (hit && Date.now() - hit.at < 5 * 60_000) return hit.value;
+  const value = sf
+    .query("SELECT Id, (SELECT Id FROM Contacts LIMIT 1) FROM Account LIMIT 1", { max: 1 })
+    .then(() => true)
+    .catch((err: unknown) => {
+      console.warn("[salesforce] Contacts aren't readable by the integration user:", err instanceof Error ? err.message.slice(0, 160) : err);
+      return false;
+    });
+  contactsProbe.set(sf, { at: Date.now(), value });
+  return value;
 }
 
 /** SELECT … (Contacts subquery, when readable) FROM Account, with only readable fields. Append WHERE/ORDER/LIMIT. */
@@ -56,6 +63,7 @@ export async function accessReport(sf: SalesforceApi): Promise<{ object: string;
   const out = [];
   for (const [object, wanted] of Object.entries(WANTED)) {
     try {
+      if (object === "Contact" && !(await contactsReadable(sf))) throw new Error("not readable");
       const visible = await visibleFields(sf, object, wanted);
       out.push({ object, readable: true, missing: wanted.filter((f) => !visible.includes(f)) });
     } catch {
