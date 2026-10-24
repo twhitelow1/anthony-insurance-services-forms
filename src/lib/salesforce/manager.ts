@@ -12,8 +12,9 @@ import {
   refreshSearch,
   setClientSalesforce,
 } from "@/lib/clients/repo";
-import { ACCOUNT_SELECT, accountDetail, applyAccount, proposeForAccount, type AccountRow, type SalesforceImportDeps } from "@/lib/mapping/salesforce-import";
+import { accountDetail, applyAccount, proposeForAccount, type AccountRow, type SalesforceImportDeps } from "@/lib/mapping/salesforce-import";
 import { soqlString, type SalesforceApi } from "./api";
+import { accountSelect, CONTACT_FIELDS, selectList } from "./fields";
 import { hiddenSet, hide, unhide } from "./hidden";
 
 /**
@@ -52,7 +53,7 @@ export async function listSalesforceAccounts(sf: SalesforceApi, opts: { q?: stri
   const offset = Math.min(Math.max(0, opts.offset ?? 0), MAX_OFFSET);
   const where = q ? `WHERE Name LIKE ${soqlString(`%${likeTerm(q)}%`)} ` : "";
   const { records } = await sf.queryPage<AccountRow & { Contacts?: { totalSize?: number; records: unknown[] } | null }>(
-    "SELECT Id, Name, Phone, Website, BillingCity, BillingState, (SELECT Id FROM Contacts) " +
+    `SELECT ${await selectList(sf, "Account", ["Name", "Phone", "Website", "BillingCity", "BillingState"])}, (SELECT Id FROM Contacts) ` +
       `FROM Account ${where}ORDER BY Name, Id LIMIT ${PAGE_SIZE + 1} OFFSET ${offset}`,
   );
   const page = records.slice(0, PAGE_SIZE);
@@ -95,7 +96,7 @@ export async function appSalesforceCounts() {
 }
 
 async function fetchAccount(sf: SalesforceApi, sfAccountId: string): Promise<AccountRow> {
-  const [account] = await sf.query<AccountRow>(`${ACCOUNT_SELECT} WHERE Id = ${soqlString(sfAccountId)} LIMIT 1`);
+  const [account] = await sf.query<AccountRow>(`${await accountSelect(sf)} WHERE Id = ${soqlString(sfAccountId)} LIMIT 1`);
   if (!account) throw new Error("That Salesforce Account wasn't found (it may have been deleted in Salesforce).");
   return account;
 }
@@ -217,7 +218,7 @@ export async function salesforceAccountDetail(sf: SalesforceApi, sfAccountId: st
 /** Sync one Salesforce Contact into its Account in the app (the Account must be in the app). */
 export async function syncContact(sf: SalesforceApi, sfContactId: string, actor: string) {
   const [c] = await sf.query<SfContactRow>(
-    `SELECT Id, Email, FirstName, LastName, Phone, Title, AccountId FROM Contact WHERE Id = ${soqlString(sfContactId)} LIMIT 1`,
+    `SELECT ${await selectList(sf, "Contact", [...CONTACT_FIELDS, "AccountId"])} FROM Contact WHERE Id = ${soqlString(sfContactId)} LIMIT 1`,
   );
   if (!c) throw new Error("That Salesforce Contact wasn't found (it may have been deleted in Salesforce).");
   const db = await getDb();

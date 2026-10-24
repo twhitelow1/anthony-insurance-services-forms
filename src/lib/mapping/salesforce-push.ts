@@ -1,4 +1,5 @@
 import "server-only";
+import { selectList } from "@/lib/salesforce/fields";
 import { and, asc, eq, gt, inArray, isNull, notInArray, sql } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
 import type { Client, MappingRow } from "@/lib/db/schema";
@@ -75,7 +76,7 @@ async function proposeFor(account: Client, sf: SalesforceApi): Promise<NewMappin
   }
   if (m.kind === "review") {
     const same = await sf.query<{ Id: string; Name: string; Phone: string | null; BillingCity: string | null }>(
-      `SELECT Id, Name, Phone, BillingCity FROM Account WHERE Name = ${soqlString(account.name)} LIMIT 8`,
+      `SELECT ${await selectList(sf, "Account", ["Name", "Phone", "BillingCity"])} FROM Account WHERE Name = ${soqlString(account.name)} LIMIT 8`,
     );
     return {
       ...base,

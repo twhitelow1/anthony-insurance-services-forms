@@ -5,7 +5,12 @@ import { cookies } from "next/headers";
 import { CLIENT_SEARCH_COOKIE } from "@/lib/clients/search-cookie";
 import { redirect } from "next/navigation";
 import { requireStaff } from "@/lib/auth/session";
-import { addClientEvent, getClient, keepSeparate, listClientApplications, mergeClients, setPrimaryContact, splitContact } from "@/lib/clients/repo";
+import { addClientEvent, getClient, getContact, keepSeparate, listAccountContacts, listClientApplications, mergeClients, setPrimaryContact, splitContact } from "@/lib/clients/repo";
+import { pushContactValue, refreshContactExternal } from "@/lib/contacts/external";
+import { setFlash } from "@/lib/flash";
+import { addNotificationNote } from "@/lib/notifications/repo";
+import { salesforceClient } from "@/lib/salesforce/client";
+import { refreshAccountFromSalesforce } from "@/lib/salesforce/refresh";
 import { getApplication } from "@/lib/applications/repo";
 import { syncNow } from "@/lib/salesforce/jobs";
 import { defaultSyncDeps } from "@/lib/salesforce/sync";
@@ -133,4 +138,67 @@ export async function searchClientsAction(formData: FormData) {
   if (q) jar.set(CLIENT_SEARCH_COOKIE, q, { httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "lax", path: "/admin/clients", maxAge: 3600 });
   else jar.delete({ name: CLIENT_SEARCH_COOKIE, path: "/admin/clients" });
   redirect(`/admin/clients?sort=${sort}&filter=${filter}`);
+}
+
+/** "Refresh from Salesforce": read the linked Account and its contacts; nothing in the app is overwritten. */
+export async function refreshFromSalesforceAction(formData: FormData) {
+  const staff = await requireStaff();
+  const client = await getClient(String(formData.get("id") ?? ""));
+  if (!client) throw new Error("Account not found");
+  const sf = await salesforceClient();
+  if (!sf) back(client.id, { sf: "off" });
+  let error: string | null = null;
+  try {
+    await refreshAccountFromSalesforce(client.id, sf!, `staff:${staff.email}`);
+  } catch (err) {
+    error = err instanceof Error ? err.message : String(err);
+    console.error("[accounts] refresh from Salesforce failed:", error);
+  }
+  revalidatePath(`/admin/clients/${client.id}`);
+  back(client.id, error ? { error: error.slice(0, 200) } : { saved: "refreshed" });
+}
+
+/** Read the Lead Alchemist values only (no Salesforce link needed). */
+export async function refreshContactsAction(formData: FormData) {
+  await requireStaff();
+  const client = await getClient(String(formData.get("id") ?? ""));
+  if (!client) throw new Error("Account not found");
+  for (const p of await listAccountContacts(client.id)) await refreshContactExternal(p.id).catch(() => {});
+  revalidatePath(`/admin/clients/${client.id}`);
+  back(client.id, { saved: "checked" });
+}
+
+/**
+ * Send the application's phone or email to Salesforce or Lead Alchemist (on demand only). From the
+ * account page or a notification; the notification's log records who sent what.
+ */
+export async function pushContactValueAction(formData: FormData) {
+  const staff = await requireStaff();
+  const actor = `staff:${staff.email}`;
+  const contactId = String(formData.get("contactId") ?? "");
+  const target = String(formData.get("target") ?? "");
+  const field = String(formData.get("field") ?? "");
+  const value = String(formData.get("value") ?? "");
+  const notificationId = String(formData.get("notificationId") ?? "");
+  const backTo = String(formData.get("back") ?? "");
+  if (!UUID_RE.test(contactId) || (target !== "salesforce" && target !== "lead_alchemist") || (field !== "phone" && field !== "email")) {
+    throw new Error("Unknown contact or field");
+  }
+  let error: string | null = null;
+  let clientId = "";
+  try {
+    const { contact, where } = await pushContactValue(contactId, target, field, value, actor);
+    clientId = contact.clientId;
+    if (UUID_RE.test(notificationId)) await addNotificationNote(notificationId, actor, `Sent the ${field} ${value} to ${where}`, "pushed");
+  } catch (err) {
+    error = err instanceof Error ? err.message : String(err);
+  }
+  revalidatePath("/admin/notifications");
+  if (backTo.startsWith("/admin/notifications/") && UUID_RE.test(backTo)) {
+    const f = await setFlash(error ? { tone: "error", text: error } : { tone: "ok", text: `Sent the ${field} to ${target === "salesforce" ? "Salesforce" : "Lead Alchemist"}.` });
+    redirect(`${backTo.split("?")[0]}?f=${f}`);
+  }
+  if (clientId) revalidatePath(`/admin/clients/${clientId}`);
+  const contact = clientId ? null : await getContact(contactId);
+  back(clientId || contact?.clientId || "", error ? { error: error.slice(0, 200) } : { saved: "pushed" });
 }

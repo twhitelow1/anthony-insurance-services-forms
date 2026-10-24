@@ -5,12 +5,14 @@ import { userModeAction } from "../actions";
 import { OpenAccessBanner } from "@/components/OpenAccessBanner";
 import { after } from "next/server";
 import { runDueJobs } from "@/lib/salesforce/jobs";
+import { countActive } from "@/lib/notifications/repo";
 
 // Signed-in pages read live data on every request (with OPEN_ACCESS no cookie is read, so Next would otherwise render them once at build).
 export const dynamic = "force-dynamic";
 
 export default async function StaffLayout({ children }: LayoutProps<"/admin">) {
   const staff = await requireStaff();
+  const alerts = await countActive().catch(() => 0);
   // Retries that are due (e.g. Salesforce was down) run after the page is sent. Never blocks it.
   after(() => runDueJobs(3).catch((err) => console.error("[jobs] due-job run failed", err)));
   return (
@@ -22,6 +24,9 @@ export default async function StaffLayout({ children }: LayoutProps<"/admin">) {
           <Link href="/admin/unfinished" className="hover:underline">Unfinished</Link>
           <Link href="/admin/clients" className="hover:underline">Accounts</Link>
           <Link href="/admin/salesforce" className="hover:underline">Salesforce</Link>
+          <Link href="/admin/notifications" className="hover:underline">
+            Notifications{alerts > 0 && <span className="badge badge-warning ml-1">{alerts}</span>}
+          </Link>
           <Link href="/admin/assistant" className="hover:underline">Ask AI</Link>
           <Link href="/admin/lead-alchemist" className="hover:underline">Lead Alchemist setup</Link>
           <Link href="/admin/forms" className="hover:underline">Forms</Link>

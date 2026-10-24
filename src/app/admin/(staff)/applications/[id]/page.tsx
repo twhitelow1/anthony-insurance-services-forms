@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { getClient } from "@/lib/clients/repo";
 import { notFound } from "next/navigation";
 import { getForm } from "@/forms";
 import { Answers, fmtDate, StatusBadge, Timeline } from "@/components/portal";
@@ -39,6 +40,7 @@ export default async function AdminApplication({ params, searchParams }: PagePro
   const [l, settings, jobs] = await Promise.all([links(), getSettings(), jobsFor(app.id)]);
   const sfReady = !!(await salesforceConfig()) && settings.salesforceEnabled;
   const openJob = jobs.find((j) => j.status === "pending" || j.status === "running");
+  const account = app.clientId ? await getClient(app.clientId) : undefined;
   const lastSfEvent = events.find((e) => e.type.startsWith("sf_"));
   const SF_RESULT: Record<string, string> = {
     done: "Salesforce sync finished. The result is under Salesforce below.",
@@ -283,13 +285,25 @@ export default async function AdminApplication({ params, searchParams }: PagePro
               <form action={syncApplicationAction}>
                 <input type="hidden" name="id" value={app.id} />
                 <button
-                  className="btn-secondary w-full"
+                  className={app.sfOpportunityId ? "btn-secondary w-full" : "btn-primary w-full"}
                   disabled={!sfReady}
                   title={sfReady ? undefined : "Salesforce sync is off or not connected (Admin → Settings)"}
                 >
-                  Sync to Salesforce
+                  {app.sfOpportunityId ? "Update in Salesforce" : account?.sfAccountId ? "Send to Salesforce" : "Create in Salesforce"}
                 </button>
+                <p className="mt-2 text-xs text-[var(--muted)]">
+                  {app.sfOpportunityId
+                    ? "Updates the Opportunity and Contact in Salesforce."
+                    : account?.sfAccountId
+                      ? "Adds an Opportunity, the PDF and a note to the linked Salesforce Account (and the Contact if they're not there yet)."
+                      : "Nothing was sent on submit. This finds the matching Salesforce Account, or creates the Account, Contact and Opportunity."}
+                </p>
               </form>
+            )}
+            {!app.isTest && !app.sfOpportunityId && !account?.sfAccountId && (
+              <p className="text-xs">
+                Already in Salesforce under another name? <Link className="btn-link" href="/admin/salesforce">Find and sync it on Admin → Salesforce</Link> first.
+              </p>
             )}
           </div>
 

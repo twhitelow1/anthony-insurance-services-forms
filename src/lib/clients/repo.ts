@@ -26,7 +26,15 @@ export interface ClientDetails {
   phone?: string | null;
   address?: ClientAddress | null;
   website?: string | null;
+  /**
+   * The form is for one person's own cover (e.g. an instructor policy): the Account is an
+   * individual one, named after the business field when it's filled in, else after the person.
+   */
+  individual?: boolean;
 }
+
+/** Forms that insure one person (instructors), not a business such as a gym or studio. */
+export const isIndividualForm = (formSlug: string) => /instructor/.test(formSlug);
 
 /** How an application's Account was found. "review": a new Account that shares only its name with another. */
 export type AccountMatch = "contact" | "strong" | "new" | "review";
@@ -199,12 +207,47 @@ export async function getClientIdForEmail(email: string): Promise<string | null>
 export async function listAccountContacts(clientId: string) {
   const db = await getDb();
   const viaApps = db.select({ id: applications.contactId }).from(applications).where(and(eq(applications.clientId, clientId), isNotNull(applications.contactId)));
+  const added = db.select({ id: schema.accountContacts.contactId }).from(schema.accountContacts).where(eq(schema.accountContacts.clientId, clientId));
   const rows = await db
     .select()
     .from(contacts)
-    .where(or(eq(contacts.clientId, clientId), inArray(contacts.id, viaApps)))
+    .where(or(eq(contacts.clientId, clientId), inArray(contacts.id, viaApps), inArray(contacts.id, added)))
     .orderBy(asc(contacts.createdAt));
   return rows.map((c) => ({ ...c, homeHere: c.clientId === clientId }));
+}
+
+/** Every Account a person is tied to: home first, then ones added by staff or applied for. */
+export async function accountsOfContact(contactId: string): Promise<{ id: string; name: string; home: boolean; ghlCompanyId: string | null }[]> {
+  const db = await getDb();
+  const contact = await getContact(contactId);
+  if (!contact) return [];
+  const viaApps = db.select({ id: applications.clientId }).from(applications).where(eq(applications.contactId, contactId));
+  const added = db.select({ id: schema.accountContacts.clientId }).from(schema.accountContacts).where(eq(schema.accountContacts.contactId, contactId));
+  const rows = await db
+    .select({ id: clients.id, name: clients.name, ghlCompanyId: clients.ghlCompanyId })
+    .from(clients)
+    .where(and(isNull(clients.mergedInto), or(eq(clients.id, contact.clientId), inArray(clients.id, viaApps), inArray(clients.id, added))));
+  return rows.map((r) => ({ ...r, home: r.id === contact.clientId })).sort((a, b) => Number(b.home) - Number(a.home) || a.name.localeCompare(b.name));
+}
+
+/** Tie a person to another Account (their home Account doesn't change). */
+export async function addContactToAccount(clientId: string, contactId: string, actor: string, role?: string | null) {
+  const db = await getDb();
+  const contact = await getContact(contactId);
+  if (!contact) throw new Error("That contact no longer exists.");
+  if (contact.clientId === clientId) return;
+  await db.insert(schema.accountContacts).values({ clientId, contactId, role: role ?? null, addedBy: actor }).onConflictDoNothing();
+  await addClientEvent(clientId, "contact_added", actor, { message: `${contact.name} added to this account (their main account is unchanged)` });
+  await refreshSearch(clientId);
+}
+
+/** Untie a person from an Account they were added to (this app only). */
+export async function removeContactFromAccount(clientId: string, contactId: string, actor: string) {
+  const db = await getDb();
+  const contact = await getContact(contactId);
+  await db.delete(schema.accountContacts).where(and(eq(schema.accountContacts.clientId, clientId), eq(schema.accountContacts.contactId, contactId)));
+  if (contact) await addClientEvent(clientId, "contact_removed", actor, { message: `${contact.name} taken off this account in the app` });
+  await refreshSearch(clientId);
 }
 
 /** Recompute the Account's search text: its name, phones and every Contact's name, emails and phones. */
@@ -311,6 +354,8 @@ export async function isStrongMatch(account: Client, details: Pick<ClientDetails
  * 2. Otherwise a business Account with the same name AND the same phone, business email domain or website.
  * 3. A name-only match is a new Account flagged "possible duplicate" for staff to merge or keep.
  * 4. Otherwise a new Account. No business name → an individual Account named after the person.
+ * Individual forms (instructors) always use an individual Account: the person's own one if they
+ * have it, else a new one named after the business field (if filled in) or the person.
  */
 export async function resolveAccountAndContact(details: ClientDetails): Promise<{ clientId: string; contactId: string; match: AccountMatch }> {
   const email = normalizeEmail(details.email);
@@ -322,11 +367,11 @@ export async function resolveAccountAndContact(details: ClientDetails): Promise<
 
   let account: Client | undefined;
   let match: AccountMatch = "new";
-  if (!business) {
+  if (!business || details.individual) {
     if (home?.isIndividual) {
       account = home;
       match = "contact";
-    } else account = await createAccount({ name: person, isIndividual: true, phone: details.phone, address: details.address, primaryEmail: email });
+    } else account = await createAccount({ name: business ?? person, isIndividual: true, phone: details.phone, address: details.address, primaryEmail: email });
   } else {
     const key = nameKey(business);
     if (home && !home.isIndividual && home.nameKey === key) {
