@@ -10,7 +10,7 @@ import { getDb, schema } from "@/lib/db";
  * small time-boxed batches, one per request; the list page keeps submitting the next batch while
  * it's open, and it can be stopped. One run per list at a time.
  */
-export type SelectionScope = "contacts" | "mapping";
+export type SelectionScope = "contacts" | "mapping" | "accounts";
 
 export interface SelectionRun {
   runId: string;

@@ -10,8 +10,25 @@ import { CLIENT_SEARCH_COOKIE } from "@/lib/clients/search-cookie";
 import { searchClientsAction } from "./actions";
 import { linkAllGhlAction } from "@/app/admin/actions";
 import { ghlConfig } from "@/lib/ghl/client";
+import { readFlash } from "@/lib/flash";
+import { FlashMessage } from "../salesforce/ui";
+import { AcrossView } from "./AcrossView";
 
 export const metadata = { title: "Accounts | AIS Connect" };
+
+/** "AIS Connect accounts" (the list below) or "Across all three" (AcrossView). */
+function Tabs({ view }: { view: "app" | "all" }) {
+  return (
+    <nav className="mb-4 flex flex-wrap gap-2" aria-label="Account views">
+      <Link href="/admin/clients" className={view === "app" ? "btn-primary" : "btn-secondary"} aria-current={view === "app" ? "page" : undefined}>
+        AIS Connect accounts
+      </Link>
+      <Link href="/admin/clients?view=all" className={view === "all" ? "btn-primary" : "btn-secondary"} aria-current={view === "all" ? "page" : undefined}>
+        Across all three (Salesforce, Lead Alchemist)
+      </Link>
+    </nav>
+  );
+}
 
 const SORTS: { value: ClientSort; label: string }[] = [
   { value: "latest", label: "Latest activity" },
@@ -29,6 +46,16 @@ export default async function Accounts({ searchParams }: PageProps<"/admin/clien
   await requireStaff("/admin/clients");
   const sp = await searchParams;
   const q = (await cookies()).get(CLIENT_SEARCH_COOKIE)?.value ?? "";
+  if (sp.view === "all") {
+    const flash = await readFlash(sp.f);
+    return (
+      <div>
+        <h1 className="mb-2 text-2xl font-semibold">Accounts</h1>
+        <Tabs view="all" />
+        <AcrossView sp={sp} q={q} flash={<FlashMessage flash={flash} />} />
+      </div>
+    );
+  }
   const sort = SORTS.some((s) => s.value === sp.sort) ? (sp.sort as ClientSort) : "latest";
   const filter = FILTERS.some((f) => f.value === sp.filter) ? (sp.filter as ClientFilter) : "all";
   const paging = pageState(sp);
@@ -67,6 +94,7 @@ export default async function Accounts({ searchParams }: PageProps<"/admin/clien
           )}
         </div>
       </div>
+      <Tabs view="app" />
       <p className="mb-6 text-sm text-[var(--muted)]">
         Every business (and individual) with their contacts and applications. Each links to its Salesforce Account and Lead Alchemist Company.
       </p>
