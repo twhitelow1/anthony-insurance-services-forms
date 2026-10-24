@@ -5,7 +5,9 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { requireStaff } from "@/lib/auth/session";
 import { setFlash } from "@/lib/flash";
+import { ghlConfig } from "@/lib/ghl/client";
 import { links } from "@/lib/integrations/links";
+import { findLaMatches, resetLaMatches } from "@/lib/mapping/la-matches";
 import {
   addCompaniesToApp,
   companiesToSalesforce,
@@ -33,7 +35,11 @@ const backTo = (formData: FormData) => {
 };
 
 async function finish(formData: FormData, tone: "ok" | "error", text: string): Promise<never> {
-  const back = backTo(formData).replace(/([?&])f=[^&]*&?/, "$1").replace(/[?&]$/, "");
+  return finishTo(backTo(formData), tone, text);
+}
+
+async function finishTo(to: string, tone: "ok" | "error", text: string): Promise<never> {
+  const back = to.replace(/([?&])f=[^&]*&?/, "$1").replace(/[?&]$/, "");
   const f = await setFlash({ tone, text });
   revalidatePath("/admin/mapping");
   redirect(`${back}${back.includes("?") ? "&" : "?"}f=${f}`);
@@ -117,4 +123,26 @@ export async function linkCompaniesAction(formData: FormData) {
 
 export async function addCompaniesToAppAction(formData: FormData) {
   return bulk(formData, LA_ID, (ids, actor) => addCompaniesToApp(ids, actor), "Added to this app");
+}
+
+/**
+ * "Find Lead Alchemist matches": one time-boxed batch, then back to the page. While contacts are
+ * left the page adds `matching=1`, which makes it submit this again on its own.
+ */
+export async function findLaMatchesAction(formData: FormData) {
+  await requireStaff();
+  if (!(await ghlConfig())) return finish(formData, "error", "Lead Alchemist isn't connected. Add the keys in Settings → Integrations.");
+  if (formData.get("recheck") === "yes") await resetLaMatches();
+  let done = false;
+  try {
+    done = (await findLaMatches({ timeBudgetMs: 40_000 })).done;
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error("[mapping] finding Lead Alchemist matches failed:", message);
+    return finish(formData, "error", `Finding Lead Alchemist matches paused: ${message}. Press Continue to try again.`);
+  }
+  revalidatePath("/admin/mapping");
+  const back = backTo(formData).replace(/([?&])(matching|f)=[^&]*&?/g, "$1").replace(/[?&]$/, "");
+  if (done) return finishTo(back, "ok", "Finished looking for Lead Alchemist matches.");
+  redirect(`${back}${back.includes("?") ? "&" : "?"}matching=1`);
 }

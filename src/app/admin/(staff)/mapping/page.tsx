@@ -3,6 +3,9 @@ import { cookies } from "next/headers";
 import { SystemLink } from "@/components/clients";
 import { ListSummary, pageHref, pageOf, pageState, Pagination } from "@/components/Pagination";
 import { SelectAll } from "@/components/SelectAll";
+import { SubmitButton } from "@/components/SubmitButton";
+import { AutoSubmit } from "@/components/AutoSubmit";
+import { laMatchProgress } from "@/lib/mapping/la-matches";
 import { requireStaff } from "@/lib/auth/session";
 import { readFlash } from "@/lib/flash";
 import { ghlConfig } from "@/lib/ghl/client";
@@ -31,6 +34,7 @@ import {
   contactsToCompanyAction,
   contactsToSalesforceAction,
   linkCompaniesAction,
+  findLaMatchesAction,
   searchMappingAction,
 } from "./actions";
 import { MAP_SEARCH_COOKIE } from "./search-cookie";
@@ -52,12 +56,14 @@ const ACCOUNT_FILTERS: { value: AccountMapFilter; label: string }[] = [
   { value: "la_not_sf", label: "In Lead Alchemist, not in Salesforce" },
   { value: "neither", label: "In neither" },
   { value: "both", label: "In both" },
+  { value: "la_suggested", label: "Has suggested Lead Alchemist contacts" },
 ];
 const CONTACT_FILTERS: { value: ContactMapFilter; label: string }[] = [
   { value: "all", label: "All" },
   { value: "no_la", label: "Not linked to Lead Alchemist" },
   { value: "no_sf", label: "Not in Salesforce" },
   { value: "la_company_check", label: "Linked, account has a Company" },
+  { value: "la_suggested", label: "Suggested Lead Alchemist match" },
 ];
 
 const COMPANY_FILTERS: { value: CompanyFilter; label: string }[] = [
@@ -83,6 +89,7 @@ export default async function Mapping({ searchParams }: PageProps<"/admin/mappin
   const type = str("type").slice(0, 80);
   const q = (await cookies()).get(MAP_SEARCH_COOKIE)?.value ?? "";
   const flash = await readFlash(sp.f);
+  const matching = str("matching") === "1";
   const [l, counts, laOn, sfOn, types] = await Promise.all([links(), mapCounts(), ghlConfig(), salesforceConfig(), accountTypesInApp()]);
 
   const accountFilter = ACCOUNT_FILTERS.some((f) => f.value === str("filter")) ? (str("filter") as AccountMapFilter) : "all";
@@ -100,6 +107,7 @@ export default async function Mapping({ searchParams }: PageProps<"/admin/mappin
   const href = pageHref("/admin/mapping", { tab, filter: str("filter") || undefined, type: type || undefined }, 100);
 
   let laError: string | null = null;
+  const matchProgress = laOn && (tab === "accounts" || tab === "contacts") ? await laMatchProgress() : null;
   const accounts = tab === "accounts" ? await listAccountMap({ q, filter: accountFilter, page, type: type || null, pageSize: paging.pageSize }) : null;
   const contacts = tab === "contacts" ? await listContactMap({ q, filter: contactFilter, page, pageSize: paging.pageSize }) : null;
   let companies: Awaited<ReturnType<typeof listCompanyMatches>> | null = null;
@@ -187,16 +195,18 @@ export default async function Mapping({ searchParams }: PageProps<"/admin/mappin
         )}
       </div>
 
+      {matchProgress && <LaMatchPanel progress={matchProgress} matching={matching} back={back} />}
+
       {tab === "accounts" && accounts && (
         <>
           <form id="bulk" className="mb-3 flex flex-wrap gap-2 text-sm">
             <input type="hidden" name="back" value={back} />
-            <button formAction={accountsToLeadAlchemistAction} className="btn-primary" disabled={!laOn} title={laOn ? undefined : "Connect Lead Alchemist first"}>
+            <SubmitButton formAction={accountsToLeadAlchemistAction} className="btn-primary" disabled={!laOn} title={laOn ? undefined : "Connect Lead Alchemist first"}>
               Sync selected to Lead Alchemist (Company + contacts)
-            </button>
-            <button formAction={accountsToSalesforceAction} className="btn-secondary" disabled={!sfOn} title={sfOn ? undefined : "Connect Salesforce first"}>
+            </SubmitButton>
+            <SubmitButton formAction={accountsToSalesforceAction} className="btn-secondary" disabled={!sfOn} title={sfOn ? undefined : "Connect Salesforce first"}>
               Link or create selected in Salesforce
-            </button>
+            </SubmitButton>
             <label className="flex items-center gap-2" title="Lead Alchemist may start its workflows for new contacts">
               <input type="checkbox" name="createMissing" value="yes" /> Create missing contacts in Lead Alchemist
             </label>
@@ -246,6 +256,7 @@ export default async function Mapping({ searchParams }: PageProps<"/admin/mappin
                     </td>
                     <td className="text-sm">
                       {a.inLa} of {a.people}
+                      {a.laSuggested > 0 && <div className="text-xs"><span className="badge badge-warning">{a.laSuggested} suggested</span></div>}
                     </td>
                   </tr>
                 ))}
@@ -260,10 +271,10 @@ export default async function Mapping({ searchParams }: PageProps<"/admin/mappin
         <>
           <form id="bulk" className="mb-3 flex flex-wrap gap-2 text-sm">
             <input type="hidden" name="back" value={back} />
-            <button formAction={contactsToCompanyAction} className="btn-primary" disabled={!laOn} title="Links by exact email or phone, then adds each to their account's Company">
+            <SubmitButton formAction={contactsToCompanyAction} className="btn-primary" disabled={!laOn} title="Links by exact email or phone, then adds each to their account's Company">
               Sync selected to Lead Alchemist (and their Company)
-            </button>
-            <button formAction={contactsToSalesforceAction} className="btn-secondary" disabled={!sfOn}>Link or create selected in Salesforce</button>
+            </SubmitButton>
+            <SubmitButton formAction={contactsToSalesforceAction} className="btn-secondary" disabled={!sfOn}>Link or create selected in Salesforce</SubmitButton>
             <label className="flex items-center gap-2" title="Lead Alchemist may start its workflows for new contacts">
               <input type="checkbox" name="createMissing" value="yes" /> Create missing contacts in Lead Alchemist
             </label>
@@ -306,6 +317,14 @@ export default async function Mapping({ searchParams }: PageProps<"/admin/mappin
                     <td>
                       {p.ghlContactId ? (
                         <SystemLink className="btn-link text-sm" href={l.ghlContact(p.ghlContactId)} missing="">Linked</SystemLink>
+                      ) : p.laMatchId ? (
+                        <div className="text-xs">
+                          <span className="badge badge-warning">Suggested</span>{" "}
+                          <SystemLink className="btn-link" href={l.ghlContact(p.laMatchId)} missing="">{p.laMatchName ?? "Lead Alchemist contact"}</SystemLink>
+                          <div className="text-[var(--muted)]">same {p.laMatchHow?.replace("+", " and ")}</div>
+                        </div>
+                      ) : p.laMatchHow === "several" ? (
+                        <span className="badge badge-neutral" title="More than one Lead Alchemist contact has this email or phone: pick one on the Salesforce Account page">Several matches</span>
                       ) : (
                         <Yes on={false} label="" />
                       )}
@@ -340,9 +359,9 @@ export default async function Mapping({ searchParams }: PageProps<"/admin/mappin
               </p>
               <form id="bulk" className="mb-3 flex flex-wrap items-center gap-2 text-sm">
                 <input type="hidden" name="back" value={back} />
-                <button formAction={linkCompaniesAction} className="btn-primary">Link selected to the chosen account</button>
-                <button formAction={addCompaniesToAppAction} className="btn-secondary">Add selected to this app as new accounts</button>
-                <button formAction={companiesToSalesforceAction} className="btn-secondary" disabled={!sfOn}>Link or create selected in Salesforce</button>
+                <SubmitButton formAction={linkCompaniesAction} className="btn-primary">Link selected to the chosen account</SubmitButton>
+                <SubmitButton formAction={addCompaniesToAppAction} className="btn-secondary">Add selected to this app as new accounts</SubmitButton>
+                <SubmitButton formAction={companiesToSalesforceAction} className="btn-secondary" disabled={!sfOn}>Link or create selected in Salesforce</SubmitButton>
               </form>
               <ListSummary total={companies.rows.length} state={paging} noun="Company" />
               <div className="overflow-x-auto">
@@ -420,7 +439,7 @@ export default async function Mapping({ searchParams }: PageProps<"/admin/mappin
           </p>
           <form id="bulk" className="mb-3 flex flex-wrap gap-2 text-sm">
             <input type="hidden" name="back" value={back} />
-            <button formAction={companyTagsAction} className="btn-primary" disabled={!laOn}>Add company tags in Lead Alchemist for selected</button>
+            <SubmitButton formAction={companyTagsAction} className="btn-primary" disabled={!laOn}>Add company tags in Lead Alchemist for selected</SubmitButton>
           </form>
           <ListSummary total={multiTotal} state={paging} noun="person" />
           <div className="overflow-x-auto">
@@ -468,5 +487,38 @@ export default async function Mapping({ searchParams }: PageProps<"/admin/mappin
         </>
       )}
     </div>
+  );
+}
+
+/** Progress of "Find Lead Alchemist matches"; while `matching` and contacts are left, it continues on its own. */
+function LaMatchPanel({ progress, matching, back }: { progress: Awaited<ReturnType<typeof laMatchProgress>>; matching: boolean; back: string }) {
+  const running = matching && progress.remaining > 0;
+  return (
+    <form action={findLaMatchesAction} className="card mb-4 flex flex-wrap items-center gap-3 !p-4 text-sm">
+      <input type="hidden" name="back" value={back} />
+      <div className="min-w-[16rem] flex-1">
+        <p className="font-semibold">Lead Alchemist matches for unlinked contacts</p>
+        <p className="text-[var(--muted)]">
+          Checked <strong>{progress.checked.toLocaleString("en-US")}</strong> of <strong>{progress.total.toLocaleString("en-US")}</strong> contacts not linked
+          to Lead Alchemist · <strong>{progress.suggested.toLocaleString("en-US")}</strong> have one exact email or phone match (suggested)
+          {progress.several ? <> · {progress.several.toLocaleString("en-US")} match several</> : null}. Reads Lead Alchemist only; filter by
+          &quot;suggested&quot;, then tick and sync to link them.
+        </p>
+      </div>
+      {running ? (
+        <>
+          <span>Checking… keep this page open.</span>
+          <AutoSubmit label="Continue" />
+          <Link className="btn-link" href={back}>Pause</Link>
+        </>
+      ) : progress.remaining > 0 ? (
+        <SubmitButton className="btn-primary">{progress.checked ? `Continue (${progress.remaining.toLocaleString("en-US")} left)` : "Find Lead Alchemist matches"}</SubmitButton>
+      ) : (
+        <>
+          <input type="hidden" name="recheck" value="yes" />
+          <SubmitButton>Check all again</SubmitButton>
+        </>
+      )}
+    </form>
   );
 }

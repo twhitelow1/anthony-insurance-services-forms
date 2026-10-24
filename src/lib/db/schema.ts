@@ -131,6 +131,15 @@ export const contacts = pgTable(
     externalCheckedAt: timestamp("external_checked_at", { withTimezone: true }),
     /** The Lead Alchemist contact. */
     ghlContactId: text("ghl_contact_id"),
+    /**
+     * For contacts not linked yet: the Lead Alchemist contact found by "Find Lead Alchemist matches"
+     * (one exact email or phone match), or null. Only a suggestion until staff link it.
+     */
+    laMatchId: text("la_match_id"),
+    laMatchName: text("la_match_name"),
+    /** "email", "phone", "email+phone", or "several" when more than one Lead Alchemist contact matched. */
+    laMatchHow: text("la_match_how"),
+    laMatchCheckedAt: timestamp("la_match_checked_at", { withTimezone: true }),
     searchText: text("search_text").notNull().default(""),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
