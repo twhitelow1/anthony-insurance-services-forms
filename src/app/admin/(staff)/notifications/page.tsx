@@ -3,7 +3,8 @@ import { fmtDate } from "@/components/portal";
 import { requireStaff } from "@/lib/auth/session";
 import type { NotificationKind, NotificationStatus } from "@/lib/db/schema";
 import { readFlash } from "@/lib/flash";
-import { KIND_LABELS, listNotifications, recentNotificationLog, STATUSES } from "@/lib/notifications/repo";
+import { countByStatus, countNotificationLog, countNotifications, KIND_LABELS, listNotifications, recentNotificationLog, STATUSES } from "@/lib/notifications/repo";
+import { ListSummary, pageHref, pageState, Pagination } from "@/components/Pagination";
 import { FlashMessage } from "../salesforce/ui";
 import { setNotificationStatusAction } from "./actions";
 
@@ -47,8 +48,20 @@ export default async function Notifications({ searchParams }: PageProps<"/admin/
   const back = `/admin/notifications?view=${view}${kind ? `&kind=${kind}` : ""}`;
   const qs = (over: Record<string, string>) => `?${new URLSearchParams({ view, ...(kind ? { kind } : {}), ...over })}`;
 
-  const rows = view === "log" ? [] : await listNotifications({ kind });
-  const log = view === "log" ? await recentNotificationLog(300) : [];
+  const paging = pageState(sp);
+  const BOARD_CAP = 50;
+  const [rows, total, columnTotals, log, logTotal] = await Promise.all([
+    view === "board"
+      ? Promise.all(STATUSES.map((s) => listNotifications({ kind, status: [s.value], limit: BOARD_CAP }))).then((cols) => cols.flat())
+      : view === "list"
+        ? listNotifications({ kind, limit: paging.pageSize, offset: paging.offset })
+        : [],
+    view === "list" ? countNotifications({ kind }) : 0,
+    view === "board" ? countByStatus({ kind }) : null,
+    view === "log" ? recentNotificationLog(paging.pageSize, paging.offset) : [],
+    view === "log" ? countNotificationLog() : 0,
+  ]);
+  const href = pageHref("/admin/notifications", { view, kind });
 
   return (
     <div>
@@ -82,14 +95,21 @@ export default async function Notifications({ searchParams }: PageProps<"/admin/
       {view === "board" && (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           {STATUSES.map((s) => {
-            const cards = rows.filter((r) => r.n.status === s.value).slice(0, s.value === "done" || s.value === "dismissed" ? 30 : 200);
+            const cards = rows.filter((r) => r.n.status === s.value);
+            const columnTotal = columnTotals?.[s.value] ?? cards.length;
             return (
               <section key={s.value} className="rounded-xl border border-[var(--border)] bg-[var(--track)] p-3" aria-labelledby={`col-${s.value}`}>
                 <h2 id={`col-${s.value}`} className="mb-3 flex items-center justify-between text-sm font-semibold">
-                  {s.label} <span className={`badge ${TONE[s.value]}`}>{rows.filter((r) => r.n.status === s.value).length}</span>
+                  {s.label} <span className={`badge ${TONE[s.value]}`}>{columnTotal.toLocaleString("en-US")}</span>
                 </h2>
                 <div className="space-y-3">
                   {!cards.length && <p className="text-xs text-[var(--muted)]">Nothing here.</p>}
+                  {columnTotal > cards.length && (
+                    <p className="text-xs text-[var(--muted)]">
+                      Showing the newest {cards.length} of {columnTotal.toLocaleString("en-US")}.{" "}
+                      <Link className="btn-link" href={qs({ view: "list" })}>See them all in the list</Link>
+                    </p>
+                  )}
                   {cards.map(({ n, accountName }) => (
                     <article key={n.id} className="card space-y-2 !p-3 text-sm">
                       <div className="flex flex-wrap items-center gap-2">
@@ -125,6 +145,7 @@ export default async function Notifications({ searchParams }: PageProps<"/admin/
         </div>
       )}
 
+      {view === "list" && <ListSummary total={total} state={paging} noun="notification" />}
       {view === "list" && (
         <div className="overflow-x-auto">
           <table className="data-table">
@@ -163,6 +184,9 @@ export default async function Notifications({ searchParams }: PageProps<"/admin/
         </div>
       )}
 
+      {view === "list" && <Pagination total={total} state={paging} noun="notification" href={href} />}
+
+      {view === "log" && <ListSummary total={logTotal} state={paging} noun="log entry" />}
       {view === "log" && (
         <div className="overflow-x-auto">
           <table className="data-table">
@@ -205,6 +229,7 @@ export default async function Notifications({ searchParams }: PageProps<"/admin/
           </table>
         </div>
       )}
+      {view === "log" && <Pagination total={logTotal} state={paging} noun="log entry" href={href} />}
     </div>
   );
 }

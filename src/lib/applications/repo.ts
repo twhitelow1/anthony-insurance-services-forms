@@ -159,8 +159,7 @@ export interface SearchParams {
  * Staff search: full-text over every answer (stemmed, so "trampoline" matches
  * "trampolines"), plus partial matches on reference, name, email, and business.
  */
-export async function searchApplications({ q, status, state, limit = 50, offset = 0, order = "latest" }: SearchParams) {
-  const db = await getDb();
+function applicationFilters({ q, status, state }: Pick<SearchParams, "q" | "status" | "state">) {
   const where: SQL[] = [];
   const query = q?.trim();
   if (query) {
@@ -178,6 +177,18 @@ export async function searchApplications({ q, status, state, limit = 50, offset 
   if (status) where.push(eq(applications.status, status));
   if (state) where.push(eq(applications.state, state.toUpperCase()));
 
+  return { where: where.length ? and(...where) : undefined, query };
+}
+
+/** How many applications match a search (for "Showing 1–50 of N"). */
+export async function countApplications(params: Pick<SearchParams, "q" | "status" | "state">) {
+  const db = await getDb();
+  return db.$count(applications, applicationFilters(params).where);
+}
+
+export async function searchApplications({ q, status, state, limit = 50, offset = 0, order = "latest" }: SearchParams) {
+  const db = await getDb();
+  const { where, query } = applicationFilters({ q, status, state });
   const rank = sql<number>`ts_rank(to_tsvector('english', ${applications.searchText}), websearch_to_tsquery('english', ${query ?? ""}))`;
 
   const accountName = sql<string>`coalesce(${schema.clients.name}, ${applications.businessName}, ${applications.applicantName})`;
@@ -186,7 +197,7 @@ export async function searchApplications({ q, status, state, limit = 50, offset 
     .from(applications)
     .leftJoin(schema.clients, eq(schema.clients.id, applications.clientId))
     .leftJoin(schema.contacts, eq(schema.contacts.id, applications.contactId))
-    .where(where.length ? and(...where) : undefined)
+    .where(where)
     .orderBy(
       ...(order === "account"
         ? [asc(sql`lower(${accountName})`), asc(applications.clientId), desc(applications.createdAt)]

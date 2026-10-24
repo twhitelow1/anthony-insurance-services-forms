@@ -1,5 +1,5 @@
 import "server-only";
-import { and, asc, desc, eq, ilike, inArray, isNotNull, isNull, ne, or, sql, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, ilike, inArray, like, isNotNull, isNull, ne, or, sql, type SQL } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
 import type { Client, ClientAddress, ClientEventType, Contact, SalesforceStatus } from "@/lib/db/schema";
 import type { ApplicationStatus } from "@/lib/applications/status";
@@ -470,9 +470,32 @@ export async function addClientEvent(
   await db.insert(clientEvents).values({ clientId, type, actor, message: opts.message, data: opts.data });
 }
 
-export async function listClientEvents(clientId: string) {
+export async function listClientEvents(clientId: string, { limit = 200, offset = 0 }: { limit?: number; offset?: number } = {}) {
   const db = await getDb();
-  return db.select().from(clientEvents).where(eq(clientEvents.clientId, clientId)).orderBy(desc(clientEvents.createdAt), desc(clientEvents.id)).limit(200);
+  return db
+    .select()
+    .from(clientEvents)
+    .where(eq(clientEvents.clientId, clientId))
+    .orderBy(desc(clientEvents.createdAt), desc(clientEvents.id))
+    .limit(limit)
+    .offset(offset);
+}
+
+export async function countClientEvents(clientId: string) {
+  const db = await getDb();
+  return db.$count(clientEvents, eq(clientEvents.clientId, clientId));
+}
+
+/** The newest Salesforce event on an Account (sync, link, refresh…), whatever page of the activity is shown. */
+export async function lastSalesforceEvent(clientId: string) {
+  const db = await getDb();
+  const [row] = await db
+    .select()
+    .from(clientEvents)
+    .where(and(eq(clientEvents.clientId, clientId), like(clientEvents.type, "sf\\_%")))
+    .orderBy(desc(clientEvents.createdAt), desc(clientEvents.id))
+    .limit(1);
+  return row ?? null;
 }
 
 /** All applications for an Account, newest first, with who filled each out (list columns only). */

@@ -129,7 +129,7 @@ export default async function SalesforceAccount({ params, searchParams }: PagePr
       </section>
 
       <section className="mb-6" aria-labelledby="sfc">
-        <h2 id="sfc" className="mb-2 font-semibold">Salesforce Contacts</h2>
+        <h2 id="sfc" className="mb-2 font-semibold">Salesforce Contacts ({contacts.length})</h2>
         <div className="overflow-x-auto">
           <table className="data-table">
             <thead>
@@ -192,7 +192,7 @@ export default async function SalesforceAccount({ params, searchParams }: PagePr
       {client && (
         <section aria-labelledby="la">
           <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-            <h2 id="la" className="font-semibold">Lead Alchemist contacts</h2>
+            <h2 id="la" className="font-semibold">Lead Alchemist contacts ({people.length})</h2>
             {laOn && unlinked.length > 0 && (
               <div className="flex flex-wrap gap-2">
                 <Link className="btn-secondary" href={`?find=all#la`}>Find all in Lead Alchemist</Link>

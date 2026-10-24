@@ -113,10 +113,10 @@ export interface NotificationFilter {
   clientId?: string;
   q?: string;
   limit?: number;
+  offset?: number;
 }
 
-export async function listNotifications(f: NotificationFilter = {}) {
-  const db = await getDb();
+function notificationWhere(f: NotificationFilter) {
   const where: SQL[] = [];
   if (f.status?.length) where.push(inArray(schema.notifications.status, f.status));
   if (f.kind) where.push(eq(schema.notifications.kind, f.kind));
@@ -125,13 +125,30 @@ export async function listNotifications(f: NotificationFilter = {}) {
     const like = `%${f.q.trim().replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
     where.push(or(ilike(schema.notifications.title, like), ilike(schema.notifications.detail, like))!);
   }
+  return where.length ? and(...where) : undefined;
+}
+
+export async function listNotifications(f: NotificationFilter = {}) {
+  const db = await getDb();
   return db
     .select({ n: schema.notifications, accountName: schema.clients.name })
     .from(schema.notifications)
     .leftJoin(schema.clients, eq(schema.clients.id, schema.notifications.clientId))
-    .where(where.length ? and(...where) : undefined)
+    .where(notificationWhere(f))
     .orderBy(desc(schema.notifications.updatedAt))
-    .limit(f.limit ?? 300);
+    .limit(f.limit ?? 300)
+    .offset(f.offset ?? 0);
+}
+
+export async function countNotifications(f: NotificationFilter = {}) {
+  const db = await getDb();
+  return db.$count(schema.notifications, notificationWhere(f));
+}
+
+/** How many notifications are in each status (for the board's column totals). */
+export async function countByStatus(f: Omit<NotificationFilter, "status"> = {}) {
+  const counts = await Promise.all(STATUSES.map(async (s) => [s.value, await countNotifications({ ...f, status: [s.value] })] as const));
+  return Object.fromEntries(counts) as Record<NotificationStatus, number>;
 }
 
 export async function countActive(clientId?: string) {
@@ -149,12 +166,18 @@ export async function notificationLogFor(id: string) {
 }
 
 /** The whole log, newest first, with each card's title. */
-export async function recentNotificationLog(limit = 200) {
+export async function countNotificationLog() {
+  const db = await getDb();
+  return db.$count(schema.notificationLog);
+}
+
+export async function recentNotificationLog(limit = 200, offset = 0) {
   const db = await getDb();
   return db
     .select({ entry: schema.notificationLog, title: schema.notifications.title, clientId: schema.notifications.clientId })
     .from(schema.notificationLog)
     .innerJoin(schema.notifications, eq(schema.notifications.id, schema.notificationLog.notificationId))
     .orderBy(desc(schema.notificationLog.at))
-    .limit(limit);
+    .limit(limit)
+    .offset(offset);
 }

@@ -40,7 +40,8 @@ export async function accountTypesInApp(): Promise<string[]> {
 
 export const NO_TYPE = "__none__";
 
-export async function listAccountMap({ q, filter = "all", page = 1, type }: { q?: string; filter?: AccountMapFilter; page?: number; type?: string | null }) {
+export async function listAccountMap({ q, filter = "all", page = 1, type, pageSize = PAGE }: { q?: string; filter?: AccountMapFilter; page?: number; type?: string | null; pageSize?: number }) {
+  const size = Math.min(Math.max(pageSize, 1), 200);
   const db = await getDb();
   const c = schema.clients;
   const f =
@@ -78,11 +79,11 @@ export async function listAccountMap({ q, filter = "all", page = 1, type }: { q?
       .from(c)
       .where(where)
       .orderBy(asc(sql`lower(${c.name})`))
-      .limit(PAGE)
-      .offset((Math.max(1, page) - 1) * PAGE),
+      .limit(size)
+      .offset((Math.max(1, page) - 1) * size),
     db.select({ total: count() }).from(c).where(where),
   ]);
-  return { rows, total, pageSize: PAGE };
+  return { rows, total, pageSize: size };
 }
 
 /** Counts for the filter tabs. */
@@ -104,7 +105,8 @@ export async function mapCounts() {
   };
 }
 
-export async function listContactMap({ q, filter = "all", page = 1 }: { q?: string; filter?: ContactMapFilter; page?: number }) {
+export async function listContactMap({ q, filter = "all", page = 1, pageSize = PAGE }: { q?: string; filter?: ContactMapFilter; page?: number; pageSize?: number }) {
+  const size = Math.min(Math.max(pageSize, 1), 200);
   const db = await getDb();
   const ct = schema.contacts;
   const c = schema.clients;
@@ -124,11 +126,11 @@ export async function listContactMap({ q, filter = "all", page = 1 }: { q?: stri
       .innerJoin(c, eq(c.id, ct.clientId))
       .where(where)
       .orderBy(asc(sql`lower(${c.name})`), asc(ct.name))
-      .limit(PAGE)
-      .offset((Math.max(1, page) - 1) * PAGE),
+      .limit(size)
+      .offset((Math.max(1, page) - 1) * size),
     db.select({ total: count() }).from(ct).innerJoin(c, eq(c.id, ct.clientId)).where(where),
   ]);
-  return { rows, total, pageSize: PAGE };
+  return { rows, total, pageSize: size };
 }
 
 /** Lead Alchemist Companies that no app Account linked to Salesforce points at. */
@@ -669,19 +671,31 @@ export async function pushCompanyTags(contactIds: string[], actor: string): Prom
 }
 
 /** People tied to more than one account (for the mapping screen). */
-export async function multiAccountContacts(limit = 200) {
-  const db = await getDb();
-  const rows = await db.execute<{ id: string }>(sql`
-    select ct.id from ${schema.contacts} ct
-    where (
+/** Contacts tied to more than one account (their home account, applications, or extra accounts). */
+const multiAccountWhere = () => sql`(
       select count(distinct x.cid) from (
         select ct.client_id as cid
         union select a.client_id from ${schema.applications} a where a.contact_id = ct.id and a.client_id is not null
         union select ac.client_id from ${schema.accountContacts} ac where ac.contact_id = ct.id
       ) x
-    ) > 1
-    limit ${limit}`);
-  const ids = (Array.isArray(rows) ? rows : (rows as { rows: { id: string }[] }).rows).map((r) => r.id);
+    ) > 1`;
+
+const rowsOf = <T,>(r: unknown) => (Array.isArray(r) ? r : (r as { rows: T[] }).rows) as T[];
+
+export async function countMultiAccountContacts() {
+  const db = await getDb();
+  const [row] = rowsOf<{ n: number | string }>(await db.execute(sql`select count(*) as n from ${schema.contacts} ct where ${multiAccountWhere()}`));
+  return Number(row?.n ?? 0);
+}
+
+export async function multiAccountContacts(limit = 200, offset = 0) {
+  const db = await getDb();
+  const rows = await db.execute<{ id: string }>(sql`
+    select ct.id from ${schema.contacts} ct
+    where ${multiAccountWhere()}
+    order by lower(ct.name), ct.id
+    limit ${limit} offset ${offset}`);
+  const ids = rowsOf<{ id: string }>(rows).map((r) => r.id);
   const out = [];
   for (const id of ids) {
     const p = await getContact(id);

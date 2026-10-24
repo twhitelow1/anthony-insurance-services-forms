@@ -1,16 +1,18 @@
 import Link from "next/link";
 import { forms } from "@/forms";
+import { ListSummary, pageHref, pageState, Pagination } from "@/components/Pagination";
 import { fmtDate } from "@/components/portal";
 import { requireStaff } from "@/lib/auth/session";
-import { listUnfinished } from "@/lib/applications/drafts";
+import { countUnfinished, listUnfinished } from "@/lib/applications/drafts";
 import { clientPath } from "@/lib/applications/links";
 import { deleteDraftAction } from "@/app/admin/actions";
 
 export const metadata = { title: "Unfinished applications | Anthony Insurance Services" };
 
-export default async function Unfinished() {
+export default async function Unfinished({ searchParams }: PageProps<"/admin/unfinished">) {
   await requireStaff("/admin/unfinished");
-  const drafts = await listUnfinished();
+  const paging = pageState(await searchParams);
+  const [drafts, count] = await Promise.all([listUnfinished({ limit: paging.pageSize, offset: paging.offset }), countUnfinished()]);
   return (
     <div>
       <h1 className="text-2xl font-semibold">Unfinished applications</h1>
@@ -18,6 +20,7 @@ export default async function Unfinished() {
         People who started an application and gave their email but haven&apos;t submitted. Their Lead Alchemist contact is tagged{" "}
         <code>app-started</code> (and <code>app-started:&lt;form&gt;</code>) so a workflow can follow up; the tags come off when they submit.
       </p>
+      <ListSummary total={count} state={paging} noun="unfinished application" />
       <div className="card overflow-x-auto !p-0">
         <table className="data-table">
           <thead>
@@ -67,6 +70,7 @@ export default async function Unfinished() {
           </tbody>
         </table>
       </div>
+      <Pagination total={count} state={paging} noun="unfinished application" href={pageHref("/admin/unfinished", {})} />
     </div>
   );
 }

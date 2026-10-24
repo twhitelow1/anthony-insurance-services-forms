@@ -1,9 +1,10 @@
 import { Fragment } from "react";
 import Link from "next/link";
 import { forms } from "@/forms";
+import { ListSummary, pageHref, pageState, Pagination } from "@/components/Pagination";
 import { fmtDate, StatusBadge } from "@/components/portal";
 import { requireStaff } from "@/lib/auth/session";
-import { searchApplications } from "@/lib/applications/repo";
+import { countApplications, searchApplications } from "@/lib/applications/repo";
 import { STATUSES, STATUS_KEYS, isStatus } from "@/lib/applications/status";
 import { clientPath } from "@/lib/applications/links";
 
@@ -15,7 +16,12 @@ export default async function AdminHome({ searchParams }: PageProps<"/admin">) {
   const q = typeof sp.q === "string" ? sp.q : "";
   const status = isStatus(sp.status) ? sp.status : undefined;
   const order = sp.view === "accounts" ? "account" : "latest";
-  const results = await searchApplications({ q, status, limit: order === "account" ? 200 : 100, order });
+  const paging = pageState(sp);
+  const [results, total] = await Promise.all([
+    searchApplications({ q, status, order, limit: paging.pageSize, offset: paging.offset }),
+    countApplications({ q, status }),
+  ]);
+  const href = pageHref("/admin", { q: q || undefined, status, view: order === "account" ? "accounts" : undefined });
 
   return (
     <div>
@@ -47,6 +53,7 @@ export default async function AdminHome({ searchParams }: PageProps<"/admin">) {
         <button className="btn-primary">Search</button>
       </form>
 
+      <ListSummary total={total} state={paging} noun="application" />
       <div className="card overflow-x-auto !p-0">
         <table className="data-table">
           <thead>
@@ -108,7 +115,7 @@ export default async function AdminHome({ searchParams }: PageProps<"/admin">) {
           </tbody>
         </table>
       </div>
-      {results.length === 100 && <p className="mt-3 text-sm text-[var(--muted)]">Showing the first 100 results — refine your search to narrow it down.</p>}
+      <Pagination total={total} state={paging} noun="application" href={href} />
     </div>
   );
 }

@@ -1,3 +1,4 @@
+import { ListSummary, pageHref, pageOf, pageState, Pagination } from "@/components/Pagination";
 import { forms } from "@/forms";
 import { fmtDate } from "@/components/portal";
 import { requireStaff } from "@/lib/auth/session";
@@ -28,7 +29,10 @@ function FormPicker({ selected }: { selected: string[] }) {
 export default async function DocumentsPage({ searchParams }: PageProps<"/admin/documents">) {
   await requireStaff("/admin/documents");
   const sp = await searchParams;
-  const files = await listLibrary();
+  const all = await listLibrary();
+  const paging = pageState(sp, 25);
+  const files = pageOf(all, paging);
+  const href = pageHref("/admin/documents", {}, 25);
 
   return (
     <div className="mx-auto max-w-3xl">
@@ -61,8 +65,8 @@ export default async function DocumentsPage({ searchParams }: PageProps<"/admin/
         <button className="btn-primary">Upload</button>
       </form>
 
-      <h2 className="mb-3 font-semibold">Library ({files.length})</h2>
-      {!files.length && <p className="text-sm text-[var(--muted)]">No documents yet.</p>}
+      <h2 className="mb-1 font-semibold">Library</h2>
+      <ListSummary total={all.length} state={paging} noun="document" className="mb-3" />
       <div className="space-y-4">
         {files.map((f) => (
           <section key={f.id} className="card !p-5">
@@ -98,6 +102,7 @@ export default async function DocumentsPage({ searchParams }: PageProps<"/admin/
           </section>
         ))}
       </div>
+      <Pagination total={all.length} state={paging} noun="document" href={href} />
     </div>
   );
 }
