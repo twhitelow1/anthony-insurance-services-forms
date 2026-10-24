@@ -84,8 +84,8 @@ export function createSalesforceClient(cfg: SalesforceConfig): SalesforceApi {
   const api: SalesforceApi = {
     async queryPage<T extends Record<string, unknown>>(soqlOrNext: string) {
       const path = soqlOrNext.startsWith("/services/") ? soqlOrNext : `/query?q=${encodeURIComponent(soqlOrNext)}`;
-      const r = await sf<{ records: T[]; nextRecordsUrl?: string; done: boolean }>(path);
-      return { records: r.records ?? [], nextRecordsUrl: r.done ? null : (r.nextRecordsUrl ?? null) };
+      const r = await sf<{ records: T[]; nextRecordsUrl?: string; done: boolean; totalSize?: number }>(path);
+      return { records: r.records ?? [], nextRecordsUrl: r.done ? null : (r.nextRecordsUrl ?? null), totalSize: r.totalSize };
     },
     async query<T extends Record<string, unknown>>(soql: string, opts: { max?: number } = {}) {
       const out: T[] = [];

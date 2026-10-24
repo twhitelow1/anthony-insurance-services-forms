@@ -1,11 +1,12 @@
 import Link from "next/link";
 import { cookies } from "next/headers";
 import { SystemLink } from "@/components/clients";
+import { SelectAll } from "@/components/SelectAll";
 import { requireStaff } from "@/lib/auth/session";
 import { readFlash } from "@/lib/flash";
 import { links } from "@/lib/integrations/links";
 import { salesforceClient } from "@/lib/salesforce/client";
-import { accountTypes, appSalesforceCounts, listSalesforceAccounts, MAX_OFFSET, NO_TYPE, type SfAccountListRow } from "@/lib/salesforce/manager";
+import { accountTypes, appSalesforceCounts, listSalesforceAccounts, MAX_OFFSET, NO_TYPE, PAGE_SIZES, type SfAccountListRow } from "@/lib/salesforce/manager";
 import { resumeAccountAction, searchSalesforceAction, syncAccountAction, syncSelectedAccountsAction, unsyncAccountAction } from "./actions";
 import { SF_SEARCH_COOKIE } from "./search-cookie";
 import { ActionButton, AppStateBadge, FlashMessage } from "./ui";
@@ -20,6 +21,7 @@ export default async function SalesforceAccounts({ searchParams }: PageProps<"/a
   const offset = Math.min(Math.max(0, Number(sp.offset) || 0), MAX_OFFSET);
   const flash = await readFlash(sp.f);
   const type = typeof sp.type === "string" && sp.type.length <= 80 ? sp.type : "";
+  const size = PAGE_SIZES.find((n) => n === Number(sp.size)) ?? 50;
   const sf = await salesforceClient();
   const l = await links();
 
@@ -28,14 +30,14 @@ export default async function SalesforceAccounts({ searchParams }: PageProps<"/a
   let error: string | null = null;
   if (sf) {
     try {
-      [list, types] = await Promise.all([listSalesforceAccounts(sf, { q, offset, type: type || null }), accountTypes(sf).catch(() => [])]);
+      [list, types] = await Promise.all([listSalesforceAccounts(sf, { q, offset, type: type || null, pageSize: size }), accountTypes(sf).catch(() => [])]);
     } catch (err) {
       error = err instanceof Error ? err.message : String(err);
     }
   }
   const counts = await appSalesforceCounts();
   const qs = (over: Record<string, string | number>) => {
-    const p = new URLSearchParams({ ...(type ? { type } : {}), ...(offset ? { offset: String(offset) } : {}) });
+    const p = new URLSearchParams({ ...(type ? { type } : {}), ...(size !== 50 ? { size: String(size) } : {}), ...(offset ? { offset: String(offset) } : {}) });
     for (const [k, v] of Object.entries(over)) {
       if (v === "" || v === 0) p.delete(k);
       else p.set(k, String(v));
@@ -98,8 +100,8 @@ export default async function SalesforceAccounts({ searchParams }: PageProps<"/a
                 <button name="clear" value="1" className="btn-secondary">Clear</button>
               )}
             </form>
-            {types.length > 0 && (
-              <form method="get" className="flex items-end gap-2">
+            <form method="get" className="flex flex-wrap items-end gap-2">
+              {types.length > 0 && (
                 <label className="text-sm">
                   <span className="field-label !mb-1">Account Type</span>
                   <select name="type" defaultValue={type} className="input">
@@ -110,9 +112,17 @@ export default async function SalesforceAccounts({ searchParams }: PageProps<"/a
                     <option value={NO_TYPE}>No type</option>
                   </select>
                 </label>
-                <button className="btn-secondary">Filter</button>
-              </form>
-            )}
+              )}
+              <label className="text-sm">
+                <span className="field-label !mb-1">Per page</span>
+                <select name="size" defaultValue={String(size)} className="input">
+                  {PAGE_SIZES.map((n) => (
+                    <option key={n} value={n}>{n}</option>
+                  ))}
+                </select>
+              </label>
+              <button className="btn-secondary">Filter</button>
+            </form>
           </div>
 
           {/* Row checkboxes belong to this form (form="sf-bulk"), so each row's own buttons can stay separate forms. */}
@@ -120,16 +130,18 @@ export default async function SalesforceAccounts({ searchParams }: PageProps<"/a
             <input type="hidden" name="back" value={back} />
             <button className="btn-primary">Sync selected into this app</button>
             <span className="text-[var(--muted)]">
-              Tick Accounts (up to 25){type ? ` — showing Type: ${type === NO_TYPE ? "no type" : type}` : ""}. Brings each one and its Contacts in; nothing changes in Salesforce.
+              Tick Accounts (up to 50){type ? ` — showing Type: ${type === NO_TYPE ? "no type" : type}` : ""}. Brings each one and its Contacts in; nothing changes in Salesforce.
             </span>
           </form>
+
+          {list && <Summary total={list.total} offset={offset} shown={list.rows.length} filtered={!!(q || type)} />}
 
           <div className="overflow-x-auto">
             <table className="data-table">
               <thead>
                 <tr>
                   <th className="w-8">
-                    <span className="sr-only">Select</span>
+                    <SelectAll form="sf-bulk" />
                   </th>
                   <th>Salesforce Account</th>
                   <th>Type</th>
@@ -149,14 +161,71 @@ export default async function SalesforceAccounts({ searchParams }: PageProps<"/a
             </table>
           </div>
 
-          <div className="mt-4 flex flex-wrap items-center gap-3 text-sm">
-            {offset > 0 && <Link className="btn-secondary" href={qs({ offset: Math.max(0, offset - (list?.pageSize ?? 50)) })}>← Previous</Link>}
-            {list?.hasMore && <Link className="btn-secondary" href={qs({ offset: offset + list.pageSize })}>Next →</Link>}
-            {offset + (list?.pageSize ?? 50) > MAX_OFFSET && <span className="text-[var(--muted)]">Salesforce lists up to {MAX_OFFSET} here; search to find others.</span>}
-          </div>
+          {list && <Pager total={list.total} offset={offset} size={list.pageSize} hasMore={list.hasMore} qs={qs} />}
         </>
       )}
     </div>
+  );
+}
+
+const fmt = (n: number) => n.toLocaleString("en-US");
+
+/** "Showing 51–100 of 1,234 Salesforce Accounts". */
+function Summary({ total, offset, shown, filtered }: { total: number | null; offset: number; shown: number; filtered: boolean }) {
+  if (!shown) return null;
+  return (
+    <p className="mb-2 text-sm" role="status">
+      Showing <strong>{fmt(offset + 1)}–{fmt(offset + shown)}</strong>
+      {total !== null && (
+        <>
+          {" "}of <strong>{fmt(total)}</strong>
+        </>
+      )}{" "}
+      Salesforce Account{total === 1 ? "" : "s"}
+      {filtered ? " matching" : ""}
+    </p>
+  );
+}
+
+/** Page links. Salesforce lists rows by position only up to 2,000, so later rows need a search or filter. */
+function Pager({
+  total,
+  offset,
+  size,
+  hasMore,
+  qs,
+}: {
+  total: number | null;
+  offset: number;
+  size: number;
+  hasMore: boolean;
+  qs: (over: Record<string, string | number>) => string;
+}) {
+  const reachable = Math.min(total ?? offset + size * (hasMore ? 2 : 1), MAX_OFFSET + size);
+  const pages = Math.max(1, Math.ceil(reachable / size));
+  const current = Math.floor(offset / size) + 1;
+  if (pages <= 1 && current === 1) return null;
+  const go = (p: number) => qs({ offset: (p - 1) * size });
+  const around = [...new Set([1, current - 2, current - 1, current, current + 1, current + 2, pages])].filter((p) => p >= 1 && p <= pages).sort((a, b) => a - b);
+  return (
+    <nav className="mt-4 flex flex-wrap items-center gap-2 text-sm" aria-label="Pages">
+      {current > 1 && <Link className="btn-secondary !px-3 !py-1" href={go(current - 1)}>← Previous</Link>}
+      {around.map((p, i) => (
+        <span key={p} className="flex items-center gap-2">
+          {i > 0 && p - around[i - 1] > 1 && <span className="text-[var(--muted)]">…</span>}
+          {p === current ? (
+            <span className="badge badge-active" aria-current="page">{p}</span>
+          ) : (
+            <Link className="btn-link" href={go(p)}>{p}</Link>
+          )}
+        </span>
+      ))}
+      {hasMore && <Link className="btn-secondary !px-3 !py-1" href={go(current + 1)}>Next →</Link>}
+      <span className="text-[var(--muted)]">
+        Page {current} of {pages}
+        {total !== null && total > MAX_OFFSET + size && ` · Salesforce pages through the first ${fmt(MAX_OFFSET + size)}; search or filter by Type to reach the rest`}
+      </span>
+    </nav>
   );
 }
 
