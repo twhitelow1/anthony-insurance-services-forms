@@ -1,7 +1,7 @@
 "use client";
 
 /** A header checkbox that ticks every row checkbox belonging to the given form. */
-export function SelectAll({ form, label = "Select all on this page" }: { form: string; label?: string }) {
+export function SelectAll({ form, label = "Select all on this page (tip: shift-click a row to tick a range)" }: { form: string; label?: string }) {
   return (
     <input
       type="checkbox"

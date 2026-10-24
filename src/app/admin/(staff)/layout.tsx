@@ -3,6 +3,7 @@ import { TopBar } from "@/components/portal";
 import { requireStaff } from "@/lib/auth/session";
 import { userModeAction } from "../actions";
 import { OpenAccessBanner } from "@/components/OpenAccessBanner";
+import { ShiftClickRange } from "@/components/ShiftClickRange";
 import { after } from "next/server";
 import { runDueJobs } from "@/lib/salesforce/jobs";
 import { countActive } from "@/lib/notifications/repo";
@@ -18,6 +19,7 @@ export default async function StaffLayout({ children }: LayoutProps<"/admin">) {
   return (
     <>
       <OpenAccessBanner />
+      <ShiftClickRange />
       <TopBar title="AIS Connect" href="/admin" who={staff.email}>
         <nav className="flex flex-wrap items-center gap-4 font-medium">
           <Link href="/admin" className="hover:underline">Applications</Link>
