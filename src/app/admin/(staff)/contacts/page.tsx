@@ -263,7 +263,7 @@ export default async function Contacts({ searchParams }: PageProps<"/admin/conta
           Update details in Lead Alchemist
         </SubmitButton>
         <label className="flex items-center gap-2" title="Lead Alchemist may start its workflows for new contacts">
-          <input type="checkbox" name="createMissing" value="yes" /> Create missing contacts in Lead Alchemist
+          <input type="checkbox" name="createMissing" value="yes" defaultChecked /> Create missing contacts in Lead Alchemist
         </label>
         <label className="flex items-center gap-2" title="Without this, only fields that are empty in Lead Alchemist are filled">
           <input type="checkbox" name="replace" value="yes" /> Replace Lead Alchemist values that differ
