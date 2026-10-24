@@ -63,6 +63,20 @@ export default async function SalesforceAccounts({ searchParams }: PageProps<"/a
         </p>
       ) : (
         <>
+          {list && (!list.contactsVisible || list.hiddenFields.length > 0) && (
+            <div className="mb-4 rounded-lg border border-[var(--notice-border)] bg-[var(--notice-bg)] p-3 text-sm" role="alert">
+              <p className="font-semibold">Salesforce isn&apos;t sharing everything with the app yet.</p>
+              <ul className="mt-1 list-disc pl-5">
+                {!list.contactsVisible && <li>Contacts can&apos;t be read, so contact counts and contacts are missing.</li>}
+                {list.hiddenFields.length > 0 && <li>These Account fields are hidden from the integration user: {list.hiddenFields.join(", ")}.</li>}
+              </ul>
+              <p className="mt-1">
+                In Salesforce, open Setup → Permission Sets → DubLow Integration Access and give Read (and Edit) on Contacts and on those fields, then{" "}
+                <Link className="btn-link" href="/admin/settings/integrations?test=salesforce">run the connection test</Link>.
+              </p>
+            </div>
+          )}
+
           <form action={searchSalesforceAction} className="card mb-4 flex flex-wrap gap-3 !p-4" role="search">
             <label className="sr-only" htmlFor="q">Search Salesforce Accounts</label>
             <input id="q" name="q" defaultValue={q} className="input flex-1" placeholder="Account name" />
@@ -113,7 +127,7 @@ function Row({ r, back, sfLink }: { r: SfAccountListRow; back: string; sfLink: s
         {place && <div className="text-xs text-[var(--muted)]">{place}</div>}
         {r.client && r.client.name !== r.name && <div className="text-xs text-[var(--muted)]">Here: {r.client.name}</div>}
       </td>
-      <td>{r.contacts}</td>
+      <td>{r.contacts ?? <span className="text-[var(--muted)]" title="The integration user can't read Contacts">—</span>}</td>
       <td>
         <AppStateBadge state={r.appState} />
       </td>

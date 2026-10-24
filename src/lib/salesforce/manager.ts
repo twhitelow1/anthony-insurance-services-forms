@@ -14,7 +14,7 @@ import {
 } from "@/lib/clients/repo";
 import { accountDetail, applyAccount, proposeForAccount, type AccountRow, type SalesforceImportDeps } from "@/lib/mapping/salesforce-import";
 import { soqlString, type SalesforceApi } from "./api";
-import { accountSelect, CONTACT_FIELDS, contactsReadable, selectList } from "./fields";
+import { accountSelect, CONTACT_FIELDS, contactsReadable, selectList, visibleFields } from "./fields";
 import { hiddenSet, hide, unhide } from "./hidden";
 
 /**
@@ -36,7 +36,8 @@ export interface SfAccountListRow {
   website: string | null;
   city: string | null;
   state: string | null;
-  contacts: number;
+  /** null when the integration user can't read Contacts. */
+  contacts: number | null;
   appState: AppState;
   client?: { id: string; name: string };
 }
@@ -52,8 +53,10 @@ export async function listSalesforceAccounts(sf: SalesforceApi, opts: { q?: stri
   const q = opts.q?.trim();
   const offset = Math.min(Math.max(0, opts.offset ?? 0), MAX_OFFSET);
   const where = q ? `WHERE Name LIKE ${soqlString(`%${likeTerm(q)}%`)} ` : "";
+  const wanted = ["Name", "Phone", "Website", "BillingCity", "BillingState"];
+  const [visible, contactsVisible] = await Promise.all([visibleFields(sf, "Account", wanted), contactsReadable(sf)]);
   const { records } = await sf.queryPage<AccountRow & { Contacts?: { totalSize?: number; records: unknown[] } | null }>(
-    `SELECT ${await selectList(sf, "Account", ["Name", "Phone", "Website", "BillingCity", "BillingState"])}${(await contactsReadable(sf)) ? ", (SELECT Id FROM Contacts)" : ""} ` +
+    `SELECT ${["Id", ...visible].join(", ")}${contactsVisible ? ", (SELECT Id FROM Contacts)" : ""} ` +
       `FROM Account ${where}ORDER BY Name, Id LIMIT ${PAGE_SIZE + 1} OFFSET ${offset}`,
   );
   const page = records.slice(0, PAGE_SIZE);
@@ -75,12 +78,20 @@ export async function listSalesforceAccounts(sf: SalesforceApi, opts: { q?: stri
       website: r.Website,
       city: r.BillingCity,
       state: r.BillingState,
-      contacts: r.Contacts?.totalSize ?? r.Contacts?.records.length ?? 0,
+      contacts: contactsVisible ? (r.Contacts?.totalSize ?? r.Contacts?.records.length ?? 0) : null,
       appState: c ? (c.paused ? "unsynced" : "synced") : hidden.has(r.Id) ? "removed" : "not_in_app",
       client: c ? { id: c.id, name: c.name } : undefined,
     };
   });
-  return { rows, hasMore: records.length > PAGE_SIZE && offset + PAGE_SIZE <= MAX_OFFSET, offset, pageSize: PAGE_SIZE };
+  return {
+    rows,
+    hasMore: records.length > PAGE_SIZE && offset + PAGE_SIZE <= MAX_OFFSET,
+    offset,
+    pageSize: PAGE_SIZE,
+    /** What the integration user can't read, so the page can say why columns are empty. */
+    contactsVisible,
+    hiddenFields: wanted.filter((f) => !visible.includes(f)),
+  };
 }
 
 /** Counts for the top of the screen, from the app's side. */
