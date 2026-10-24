@@ -30,11 +30,11 @@ export default async function Clients({ searchParams }: PageProps<"/admin/client
   const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const n = (k: string) => Math.max(0, Number(sp[k]) || 0);
   const ghlMessage =
-    sp.ghl === "bulk"
+    sp.la === "bulk"
       ? `Linked ${n("linked")} to Lead Alchemist.${n("missing") ? ` ${n("missing")} have no Lead Alchemist contact yet.` : ""}`
-      : sp.ghl === "bulk_failed"
+      : sp.la === "bulk_failed"
         ? `Stopped after linking ${n("linked")}: the Lead Alchemist lookup failed. Try again in a minute.`
-        : sp.ghl === "not_connected"
+        : sp.la === "not_connected"
           ? "Lead Alchemist isn't connected yet."
           : null;
   const qs = (over: Record<string, string | number>) => {

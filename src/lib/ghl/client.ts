@@ -1,5 +1,6 @@
 import "server-only";
 import { buildUrl } from "@/lib/integrations/urls";
+import { laAppUrl, laEnv } from "./env";
 
 /**
  * Minimal Lead Alchemist (LeadConnector) API v2 client.
@@ -9,7 +10,7 @@ import { buildUrl } from "@/lib/integrations/urls";
  */
 
 // Overridable for local testing against a mock server.
-const BASE_URL = process.env.GHL_API_BASE_URL ?? "https://services.leadconnectorhq.com";
+const BASE_URL = laEnv("API_BASE_URL") ?? "https://services.leadconnectorhq.com";
 const API_VERSION = "2021-07-28";
 
 export interface GhlCustomField {
@@ -34,15 +35,15 @@ export class GhlError extends Error {
 const clean = (v: string | undefined) => (v ?? "").trim().replace(/^["']|["']$/g, "").replace(/^Bearer\s+/i, "").trim();
 
 export function ghlConfig() {
-  const token = clean(process.env.GHL_API_TOKEN);
-  const locationId = clean(process.env.GHL_LOCATION_ID);
+  const token = clean(laEnv("API_TOKEN"));
+  const locationId = clean(laEnv("LOCATION_ID"));
   if (!token || !locationId) return null;
   return { token, locationId };
 }
 
 async function ghlFetch<T>(path: string, init: RequestInit & { next?: { revalidate?: number } } = {}): Promise<T> {
   const cfg = ghlConfig();
-  if (!cfg) throw new GhlError("GHL_API_TOKEN and GHL_LOCATION_ID must be set", 500, null);
+  if (!cfg) throw new GhlError("LA_API_TOKEN and LA_LOCATION_ID must be set", 500, null);
 
   const res = await fetch(`${BASE_URL}${path}`, {
     ...init,
@@ -142,10 +143,10 @@ export async function getContact(id: string): Promise<GhlContact | null> {
   }
 }
 
-/** Where staff open a contact in Lead Alchemist. GHL_APP_URL overrides the host for a white-label domain. */
+/** Where staff open a contact in Lead Alchemist (https://app.leadalchemist.io unless LA_APP_URL says otherwise). */
 export function contactUrl(contactId: string) {
   const cfg = ghlConfig();
-  const host = (process.env.GHL_APP_URL || "https://app.gohighlevel.com").replace(/\/$/, "");
+  const host = laAppUrl();
   return cfg ? buildUrl("ghlContact", { ghl: host, locationId: cfg.locationId, id: contactId }) : null;
 }
 

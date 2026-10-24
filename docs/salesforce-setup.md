@@ -150,7 +150,7 @@ application gets the org's first **open** stage (never Closed Won), "Coverage bo
 | App Client page | `<APP_URL>/admin/clients/<client ID>` | The app's own route; never an email or phone in the address |
 | App application | `<APP_URL>/admin/applications/<application ID>` | The app's own route |
 
-The Lead Alchemist address is set in Admin → Settings (the white-label domain; default `https://app.gohighlevel.com`).
+The Lead Alchemist address is set in Admin → Settings (the white-label domain; default `https://app.leadalchemist.io`).
 All patterns live in `src/lib/integrations/urls.ts`, so a wrong one is a one-line fix.
 
 ## 8. When something goes wrong

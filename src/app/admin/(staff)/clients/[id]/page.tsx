@@ -33,7 +33,7 @@ const GHL_MESSAGES: Record<string, string> = {
   no_contact_email: "No Lead Alchemist contact has this email yet. It's created on the next sync.",
   lookup_failed: "The Lead Alchemist lookup failed. Try again in a minute.",
   bad_id: "That isn't a Lead Alchemist contact ID or link.",
-  not_connected: "Lead Alchemist isn't connected (GHL_API_TOKEN / GHL_LOCATION_ID).",
+  not_connected: "Lead Alchemist isn't connected (LA_API_TOKEN / LA_LOCATION_ID).",
 };
 const SAVED: Record<string, string> = {
   merged: "Merged. Their emails, applications and unfinished applications are on this client now.",
@@ -71,7 +71,7 @@ export default async function ClientPage({ params, searchParams }: PageProps<"/a
   const address = [client.address?.street, client.address?.city, [client.address?.state, client.address?.postalCode].filter(Boolean).join(" ")]
     .filter(Boolean)
     .join(", ");
-  const message = (one("ghl") && GHL_MESSAGES[one("ghl")!]) || (one("saved") && SAVED[one("saved")!]) || (one("sf") && SF_RESULT[one("sf")!]) || null;
+  const message = (one("la") && GHL_MESSAGES[one("la")!]) || (one("saved") && SAVED[one("saved")!]) || (one("sf") && SF_RESULT[one("sf")!]) || null;
 
   return (
     <div>
@@ -275,7 +275,7 @@ export default async function ClientPage({ params, searchParams }: PageProps<"/a
               )}
             </>
           ) : (
-            <p className="text-sm text-[var(--muted)]">Lead Alchemist isn&apos;t connected (GHL_API_TOKEN / GHL_LOCATION_ID).</p>
+            <p className="text-sm text-[var(--muted)]">Lead Alchemist isn&apos;t connected (LA_API_TOKEN / LA_LOCATION_ID).</p>
           )}
         </section>
 

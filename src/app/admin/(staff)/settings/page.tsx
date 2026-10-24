@@ -79,7 +79,7 @@ export default async function SettingsPage({ searchParams }: PageProps<"/admin/s
           <Hint>Removing someone signs them out right away. You can&apos;t remove yourself.</Hint>
           <label className="field-label mt-4" htmlFor="staffEmailDomains">Staff email domains</label>
           <input id="staffEmailDomains" name="staffEmailDomains" className="input" defaultValue={(saved.staffEmailDomains ?? []).join(", ")} placeholder={env.staffEmailDomains.join(", ")} />
-          <Hint>Only used while no admins are listed: then anyone with an email at these domains can sign in.</Hint>
+          <Hint>Anyone with an email at a domain saved here can sign in, by email link or with their own organisation&apos;s Microsoft 365. While no domains are saved here and no admins are listed, the Vercel default ({env.staffEmailDomains.join(", ")}) is used instead.</Hint>
         </section>
 
         <section className="card !p-5" aria-labelledby="notifications">
@@ -110,10 +110,10 @@ export default async function SettingsPage({ searchParams }: PageProps<"/admin/s
           <FromVercel value={env.carrierEmails.join(", ")} saved={!!saved.carrierEmails} />
         </section>
 
-        <section className="card !p-5" aria-labelledby="ghl">
-          <h2 id="ghl" className="mb-1 font-semibold">Lead Alchemist pipeline</h2>
+        <section className="card !p-5" aria-labelledby="lead-alchemist">
+          <h2 id="lead-alchemist" className="mb-1 font-semibold">Lead Alchemist pipeline</h2>
           {!ghlConfig() ? (
-            <p className="text-sm text-[var(--muted)]">Connect Lead Alchemist first: add GHL_API_TOKEN and GHL_LOCATION_ID in Vercel.</p>
+            <p className="text-sm text-[var(--muted)]">Connect Lead Alchemist first: add LA_API_TOKEN and LA_LOCATION_ID in Vercel.</p>
           ) : ghlError ? (
             <p className="text-sm text-[var(--danger)]">Lead Alchemist didn&apos;t return pipelines: {ghlError}. See Lead Alchemist setup.</p>
           ) : null}

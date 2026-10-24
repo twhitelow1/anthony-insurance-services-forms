@@ -126,7 +126,7 @@ export async function deleteApplicationAction(formData: FormData) {
  */
 async function clientHref(email: string, code: string) {
   const clientId = (await getClientIdForEmail(email)) ?? (await ensureClient({ email }));
-  return `/admin/clients/${clientId}?ghl=${code}`;
+  return `/admin/clients/${clientId}?la=${code}`;
 }
 
 /**
@@ -170,7 +170,7 @@ export async function unlinkGhlContactAction(formData: FormData) {
 /** Look up every not-yet-linked applicant in Lead Alchemist by email (50 per click). */
 export async function linkAllGhlAction() {
   await requireStaff();
-  if (!ghlConfig()) redirect("/admin/clients?ghl=not_connected");
+  if (!ghlConfig()) redirect("/admin/clients?la=not_connected");
   const emails = await unlinkedApplicantEmails(50);
   let linked = 0;
   let missing = 0;
@@ -189,7 +189,7 @@ export async function linkAllGhlAction() {
     }
   }
   revalidatePath("/admin/clients");
-  redirect(`/admin/clients?ghl=${failed ? "bulk_failed" : "bulk"}&linked=${linked}&missing=${missing}`);
+  redirect(`/admin/clients?la=${failed ? "bulk_failed" : "bulk"}&linked=${linked}&missing=${missing}`);
 }
 
 /** Remove an unfinished application (e.g. a duplicate or a test). */

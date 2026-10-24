@@ -4,7 +4,7 @@
 
 | Date | Decision |
 |---|---|
-| 2026-10 | The CRM is called **Lead Alchemist** everywhere staff or clients see it. GoHighLevel is the underlying platform. |
+| 2026-10 | The CRM is called **Lead Alchemist** everywhere staff or clients see it. |
 | 2026-10 | **The app is the record of each application.** Lead Alchemist gets the contact, a note, tags, links and an opportunity, not the answers. |
 | 2026-10 | **One Lead Alchemist contact per applicant email**, linked by its saved contact ID. **One opportunity per application.** |
 | 2026-10 | When someone applies, their open opportunity in the **lead pipeline moves** into the applications pipeline. |
@@ -44,6 +44,8 @@
 | 2026-10-23 | **Salesforce connection:** an integration user plus an External Client App (or Connected App) with the OAuth client credentials flow. It's simpler than JWT bearer (no certificate). Secrets live in Vercel only. |
 | 2026-10-23 | **Three-way links** on every record: Salesforce URL fields (`Applications_Link__c`, `LA_Contact_Link__c`, `LA_Opportunity_Link__c`, `LA_Company_Link__c`, `Application_Link__c`), Lead Alchemist link fields, and buttons on the app's new **Client page** (`/admin/clients/<id>`). Admin → Clients replaces Applicants, and no email or phone ever goes in a URL (the search is kept in a cookie). |
 | 2026-10-23 | **Lead Alchemist Companies** wait for the Businesses and Associations token scopes. Until then, contacts and opportunities carry the links. |
+| 2026-10-24 | **Microsoft sign-in works for any organisation's Microsoft 365**, not just Anthony's, when the person's email or domain is approved. Domains saved under "Staff email domains" in Admin → Settings always count, even while individual admins are listed (e.g. add `dublowdigital.com` for DubLow). Personal Microsoft accounts are refused, and only Microsoft's verified email is trusted. The app is registered once as multi-tenant (`docs/microsoft-sso-setup.md`). |
+| 2026-10-24 | **Lead Alchemist, initials LA, everywhere**, including docs, PRs and chat; never the underlying platform's name. Links open https://app.leadalchemist.io. Vercel variables are renamed to `LA_…` (the old names keep working as a fallback until renamed). |
 | 2026-10-16 | **Applicants aren't pointed to the portal yet.** The confirmation and status emails and the "submitted" screen have no portal link. The portal still works; turn the links back on with `APPLICANT_PORTAL_LINKS` in `src/forms/config.ts`. |
 
 ## Open questions
@@ -57,7 +59,7 @@
 | 3c | Should the gymnastics **declines, compliance popups and 12 ft silks limit** also apply to Aerial Yoga / Aerial Dance, Sports Facility or Boxing Gym? | Caitlyn | #4, #5 |
 | 3d | **The DSI email that linked to the martial arts page:** this app's emails never used DSI branding before 2026-10-16, so that email was probably a Lead Alchemist workflow. Which email was it? | Caitlyn / Todd | — |
 | 3e | **Gravity Forms notifications stopped** on several sites (likely an expired license) | Todd | Website forms until replaced |
-| 3f | **Microsoft 365 app registration** in Anthony's Entra ID: now for staff single sign-on (redirect URI `https://anthony-insurance-services-forms.vercel.app/api/auth/microsoft/callback`, then the tenant ID, client ID and a client secret into Vercel), and later delegated Mail.ReadWrite for Outlook drafts | Todd / Anthony IT (needs a Microsoft 365 admin) | Staff SSO, #13 |
+| 3f | **Microsoft 365 app registration (multi-tenant)** for staff single sign-on: steps in `docs/microsoft-sso-setup.md` (any organisation where you can register apps, e.g. DubLow's). Then the client ID and secret into Vercel, and approved domains into Admin → Settings. Later: delegated Mail.ReadWrite for Outlook drafts, which needs Anthony's tenant. | Todd | Staff SSO, #13 |
 | 4 | **Carrier list:** name, contact, products and states, how each accepts submissions, and their application PDFs | Anthony | C, #13, #9 |
 | 5 | **Compliance sign-off** on the carrier magic-link design (48-hour links, access log) | Anthony / compliance | #13 |
 | 6 | **Brand assets:** confirm MASI's brand colors (current: charcoal #262e37 with a red accent), and send the AIS logo file (PNG or SVG) | Todd / Anthony | #10 polish |

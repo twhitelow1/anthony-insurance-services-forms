@@ -11,7 +11,7 @@ export const URL_PATTERNS = {
   ghlContact: "{ghl}/v2/location/{locationId}/contacts/detail/{id}",
   /**
    * Lead Alchemist opportunity. Verified: HighLevel changelog "Dynamic Routing for Opportunity Modal"
-   * (https://ideas.gohighlevel.com/changelog/opportunities-dynamic-routing-for-opportunity-modal).
+   * (the platform changelog, "Dynamic Routing for Opportunity Modal").
    */
   ghlOpportunity: "{ghl}/v2/location/{locationId}/opportunities/list/{id}?tab=OpportunityDetails",
   /**
@@ -47,7 +47,7 @@ export function buildUrl(pattern: UrlPattern, vars: Record<string, string | null
 export interface LinkBases {
   /** e.g. https://dg0000000i7rimaa.lightning.force.com */
   salesforce?: string | null;
-  /** Lead Alchemist web app, e.g. https://app.gohighlevel.com or the white-label domain */
+  /** Lead Alchemist web app, e.g. https://app.leadalchemist.io */
   ghl?: string | null;
   ghlLocationId?: string | null;
   /** This app, e.g. https://anthony-insurance-services-forms.vercel.app */

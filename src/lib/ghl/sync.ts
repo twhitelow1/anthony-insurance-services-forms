@@ -47,7 +47,7 @@ export const OPPORTUNITY_LINK_FIELDS = {
 } as const;
 
 /**
- * Opportunity pipeline, set in Admin → Settings (else GHL_PIPELINE_ID and
+ * Opportunity pipeline, set in Admin → Settings (else LA_PIPELINE_ID and
  * friends in Vercel). The pipeline + the stage new applications land in turn
  * opportunities on: every application gets its own opportunity there. The
  * status → stage map optionally moves the opportunity when the status changes.
@@ -109,13 +109,13 @@ export async function resolvePipeline() {
     }
     return stage.id;
   };
-  const pipeline = findPipeline(cfg.pipelineId, "GHL_PIPELINE_ID");
-  const leadPipeline = cfg.leadPipeline ? findPipeline(cfg.leadPipeline, "GHL_LEAD_PIPELINE_ID") : null;
+  const pipeline = findPipeline(cfg.pipelineId, "LA_PIPELINE_ID");
+  const leadPipeline = cfg.leadPipeline ? findPipeline(cfg.leadPipeline, "LA_LEAD_PIPELINE_ID") : null;
   const lead = leadPipeline
     ? {
         pipelineId: leadPipeline.id,
         pipelineName: leadPipeline.name,
-        stageId: cfg.leadStage ? findStage(leadPipeline, cfg.leadStage, "GHL_LEAD_STAGE_ID") : null,
+        stageId: cfg.leadStage ? findStage(leadPipeline, cfg.leadStage, "LA_LEAD_STAGE_ID") : null,
       }
     : null;
   const stageId = (value: string, setting: string) => {
@@ -123,12 +123,12 @@ export async function resolvePipeline() {
   };
   const stages: Partial<Record<ApplicationStatus, string>> = {};
   for (const [status, value] of Object.entries(cfg.stages)) {
-    if (typeof value === "string" && value.trim()) stages[status as ApplicationStatus] = stageId(value, `GHL_STAGE_IDS.${status}`);
+    if (typeof value === "string" && value.trim()) stages[status as ApplicationStatus] = stageId(value, `LA_STAGE_IDS.${status}`);
   }
   return {
     pipelineId: pipeline.id,
     pipelineName: pipeline.name,
-    initialStage: stageId(cfg.initialStage, "GHL_PIPELINE_STAGE_ID"),
+    initialStage: stageId(cfg.initialStage, "LA_PIPELINE_STAGE_ID"),
     stages,
     lead,
   };

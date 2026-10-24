@@ -5,6 +5,7 @@ import { createApplication } from "@/lib/applications/repo";
 import { pruneValues } from "@/lib/forms/validate";
 import * as mail from "@/lib/mail";
 import { buildEml } from "@/lib/mail/eml";
+import { saveSettings } from "@/lib/settings";
 import { buildApplicationPdf } from "@/lib/pdf/summary";
 import { consumeMagicLink, isStaffEmail, requestMagicLink, requestStaffLink } from "./magic-link";
 
@@ -25,6 +26,19 @@ describe("staff sign-in links", () => {
     vi.stubEnv("STAFF_EMAILS", "melanie@anthonyinsuranceservices.com");
     expect(await isStaffEmail("amy@anthonyinsuranceservices.com")).toBe(false);
     expect(await isStaffEmail("melanie@anthonyinsuranceservices.com")).toBe(true);
+  });
+
+  it("lets in anyone at a domain approved in Admin → Settings, even with admins listed", async () => {
+    vi.stubEnv("STAFF_EMAILS", "melanie@anthonyinsuranceservices.com");
+    expect(await isStaffEmail("todd@dublowdigital.com")).toBe(false);
+    await saveSettings({ staffEmailDomains: ["dublowdigital.com"] }, "test");
+    try {
+      expect(await isStaffEmail("Todd@DublowDigital.com")).toBe(true);
+      expect(await isStaffEmail("todd@dublowdigital.com.evil.com")).toBe(false);
+      expect(await isStaffEmail("amy@anthonyinsuranceservices.com")).toBe(false);
+    } finally {
+      await saveSettings({ staffEmailDomains: null }, "test");
+    }
   });
 
   it("emails only staff, and staff and client links are not interchangeable", async () => {

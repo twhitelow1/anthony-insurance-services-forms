@@ -24,7 +24,7 @@ The Company page's web address isn't documented either. The app's guess is
 
 1. In Lead Alchemist (sub-account) → Settings → Private Integrations, edit the app's token and add **Businesses
    (view, edit)** and **Associations (view, edit)**. Keep the existing scopes. Paste nothing into chat; the token stays
-   in Vercel (`GHL_API_TOKEN`).
+   in Vercel (`LA_API_TOKEN`).
 2. Open any Company in Lead Alchemist and copy the address bar, to confirm the Company link pattern.
 3. Test, in a test sub-account or with a clearly named test Company:
    - `POST /businesses/` (create) works with the token;

@@ -5,9 +5,10 @@ import { cookieOptions, safeReturnTo, sign } from "@/lib/auth/session";
 export async function GET(req: NextRequest) {
   if (!entraConfig()) return new Response("Microsoft sign-in is not configured.", { status: 503 });
   const returnTo = safeReturnTo(req.nextUrl.searchParams.get("returnTo"), "/admin");
-  const { url, state, nonce, verifier } = newAuthRequest();
+  const silent = req.nextUrl.searchParams.get("silent") === "1";
+  const { url, state, nonce, verifier } = newAuthRequest(silent);
   const res = NextResponse.redirect(url);
   // State, nonce and PKCE verifier ride in a short-lived signed cookie.
-  res.cookies.set("ais_oidc", await sign({ state, nonce, verifier, returnTo }, 600, "ais:oidc"), cookieOptions(600));
+  res.cookies.set("ais_oidc", await sign({ state, nonce, verifier, returnTo, silent }, 600, "ais:oidc"), cookieOptions(600));
   return res;
 }
