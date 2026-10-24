@@ -7,10 +7,12 @@ import { requireStaff } from "@/lib/auth/session";
 import { setFlash } from "@/lib/flash";
 import { links } from "@/lib/integrations/links";
 import {
+  addCompaniesToApp,
   companiesToSalesforce,
   connectSelectedContacts,
   createAccountsInSalesforce,
   createContactsInSalesforce,
+  linkCompaniesToAccounts,
   linkContactsToLeadAlchemist,
   pushCompanyTags,
   syncAccountsToLeadAlchemist,
@@ -97,4 +99,22 @@ export async function companiesToSalesforceAction(formData: FormData) {
 
 export async function companyTagsAction(formData: FormData) {
   return bulk(formData, UUID, (ids, actor) => pushCompanyTags(ids, actor), "Company tags added in Lead Alchemist");
+}
+
+/** Link each ticked Lead Alchemist Company to the Account chosen in its row (this app only). */
+export async function linkCompaniesAction(formData: FormData) {
+  return bulk(
+    formData,
+    LA_ID,
+    (ids, actor) =>
+      linkCompaniesToAccounts(
+        ids.map((businessId) => ({ businessId, accountId: String(formData.get(`match_${businessId}`) ?? "") })).filter((p) => UUID.test(p.accountId)),
+        actor,
+      ),
+    "Linked to accounts in this app",
+  );
+}
+
+export async function addCompaniesToAppAction(formData: FormData) {
+  return bulk(formData, LA_ID, (ids, actor) => addCompaniesToApp(ids, actor), "Added to this app");
 }
