@@ -127,7 +127,7 @@ Example: an Aerial Yoga Studio with height over 10 ft can only go to two specifi
 - The iframe resizes to fit its content automatically, with no inner scrollbars.
 
 ## 🟡 11. Salesforce sync
-**Built (2026-10-23, branch feature/salesforce-sync), off until the keys are entered and tested.** Salesforce itself was set up on 2026-10-24 (`docs/salesforce-setup.md`; SharePoint file 7):
+**Built (2026-10-23; live in production since 2026-10-24), off until the keys are entered and tested.** Salesforce itself was set up on 2026-10-24 (`docs/salesforce-setup.md`; SharePoint file 7):
 - **Every submitted application** (never test ones) syncs to Salesforce.
   - The business's Account is matched by exact name and phone (an individual: their Contact's email first).
   - An uncertain match is marked **Needs review** and nothing is created.
@@ -159,7 +159,7 @@ Example: an Aerial Yoga Studio with height over 10 ft can only go to two specifi
 - Use the Salesforce API directly where possible; Zapier is the fallback for quick wins.
 - **Priority: nice to have** (later phase).
 
-**Open:** which system wins when the same record changes in two places.
+**Default (2026-10-24, until Todd or Anthony changes it):** Salesforce wins for Account and Contact details; the app for application answers; Lead Alchemist for tags and conversations.
 
 ## ✅ 12. Ask AI
 Built: Admin → Ask AI answers questions about applications, with read-only access and linked references. An AI pre-review also runs on every application.
