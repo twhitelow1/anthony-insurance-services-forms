@@ -32,6 +32,8 @@ export type AppState = "not_in_app" | "synced" | "unsynced" | "removed";
 export interface SfAccountListRow {
   id: string;
   name: string;
+  /** Salesforce Account Type: the account's status. */
+  type: string | null;
   phone: string | null;
   website: string | null;
   city: string | null;
@@ -53,7 +55,7 @@ export async function listSalesforceAccounts(sf: SalesforceApi, opts: { q?: stri
   const q = opts.q?.trim();
   const offset = Math.min(Math.max(0, opts.offset ?? 0), MAX_OFFSET);
   const where = q ? `WHERE Name LIKE ${soqlString(`%${likeTerm(q)}%`)} ` : "";
-  const wanted = ["Name", "Phone", "Website", "BillingCity", "BillingState"];
+  const wanted = ["Name", "Type", "Phone", "Website", "BillingCity", "BillingState"];
   const [visible, contactsVisible] = await Promise.all([visibleFields(sf, "Account", wanted), contactsReadable(sf)]);
   const { records } = await sf.queryPage<AccountRow & { Contacts?: { totalSize?: number; records: unknown[] } | null }>(
     `SELECT ${["Id", ...visible].join(", ")}${contactsVisible ? ", (SELECT Id FROM Contacts)" : ""} ` +
@@ -74,6 +76,7 @@ export async function listSalesforceAccounts(sf: SalesforceApi, opts: { q?: stri
     return {
       id: r.Id,
       name: r.Name,
+      type: r.Type ?? null,
       phone: r.Phone,
       website: r.Website,
       city: r.BillingCity,

@@ -50,6 +50,11 @@ export const clients = pgTable(
     sfPulledAt: timestamp("sf_pulled_at", { withTimezone: true }),
     /** What Salesforce says about this Account, as last read. Shown beside the app's values, never copied over them. */
     sfSnapshot: jsonb("sf_snapshot").$type<SfAccountSnapshot>(),
+    /**
+     * The Salesforce Account Type (e.g. Customer, Prospect): the account's status everywhere.
+     * Salesforce is the only place it changes; the app reads it and passes it to Lead Alchemist.
+     */
+    sfAccountType: text("sf_account_type"),
 
     /** Set when this record was merged into another; it no longer shows in lists. */
     mergedInto: uuid("merged_into"),
@@ -67,6 +72,7 @@ export const clients = pgTable(
 /** The Salesforce Account as last read: contact details and the policy fields used for renewals. */
 export interface SfAccountSnapshot {
   name: string;
+  type?: string | null;
   phone: string | null;
   website: string | null;
   address: string | null;
@@ -202,6 +208,8 @@ export type MappingKind = "salesforce_import" | "la_companies" | "salesforce_pus
 export type MappingAction = "link" | "create" | "skip";
 export type MappingConfidence = "exact" | "strong" | "name_only" | "none";
 export interface MappingDetail {
+  /** Salesforce Account Type (the account's status). */
+  type?: string | null;
   phone?: string | null;
   website?: string | null;
   city?: string | null;

@@ -40,6 +40,7 @@ export type ContactRow = { Id: string; Email: string | null; FirstName: string |
 export type AccountRow = {
   Id: string;
   Name: string;
+  Type?: string | null;
   Phone: string | null;
   Website: string | null;
   BillingStreet: string | null;
@@ -63,6 +64,7 @@ export interface SalesforceImportDeps {
 export function accountDetail(account: AccountRow): MappingDetail {
   const contacts = account.Contacts?.records ?? [];
   return {
+    type: account.Type ?? null,
     phone: account.Phone,
     website: account.Website,
     street: account.BillingStreet,
@@ -199,6 +201,8 @@ export async function applyAccount(
   } else {
     account = await createAccount({ name: row.sourceName, phone: d.phone, website: d.website, address, sfAccountId: row.sourceId, possibleDuplicateOf: opts.possibleDuplicateOf }, actor);
   }
+  // The account's status comes from Salesforce only.
+  if (d.type !== undefined) await (await getDb()).update(schema.clients).set({ sfAccountType: d.type }).where(eq(schema.clients.id, account.id));
 
   let added = 0;
   // Contacts removed from the dashboard stay out, and unsynced ones aren't updated.

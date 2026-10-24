@@ -21,7 +21,7 @@ export async function selectList(sf: SalesforceApi, object: string, wanted: stri
 }
 
 /** The Account and Contact fields the Salesforce screens and imports read. */
-export const ACCOUNT_FIELDS = ["Name", "Phone", "Website", "BillingStreet", "BillingCity", "BillingState", "BillingPostalCode", "LastModifiedDate"];
+export const ACCOUNT_FIELDS = ["Name", "Type", "Phone", "Website", "BillingStreet", "BillingCity", "BillingState", "BillingPostalCode", "LastModifiedDate"];
 export const CONTACT_FIELDS = ["Email", "FirstName", "LastName", "Phone", "MobilePhone", "Title"];
 
 /**

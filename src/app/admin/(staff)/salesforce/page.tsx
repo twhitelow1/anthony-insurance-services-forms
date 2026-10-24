@@ -91,6 +91,7 @@ export default async function SalesforceAccounts({ searchParams }: PageProps<"/a
               <thead>
                 <tr>
                   <th>Salesforce Account</th>
+                  <th>Type</th>
                   <th>Contacts</th>
                   <th>In this app</th>
                   <th>Actions</th>
@@ -99,7 +100,7 @@ export default async function SalesforceAccounts({ searchParams }: PageProps<"/a
               <tbody>
                 {!list?.rows.length && (
                   <tr>
-                    <td colSpan={4} className="text-[var(--muted)]">{q ? "No Salesforce Accounts match that name." : "No Accounts in Salesforce."}</td>
+                    <td colSpan={5} className="text-[var(--muted)]">{q ? "No Salesforce Accounts match that name." : "No Accounts in Salesforce."}</td>
                   </tr>
                 )}
                 {list?.rows.map((r) => <Row key={r.id} r={r} back={back} sfLink={l.salesforce("Account", r.id)} />)}
@@ -127,6 +128,7 @@ function Row({ r, back, sfLink }: { r: SfAccountListRow; back: string; sfLink: s
         {place && <div className="text-xs text-[var(--muted)]">{place}</div>}
         {r.client && r.client.name !== r.name && <div className="text-xs text-[var(--muted)]">Here: {r.client.name}</div>}
       </td>
+      <td>{r.type ? <span className="badge badge-neutral">{r.type}</span> : <span className="text-[var(--muted)]">—</span>}</td>
       <td>{r.contacts ?? <span className="text-[var(--muted)]" title="The integration user can't read Contacts">—</span>}</td>
       <td>
         <AppStateBadge state={r.appState} />
