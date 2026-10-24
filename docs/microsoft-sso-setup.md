@@ -55,8 +55,9 @@ Microsoft 365 admin there accepts it once for everyone with this link:
 
 ## 6. Admins list
 
-Admin → Settings → Admins: add each person's email, or a whole domain (e.g. `dublowdigital.com`).
-When the list has individual emails, only those emails are let in.
+Admin → Settings → Admins: add a person's email under **Who can sign in**, or approve a whole organisation
+by adding its domain under **Staff email domains** (e.g. `dublowdigital.com`). A saved domain always counts,
+even when individual admins are listed.
 
 ## Troubleshooting
 
