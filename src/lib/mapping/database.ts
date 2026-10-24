@@ -273,6 +273,10 @@ export interface LeadAlchemistSyncOptions {
   createMissing?: boolean;
   /** Stop starting new records after this long, so one click never runs past the server's time limit. */
   timeBudgetMs?: number;
+  /** Accounts only: just link or create the Company (contacts can be added to it later). */
+  companyOnly?: boolean;
+  /** Accounts only: handle just these of the account's contacts. */
+  contactIds?: string[];
 }
 
 const COMPANIES_BLOCKED =
@@ -338,7 +342,9 @@ export async function syncAccountsToLeadAlchemist(
         companyId = null;
       }
     }
-    const people = await db.select().from(schema.contacts).where(eq(schema.contacts.clientId, account.id));
+    const people = opts.companyOnly
+      ? []
+      : (await db.select().from(schema.contacts).where(eq(schema.contacts.clientId, account.id))).filter((p) => !opts.contactIds || opts.contactIds.includes(p.id));
     const r = await connectContactsToCompany(people, companies ? companyId : null, actor, { ...opts, companyName: laCompanyName(account) });
     if (r.blocked) companies = null;
     if (r.notes.length) result.notes.push(...r.notes.map((n) => `${account.name}: ${n}`));

@@ -21,7 +21,7 @@ import { links } from "@/lib/integrations/links";
 import { ghlConfig } from "@/lib/ghl/client";
 import { salesforceConfig } from "@/lib/salesforce/config";
 import { getSettings } from "@/lib/settings";
-import { linkGhlContactAction, userModeAction } from "@/app/admin/actions";
+import { userModeAction } from "@/app/admin/actions";
 import { externalDifferences, SOURCE_LABEL } from "@/lib/contacts/external";
 import { ACTIVE, listNotifications } from "@/lib/notifications/repo";
 import { readFlash } from "@/lib/flash";
@@ -39,6 +39,7 @@ import {
   refreshContactsAction,
   pushContactValueAction,
   updateLaContactAction,
+  addToLeadAlchemistAction,
 } from "../actions";
 
 const GHL_MESSAGES: Record<string, string> = {
@@ -149,12 +150,20 @@ export default async function AccountPage({ params, searchParams }: PageProps<"/
         <SystemLink href={l.salesforce("Account", client.sfAccountId)} missing="Not linked to a Salesforce Account yet. Use Sync to Salesforce.">
           View Account in Salesforce
         </SystemLink>
-        <SystemLink
-          href={l.ghlCompany(client.ghlCompanyId)}
-          missing="No Lead Alchemist Company yet: link one in Admin → Settings → Data mapping."
-        >
-          View Company in Lead Alchemist
-        </SystemLink>
+        {client.ghlCompanyId ? (
+          <SystemLink href={l.ghlCompany(client.ghlCompanyId)} missing="">
+            View Company in Lead Alchemist
+          </SystemLink>
+        ) : (
+          laConnected && (
+            <form action={addToLeadAlchemistAction}>
+              <input type="hidden" name="id" value={client.id} />
+              <button className="btn-secondary" title="Link the Lead Alchemist Company with the same name, or create it. Contacts can be added to it any time.">
+                Add Company to Lead Alchemist
+              </button>
+            </form>
+          )
+        )}
         <SystemLink href={l.ghlContact(ghlContactId)} missing="Not linked to a Lead Alchemist contact yet.">
           View primary contact in Lead Alchemist
         </SystemLink>
@@ -331,10 +340,13 @@ export default async function AccountPage({ params, searchParams }: PageProps<"/
                           </form>
                         )}
                       </>
-                    ) : laConnected && mails[0] ? (
-                      <form action={linkGhlContactAction}>
-                        <input type="hidden" name="email" value={mails[0]} />
-                        <button className="btn-link text-xs">Find in Lead Alchemist</button>
+                    ) : laConnected ? (
+                      <form action={addToLeadAlchemistAction}>
+                        <input type="hidden" name="id" value={client.id} />
+                        <input type="hidden" name="contactId" value={p.id} />
+                        <button className="btn-link text-xs" title="Links the Lead Alchemist contact with this email or phone, or creates it; adds the Company first if needed and puts them in it">
+                          Add to Lead Alchemist
+                        </button>
                       </form>
                     ) : (
                       <span className="text-xs text-[var(--muted)]">Not linked</span>

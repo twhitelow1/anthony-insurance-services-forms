@@ -144,3 +144,26 @@ describe("filling in Lead Alchemist from the app", () => {
     expect((await updateLeadAlchemistDetails(person.id, ACTOR, { replace: true })).fields).toEqual(["companyName"]);
   });
 });
+
+describe("adding a Company before its contacts", () => {
+  it("creates just the Company, then adds one contact to it later", async () => {
+    la.scope = true;
+    const { syncAccountsToLeadAlchemist } = await import("./database");
+    const tag = uniq();
+    const clientId = await ensureClient({ email: `first.${tag}@gmail.com`, contactName: `First ${tag}`, businessName: `Later Gym ${tag}` });
+    const { ensureContact } = await import("@/lib/clients/repo");
+    const second = await ensureContact({ clientId, email: `second.${tag}@gmail.com`, name: `Second ${tag}` });
+
+    await syncAccountsToLeadAlchemist([clientId], ACTOR, { sf: null, links: LINKS }, { companyOnly: true });
+    const company = (await getClient(clientId))!.ghlCompanyId!;
+    expect(la.businesses.find((b) => b.id === company)?.name).toBe(`Later Gym ${tag}`);
+    expect((await getContactByEmail(`first.${tag}@gmail.com`))!.ghlContactId).toBeNull(); // no contacts touched
+
+    await syncAccountsToLeadAlchemist([clientId], ACTOR, { sf: null, links: LINKS }, { createMissing: true, contactIds: [second.id] });
+    const added = (await getContactByEmail(`second.${tag}@gmail.com`))!;
+    expect(la.contacts.get(added.ghlContactId!)).toMatchObject({ businessId: company });
+    expect((await getContactByEmail(`first.${tag}@gmail.com`))!.ghlContactId).toBeNull(); // only the one asked for
+    // The Company is reused, not created again (the stand-in's list is shared with the sync, so count distinct IDs).
+    expect(new Set(la.businesses.filter((b) => b.name === `Later Gym ${tag}`).map((b) => b.id)).size).toBe(1);
+  });
+});

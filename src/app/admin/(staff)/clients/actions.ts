@@ -169,6 +169,35 @@ export async function refreshContactsAction(formData: FormData) {
 }
 
 /**
+ * "Add Company to Lead Alchemist" (no contact needed: people can join the Company later), and
+ * "Add to Lead Alchemist" on a contact (creates the Company first if needed, then the contact if
+ * Lead Alchemist has no email or phone match, puts them in the Company and fills in their details).
+ */
+export async function addToLeadAlchemistAction(formData: FormData) {
+  const staff = await requireStaff();
+  const client = await getClient(String(formData.get("id") ?? ""));
+  if (!client) throw new Error("Account not found");
+  const contactId = String(formData.get("contactId") ?? "");
+  const one = UUID_RE.test(contactId);
+  let tone: "ok" | "error" = "ok";
+  let text: string;
+  try {
+    const { syncAccountsToLeadAlchemist } = await import("@/lib/mapping/database");
+    const { links } = await import("@/lib/integrations/links");
+    const r = await syncAccountsToLeadAlchemist([client.id], `staff:${staff.email}`, { sf: await salesforceClient(), links: await links() }, one ? { createMissing: true, contactIds: [contactId] } : { companyOnly: true });
+    const after = await getClient(client.id);
+    text = [one ? "Added to Lead Alchemist." : after?.ghlCompanyId ? "The Company is in Lead Alchemist." : "No Company was added.", ...r.notes].join(" ");
+    if (!after?.ghlCompanyId && !one) tone = "error";
+  } catch (err) {
+    tone = "error";
+    text = err instanceof Error ? err.message : String(err);
+  }
+  const f = await setFlash({ tone, text });
+  revalidatePath(`/admin/clients/${client.id}`);
+  redirect(`/admin/clients/${client.id}?f=${f}`);
+}
+
+/**
  * "Update in Lead Alchemist": fill the contact's empty Lead Alchemist fields from the app (or, with
  * replace, every field that differs) and write the links between the three systems onto it.
  */
