@@ -8,7 +8,7 @@ import { ghlConfig } from "@/lib/ghl/client";
 import { links } from "@/lib/integrations/links";
 import {
   accountTypesInApp,
-  laCompaniesNotInSalesforce,
+  listCompanyMatches,
   listAccountMap,
   listContactMap,
   mapCounts,
@@ -17,16 +17,18 @@ import {
   type AccountMapFilter,
   type ContactMapFilter,
 } from "@/lib/mapping/database";
+import type { CompanyFilter } from "@/lib/mapping/company-match";
 import { salesforceConfig } from "@/lib/salesforce/config";
 import { FlashMessage } from "../salesforce/ui";
 import {
   accountsToLeadAlchemistAction,
   accountsToSalesforceAction,
+  addCompaniesToAppAction,
   companiesToSalesforceAction,
   companyTagsAction,
   contactsToCompanyAction,
-  contactsToLeadAlchemistAction,
   contactsToSalesforceAction,
+  linkCompaniesAction,
   searchMappingAction,
 } from "./actions";
 import { MAP_SEARCH_COOKIE } from "./search-cookie";
@@ -56,6 +58,15 @@ const CONTACT_FILTERS: { value: ContactMapFilter; label: string }[] = [
   { value: "la_company_check", label: "Linked, account has a Company" },
 ];
 
+const COMPANY_FILTERS: { value: CompanyFilter; label: string }[] = [
+  { value: "unlinked", label: "Not linked yet" },
+  { value: "strong", label: "Likely match (same name, website, phone or email domain)" },
+  { value: "possible", label: "Possible match (similar name)" },
+  { value: "none", label: "No match in this app" },
+  { value: "linked", label: "Linked" },
+  { value: "all", label: "All" },
+];
+
 const Yes = ({ on, label }: { on: boolean; label: string }) => (
   <span className={`badge ${on ? "badge-success" : "badge-neutral"}`}>{on ? label : "—"}</span>
 );
@@ -72,6 +83,7 @@ export default async function Mapping({ searchParams }: PageProps<"/admin/mappin
   const [l, counts, laOn, sfOn, types] = await Promise.all([links(), mapCounts(), ghlConfig(), salesforceConfig(), accountTypesInApp()]);
 
   const accountFilter = ACCOUNT_FILTERS.some((f) => f.value === str("filter")) ? (str("filter") as AccountMapFilter) : "all";
+  const companyFilter = COMPANY_FILTERS.some((f) => f.value === str("filter")) ? (str("filter") as CompanyFilter) : "unlinked";
   const contactFilter = CONTACT_FILTERS.some((f) => f.value === str("filter")) ? (str("filter") as ContactMapFilter) : "all";
   const qs = (over: Record<string, string | number>) => {
     const p = new URLSearchParams({ tab, ...(str("filter") ? { filter: str("filter") } : {}), ...(type ? { type } : {}) });
@@ -86,10 +98,10 @@ export default async function Mapping({ searchParams }: PageProps<"/admin/mappin
   let laError: string | null = null;
   const accounts = tab === "accounts" ? await listAccountMap({ q, filter: accountFilter, page, type: type || null }) : null;
   const contacts = tab === "contacts" ? await listContactMap({ q, filter: contactFilter, page }) : null;
-  let companies: Awaited<ReturnType<typeof laCompaniesNotInSalesforce>> = [];
+  let companies: Awaited<ReturnType<typeof listCompanyMatches>> | null = null;
   if (tab === "companies" && laOn) {
     try {
-      companies = await laCompaniesNotInSalesforce(q);
+      companies = await listCompanyMatches({ q, filter: companyFilter });
     } catch (err) {
       laError = err instanceof Error ? err.message : String(err);
     }
@@ -129,6 +141,20 @@ export default async function Mapping({ searchParams }: PageProps<"/admin/mappin
             <button name="clear" value="1" className="btn-secondary">Clear</button>
           )}
         </form>
+        {tab === "companies" && (
+          <form method="get" className="flex flex-wrap items-end gap-2">
+            <input type="hidden" name="tab" value={tab} />
+            <label className="text-sm">
+              <span className="field-label !mb-1">Show</span>
+              <select name="filter" defaultValue={companyFilter} className="input">
+                {COMPANY_FILTERS.map((f) => (
+                  <option key={f.value} value={f.value}>{f.label}</option>
+                ))}
+              </select>
+            </label>
+            <button className="btn-secondary">Filter</button>
+          </form>
+        )}
         {(tab === "accounts" || tab === "contacts") && (
           <form method="get" className="flex flex-wrap items-end gap-2">
             <input type="hidden" name="tab" value={tab} />
@@ -162,11 +188,14 @@ export default async function Mapping({ searchParams }: PageProps<"/admin/mappin
           <form id="bulk" className="mb-3 flex flex-wrap gap-2 text-sm">
             <input type="hidden" name="back" value={back} />
             <button formAction={accountsToLeadAlchemistAction} className="btn-primary" disabled={!laOn} title={laOn ? undefined : "Connect Lead Alchemist first"}>
-              Sync selected to Lead Alchemist Companies
+              Sync selected to Lead Alchemist (Company + contacts)
             </button>
             <button formAction={accountsToSalesforceAction} className="btn-secondary" disabled={!sfOn} title={sfOn ? undefined : "Connect Salesforce first"}>
               Link or create selected in Salesforce
             </button>
+            <label className="flex items-center gap-2" title="Lead Alchemist may start its workflows for new contacts">
+              <input type="checkbox" name="createMissing" value="yes" /> Create missing contacts in Lead Alchemist
+            </label>
           </form>
           <div className="overflow-x-auto">
             <table className="data-table">
@@ -226,9 +255,14 @@ export default async function Mapping({ searchParams }: PageProps<"/admin/mappin
         <>
           <form id="bulk" className="mb-3 flex flex-wrap gap-2 text-sm">
             <input type="hidden" name="back" value={back} />
-            <button formAction={contactsToLeadAlchemistAction} className="btn-primary" disabled={!laOn}>Link selected to Lead Alchemist (exact email/phone)</button>
-            <button formAction={contactsToCompanyAction} className="btn-secondary" disabled={!laOn}>Add selected to their account&apos;s Company</button>
+            <button formAction={contactsToCompanyAction} className="btn-primary" disabled={!laOn} title="Links by exact email or phone, then adds each to their account's Company">
+              Sync selected to Lead Alchemist (and their Company)
+            </button>
             <button formAction={contactsToSalesforceAction} className="btn-secondary" disabled={!sfOn}>Link or create selected in Salesforce</button>
+            <label className="flex items-center gap-2" title="Lead Alchemist may start its workflows for new contacts">
+              <input type="checkbox" name="createMissing" value="yes" /> Create missing contacts in Lead Alchemist
+            </label>
+
           </form>
           <div className="overflow-x-auto">
             <table className="data-table">
@@ -285,47 +319,88 @@ export default async function Mapping({ searchParams }: PageProps<"/admin/mappin
             <p className="callout callout-notice">Connect Lead Alchemist in Settings → Integrations first.</p>
           ) : laError ? (
             <p className="rounded-lg bg-[var(--danger-bg)] p-3 text-sm text-[var(--danger)]" role="alert">
-              Couldn&apos;t read Lead Alchemist Companies: {laError}. The token needs the Businesses (view, edit) scopes.
+              Couldn&apos;t read Lead Alchemist Companies: {laError}
             </p>
-          ) : (
+          ) : companies ? (
             <>
+              <p className="mb-2 text-sm">
+                <strong>{companies.counts.total}</strong> Companies in Lead Alchemist: <strong>{companies.counts.linked}</strong> linked ·{" "}
+                <strong>{companies.counts.strong}</strong> likely match · <strong>{companies.counts.possible}</strong> possible match ·{" "}
+                <strong>{companies.counts.none}</strong> no match in this app.
+              </p>
+              <p className="mb-3 max-w-3xl text-sm text-[var(--muted)]">
+                Matched against every account in this app (which mirrors Salesforce once its Accounts are synced). Check the account picked in each
+                row, tick the rows and link them. Linking only saves the pairing in this app; nothing changes in Lead Alchemist or Salesforce.
+              </p>
               <form id="bulk" className="mb-3 flex flex-wrap items-center gap-2 text-sm">
                 <input type="hidden" name="back" value={back} />
-                <button formAction={companiesToSalesforceAction} className="btn-primary" disabled={!sfOn}>Link or create selected in Salesforce</button>
-                <span className="text-[var(--muted)]">Lead Alchemist Companies with no Salesforce Account yet ({companies.length}).</span>
+                <button formAction={linkCompaniesAction} className="btn-primary">Link selected to the chosen account</button>
+                <button formAction={addCompaniesToAppAction} className="btn-secondary">Add selected to this app as new accounts</button>
+                <button formAction={companiesToSalesforceAction} className="btn-secondary" disabled={!sfOn}>Link or create selected in Salesforce</button>
               </form>
               <div className="overflow-x-auto">
                 <table className="data-table">
                   <thead>
                     <tr>
                       <th className="w-8"><SelectAll form="bulk" /></th>
-                      <th>Company</th>
-                      <th>In this app</th>
+                      <th>Lead Alchemist Company</th>
+                      <th>Account in this app</th>
+                      <th>Salesforce</th>
                       <th />
                     </tr>
                   </thead>
                   <tbody>
-                    {!companies.length && (
-                      <tr><td colSpan={4} className="text-[var(--muted)]">Every Company is linked to Salesforce.</td></tr>
+                    {!companies.rows.length && (
+                      <tr><td colSpan={5} className="text-[var(--muted)]">No Companies in this list.</td></tr>
                     )}
-                    {companies.slice(0, 500).map(({ business: b, account }) => (
-                      <tr key={b.id}>
-                        <td><input type="checkbox" name="ids" value={b.id} form="bulk" aria-label={`Select ${b.name}`} /></td>
-                        <td>
-                          <span className="font-medium">{b.name}</span>
-                          <div className="text-xs text-[var(--muted)]">{[b.email, b.phone, b.city].filter(Boolean).join(" · ")}</div>
-                        </td>
-                        <td>{account ? <Link className="btn-link text-sm" href={`/admin/clients/${account.id}`}>{account.name}</Link> : "—"}</td>
-                        <td>
-                          <SystemLink className="btn-link text-sm" href={l.ghlCompany(b.id)} missing="">View in Lead Alchemist</SystemLink>
-                        </td>
-                      </tr>
-                    ))}
+                    {companies.rows.slice(0, 500).map(({ business: b, linked, suggestions }) => {
+                      const shown = linked ?? suggestions[0]?.account ?? null;
+                      return (
+                        <tr key={b.id}>
+                          <td><input type="checkbox" name="ids" value={b.id} form="bulk" aria-label={`Select ${b.name}`} /></td>
+                          <td>
+                            <span className="font-medium">{b.name}</span>
+                            <div className="text-xs text-[var(--muted)]">{[b.email, b.phone, b.website, b.city].filter(Boolean).join(" · ")}</div>
+                          </td>
+                          <td>
+                            {linked ? (
+                              <>
+                                <Link className="btn-link text-sm" href={`/admin/clients/${linked.id}`}>{linked.name}</Link> <span className="badge badge-success">Linked</span>
+                              </>
+                            ) : suggestions.length ? (
+                              <select name={`match_${b.id}`} form="bulk" defaultValue={suggestions[0].account.id} className="input max-w-[22rem] text-sm" aria-label={`Account for ${b.name}`}>
+                                {suggestions.map((m) => (
+                                  <option key={m.account.id} value={m.account.id}>
+                                    {m.confidence === "strong" ? "Likely" : "Possible"}: {m.account.name} ({m.why.join(", ")})
+                                  </option>
+                                ))}
+                                <option value="">None of these</option>
+                              </select>
+                            ) : (
+                              <span className="text-[var(--muted)]">No match</span>
+                            )}
+                          </td>
+                          <td>
+                            {shown?.sfAccountId ? (
+                              <>
+                                <SystemLink className="btn-link text-sm" href={l.salesforce("Account", shown.sfAccountId)} missing="">In Salesforce</SystemLink>
+                                {shown.sfAccountType && <span className="badge badge-neutral ml-1">{shown.sfAccountType}</span>}
+                              </>
+                            ) : (
+                              <span className="text-[var(--muted)]">—</span>
+                            )}
+                          </td>
+                          <td>
+                            <SystemLink className="btn-link text-sm" href={l.ghlCompany(b.id)} missing="">View in Lead Alchemist</SystemLink>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
             </>
-          )}
+          ) : null}
         </>
       )}
 

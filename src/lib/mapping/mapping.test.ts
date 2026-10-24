@@ -101,7 +101,8 @@ describe("app accounts → Lead Alchemist Companies", () => {
     const row = (id: string) => rows.find((r) => r.sourceId === id)!;
     expect(row(one.clientId)).toMatchObject({ proposal: "link", confidence: "strong", targetId: `existing-${tag}` });
     expect(row(two.clientId)).toMatchObject({ proposal: "create" });
-    expect(row(solo.clientId)).toMatchObject({ proposal: "skip" });
+    // Individuals get a Company too, named like their account (their Salesforce Account's name once linked).
+    expect(row(solo.clientId)).toMatchObject({ proposal: "create" });
     expect(la.created).not.toContain(`Fresh Dance ${tag}`); // nothing written yet
 
     run = await confirmRun("la_companies", "staff:amy@anthonyinsuranceservices.com", { createContacts: false });
@@ -112,6 +113,8 @@ describe("app accounts → Lead Alchemist Companies", () => {
     // Two's contact is in another Company: left there, and said so.
     expect(la.contacts.get(`c2-${tag}`)!.businessId).toBe("someone-elses-company");
     expect((await listRows(run.runId)).rows.find((r) => r.sourceId === two.clientId)!.result).toMatch(/left in another Company/);
-    expect((await getClient(solo.clientId))!.ghlCompanyId).toBeNull();
+    const soloAccount = (await getClient(solo.clientId))!;
+    expect(soloAccount.ghlCompanyId).toBeTruthy();
+    expect(la.created).toContain(soloAccount.name);
   });
 });

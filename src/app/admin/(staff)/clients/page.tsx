@@ -22,6 +22,7 @@ const FILTERS: { value: ClientFilter; label: string }[] = [
   { value: "businesses", label: "Businesses" },
   { value: "individuals", label: "Individuals" },
   { value: "review", label: "Possible duplicates" },
+  { value: "deactivated", label: "Deactivated" },
 ];
 const PAGE_SIZE = 50;
 

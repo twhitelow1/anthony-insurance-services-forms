@@ -58,6 +58,12 @@ export const clients = pgTable(
 
     /** Set when this record was merged into another; it no longer shows in lists. */
     mergedInto: uuid("merged_into"),
+    /**
+     * Deactivated in this app (never deleted): hidden from lists and imports, kept with its
+     * Salesforce link and history, and can be reactivated. Only an unsynced account can be deactivated.
+     */
+    deactivatedAt: timestamp("deactivated_at", { withTimezone: true }),
+    deactivatedBy: text("deactivated_by"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -279,7 +285,10 @@ export type ClientEventType =
   | "la_contact_linked"
   | "contact_pushed"
   | "contact_changed"
-  | "sf_refreshed";
+  | "sf_refreshed"
+  | "deactivated"
+  | "reactivated"
+  | "sf_relinked";
 
 /** Audit log and notes for a client (merges, splits, syncs, staff notes). */
 export const clientEvents = pgTable(

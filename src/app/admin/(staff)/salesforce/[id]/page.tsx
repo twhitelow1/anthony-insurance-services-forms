@@ -8,12 +8,14 @@ import { ghlConfig } from "@/lib/ghl/client";
 import { laCandidates, laName, type LaCandidate } from "@/lib/ghl/match";
 import { links } from "@/lib/integrations/links";
 import { salesforceClient } from "@/lib/salesforce/client";
-import { accountBlockers, contactBlockers, salesforceAccountDetail } from "@/lib/salesforce/manager";
+import { contactBlockers, salesforceAccountDetail } from "@/lib/salesforce/manager";
 import {
   createLaContactAction,
   linkExactLaMatchesAction,
   linkLaContactAction,
-  removeAccountAction,
+  deactivateAccountAction,
+  reactivateAccountAction,
+  relinkAccountAction,
   removeContactAction,
   resumeAccountAction,
   syncAccountAction,
@@ -22,7 +24,7 @@ import {
   unsyncAccountAction,
   unsyncContactAction,
 } from "../actions";
-import { ActionButton, AppStateBadge, FlashMessage, RemoveForm } from "../ui";
+import { AccountLifecycle, ActionButton, AppStateBadge, FlashMessage, RemoveForm } from "../ui";
 
 export const metadata = { title: "Salesforce Account | Anthony Insurance Services" };
 export const dynamic = "force-dynamic";
@@ -62,7 +64,6 @@ export default async function SalesforceAccount({ params, searchParams }: PagePr
     );
   }
   const { account, client, accountState, contacts } = detail;
-  const blockers = client ? await accountBlockers(client.id) : null;
   const contactBlocks = new Map<string, Awaited<ReturnType<typeof contactBlockers>>>();
   for (const c of contacts) if (c.contact) contactBlocks.set(c.contact.id, await contactBlockers(c.contact.id));
 
@@ -101,7 +102,7 @@ export default async function SalesforceAccount({ params, searchParams }: PagePr
           {client ? (
             <>
               <Link className="btn-secondary" href={`/admin/clients/${client.id}`}>Open in this app</Link>
-              {accountState === "synced" ? (
+              {accountState === "deactivated" ? null : accountState === "synced" ? (
                 <>
                   <ActionButton action={syncAccountAction} fields={{ sfAccountId: id, back }}>Sync now</ActionButton>
                   <ActionButton action={unsyncAccountAction} fields={{ clientId: client.id, back }}>Unsync</ActionButton>
@@ -118,20 +119,12 @@ export default async function SalesforceAccount({ params, searchParams }: PagePr
           <SystemLink href={l.salesforce("Account", id)} missing="Add the Lightning URL in Settings → Integrations">View in Salesforce</SystemLink>
           {client?.ghlCompanyId && <SystemLink href={l.ghlCompany(client.ghlCompanyId)} missing="">View Company in Lead Alchemist</SystemLink>}
         </div>
-        {client && blockers && (
-          blockers.applications || blockers.drafts ? (
-            <p className="text-sm text-[var(--muted)]">
-              Can&apos;t be removed from this app: it has {blockers.applications} application{blockers.applications === 1 ? "" : "s"}
-              {blockers.drafts ? ` and ${blockers.drafts} draft${blockers.drafts === 1 ? "" : "s"}` : ""}. Unsync it instead.
-            </p>
-          ) : (
-            <RemoveForm
-              action={removeAccountAction}
-              fields={{ clientId: client.id, back: "/admin/salesforce" }}
-              label="Remove this Account from this app"
-              stays={`Deletes "${client.name}" and its contacts from this app only. It stays in Salesforce${client.ghlCompanyId ? " and Lead Alchemist" : ""}; to delete it there, open it in Salesforce${client.ghlCompanyId ? " or Lead Alchemist" : ""}. Later imports leave it out until you sync it again.`}
-            />
-          )
+        {client && (
+          <AccountLifecycle
+            client={client}
+            back={back}
+            actions={{ deactivate: deactivateAccountAction, reactivate: reactivateAccountAction, relink: relinkAccountAction }}
+          />
         )}
       </section>
 

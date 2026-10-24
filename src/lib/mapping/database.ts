@@ -3,12 +3,13 @@ import { and, asc, count, eq, ilike, inArray, isNotNull, isNull, or, sql, type S
 import { getDb, schema } from "@/lib/db";
 import type { Client, Contact } from "@/lib/db/schema";
 import { accountsOfContact, addClientEvent, listAccountContacts, contactEmailsOf, createAccount, getClient, getContact, setClientSalesforce, setContactSalesforce } from "@/lib/clients/repo";
-import { nameKey, searchTerms } from "@/lib/clients/text";
-import { addContactsToBusiness, addTags, createBusiness, getContact as getLaContact, ghlConfig, listBusinesses, type GhlBusiness } from "@/lib/ghl/client";
+import { laCompanyName, nameKey, searchTerms } from "@/lib/clients/text";
+import { addContactsToBusiness, addTags, createBusiness, getContact as getLaContact, ghlConfig, isScopeError, listBusinesses, upsertContact, type GhlBusiness } from "@/lib/ghl/client";
 import { exactMatch, laCandidates, linkLaContact } from "@/lib/ghl/match";
 import type { Links } from "@/lib/integrations/urls";
 import { soqlString, type SalesforceApi } from "@/lib/salesforce/api";
 import { LINK_FIELDS, prepareFields } from "@/lib/salesforce/mapping";
+import { companyMatchCounts, filterCompanyMatches, matchCompanies, type CompanyFilter, type MatchAccount } from "./company-match";
 
 /**
  * The mapping database (Admin → Mapping): every account and contact with its Salesforce and Lead
@@ -53,7 +54,7 @@ export async function listAccountMap({ q, filter = "all", page = 1, type }: { q?
             ? and(isNotNull(c.ghlCompanyId), isNotNull(c.sfAccountId))
             : undefined;
   const typeWhere = type ? (type === NO_TYPE ? isNull(c.sfAccountType) : eq(c.sfAccountType, type)) : undefined;
-  const where = and(isNull(c.mergedInto), textWhere(c.searchText, q), f, typeWhere);
+  const where = and(isNull(c.mergedInto), isNull(c.deactivatedAt), textWhere(c.searchText, q), f, typeWhere);
   const cid = sql.raw(`"clients"."id"`);
   const people = sql<number>`(select count(*) from ${schema.contacts} ct where ct.client_id = ${cid})`.mapWith(Number);
   const inLa = sql<number>`(select count(*) from ${schema.contacts} ct where ct.client_id = ${cid} and ct.ghl_contact_id is not null)`.mapWith(Number);
@@ -88,7 +89,7 @@ export async function listAccountMap({ q, filter = "all", page = 1, type }: { q?
 export async function mapCounts() {
   const db = await getDb();
   const c = schema.clients;
-  const live = isNull(c.mergedInto);
+  const live = and(isNull(c.mergedInto), isNull(c.deactivatedAt));
   const n = async (w: SQL | undefined) => (await db.select({ n: count() }).from(c).where(and(live, w)))[0].n;
   const ct = schema.contacts;
   const nc = async (w: SQL | undefined) => (await db.select({ n: count() }).from(ct).where(w))[0].n;
@@ -147,6 +148,94 @@ export async function laCompaniesNotInSalesforce(q?: string) {
     .sort((a, b) => a.business.name.localeCompare(b.business.name));
 }
 
+/** Every active Account, with what company matching needs. */
+async function matchAccounts(): Promise<MatchAccount[]> {
+  const db = await getDb();
+  return db
+    .select({
+      id: schema.clients.id,
+      name: schema.clients.name,
+      nameKey: schema.clients.nameKey,
+      phones: schema.clients.phones,
+      website: schema.clients.website,
+      primaryEmail: schema.clients.primaryEmail,
+      sfAccountId: schema.clients.sfAccountId,
+      sfAccountType: schema.clients.sfAccountType,
+      ghlCompanyId: schema.clients.ghlCompanyId,
+    })
+    .from(schema.clients)
+    .where(and(isNull(schema.clients.mergedInto), isNull(schema.clients.deactivatedAt)));
+}
+
+/**
+ * Every Lead Alchemist Company, read live, with the app Accounts (and so Salesforce Accounts) it
+ * probably is. Reads only.
+ */
+export async function listCompanyMatches({ q, filter = "unlinked" }: { q?: string; filter?: CompanyFilter }) {
+  const [businesses, accounts] = await Promise.all([listBusinesses(), matchAccounts()]);
+  const all = matchCompanies(businesses, accounts).sort((a, b) => a.business.name.localeCompare(b.business.name));
+  const term = q?.trim().toLowerCase();
+  const searched = term ? all.filter((r) => [r.business.name, r.business.email, r.business.phone, r.business.website].some((v) => v?.toLowerCase().includes(term))) : all;
+  return { rows: filterCompanyMatches(searched, filter), counts: companyMatchCounts(all) };
+}
+
+/** Link Lead Alchemist Companies to the Accounts staff picked (this app only; nothing changes in Lead Alchemist). */
+export async function linkCompaniesToAccounts(pairs: { businessId: string; accountId: string }[], actor: string): Promise<BulkResult> {
+  const result: BulkResult = { done: 0, notes: [] };
+  const businesses = new Map((await listBusinesses()).map((b) => [b.id, b] as const));
+  const db = await getDb();
+  for (const { businessId, accountId } of pairs.slice(0, 100)) {
+    const b = businesses.get(businessId);
+    const account = await getClient(accountId);
+    if (!b || !account) continue;
+    if (account.ghlCompanyId === b.id) continue;
+    if (account.ghlCompanyId) {
+      result.notes.push(`${account.name} is already linked to another Lead Alchemist Company.`);
+      continue;
+    }
+    const [taken] = await db
+      .select({ name: schema.clients.name })
+      .from(schema.clients)
+      .where(and(eq(schema.clients.ghlCompanyId, b.id), isNull(schema.clients.mergedInto)))
+      .limit(1);
+    if (taken) {
+      result.notes.push(`"${b.name}" is already linked to ${taken.name}.`);
+      continue;
+    }
+    await setClientSalesforce(account.id, { ghlCompanyId: b.id });
+    await addClientEvent(account.id, "la_company_linked", actor, { message: `Linked to Lead Alchemist Company "${b.name}" (${b.id}) from Mapping` });
+    result.done++;
+  }
+  return result;
+}
+
+/** Add Lead Alchemist Companies with no match as new Accounts in this app (not in Salesforce). */
+export async function addCompaniesToApp(businessIds: string[], actor: string): Promise<BulkResult> {
+  const result: BulkResult = { done: 0, notes: [] };
+  const businesses = new Map((await listBusinesses()).map((b) => [b.id, b] as const));
+  const db = await getDb();
+  for (const id of businessIds.slice(0, 100)) {
+    const b = businesses.get(id);
+    if (!b) continue;
+    const [linked] = await db.select({ id: schema.clients.id }).from(schema.clients).where(and(eq(schema.clients.ghlCompanyId, b.id), isNull(schema.clients.mergedInto))).limit(1);
+    if (linked) continue;
+    const account = await createAccount(
+      {
+        name: b.name,
+        phone: b.phone,
+        website: b.website,
+        primaryEmail: b.email,
+        address: { street: b.address ?? undefined, city: b.city ?? undefined, state: b.state ?? undefined, postalCode: b.postalCode ?? undefined },
+      },
+      actor,
+    );
+    await setClientSalesforce(account.id, { ghlCompanyId: b.id });
+    await addClientEvent(account.id, "la_company_linked", actor, { message: `Added from Lead Alchemist Company "${b.name}" (${b.id})` });
+    result.done++;
+  }
+  return result;
+}
+
 // ── Bulk actions ──────────────────────────────────────────────────────
 
 export interface BulkResult {
@@ -171,66 +260,126 @@ async function writeAccountLinks(sf: SalesforceApi, links: Links, account: Clien
  * one, then link each person to their Lead Alchemist contact (one exact email or phone match) and
  * add them to the Company. A contact already in a different Company is left there.
  */
-export async function syncAccountsToLeadAlchemist(clientIds: string[], actor: string, deps: { sf: SalesforceApi | null; links: Links }): Promise<BulkResult> {
+export interface LeadAlchemistSyncOptions {
+  /** Create a Lead Alchemist contact for people with no email or phone match there (it can start Lead Alchemist workflows). */
+  createMissing?: boolean;
+}
+
+const COMPANIES_BLOCKED =
+  "Companies were skipped: the Lead Alchemist token is missing the Companies scopes (Settings → Private Integrations → add businesses.readonly and businesses.write). Contacts were still linked.";
+
+/**
+ * Accounts → Lead Alchemist: link the Company with exactly the same name (or create it), then link
+ * each person to their Lead Alchemist contact (or create it, when asked) and put them in the Company.
+ * If the token can't use Companies, the contacts are still linked (and created) with the account
+ * name as their company name, and the note says what to fix.
+ */
+export async function syncAccountsToLeadAlchemist(
+  clientIds: string[],
+  actor: string,
+  deps: { sf: SalesforceApi | null; links: Links },
+  opts: LeadAlchemistSyncOptions = {},
+): Promise<BulkResult> {
   if (!(await ghlConfig())) throw new Error("Lead Alchemist isn't connected. Add the keys in Settings → Integrations.");
-  const companies = await listBusinesses();
+  let companies: GhlBusiness[] | null = await listBusinesses().catch((err) => {
+    if (isScopeError(err)) return null;
+    throw err;
+  });
   const result: BulkResult = { done: 0, notes: [] };
   const db = await getDb();
   for (const id of clientIds.slice(0, 50)) {
     const account = await getClient(id);
     if (!account) continue;
     let companyId = account.ghlCompanyId;
-    if (!companyId) {
-      const same = companies.filter((b) => nameKey(b.name) === account.nameKey);
+    if (!companyId && companies) {
+      const companyName = laCompanyName(account);
+      const same = companies.filter((b) => nameKey(b.name) === nameKey(companyName));
       if (same.length > 1) {
         result.notes.push(`${account.name}: ${same.length} Lead Alchemist Companies have this name; pick one on the account's mapping row.`);
         continue;
       }
-      if (same[0]) companyId = same[0].id;
-      else {
-        const created = await createBusiness({
-          name: account.name,
-          phone: account.phones[0] ?? null,
-          email: account.primaryEmail,
-          website: account.website,
-          address: account.address?.street ?? null,
-          city: account.address?.city ?? null,
-          state: account.address?.state ?? null,
-          postalCode: account.address?.postalCode ?? null,
-          country: "US",
-        });
-        companies.push(created);
-        companyId = created.id;
+      try {
+        if (same[0]) companyId = same[0].id;
+        else {
+          const created = await createBusiness({
+            name: companyName,
+            phone: account.phones[0] ?? null,
+            email: account.primaryEmail,
+            website: account.website,
+            address: account.address?.street ?? null,
+            city: account.address?.city ?? null,
+            state: account.address?.state ?? null,
+            postalCode: account.address?.postalCode ?? null,
+            country: "US",
+          });
+          companies.push(created);
+          companyId = created.id;
+        }
+        await setClientSalesforce(account.id, { ghlCompanyId: companyId });
+        await addClientEvent(account.id, "la_company_linked", actor, { message: `${same[0] ? "Linked to" : "Created"} Lead Alchemist Company ${companyId}` });
+      } catch (err) {
+        if (!isScopeError(err)) throw err;
+        companies = null;
+        companyId = null;
       }
-      await setClientSalesforce(account.id, { ghlCompanyId: companyId });
-      await addClientEvent(account.id, "la_company_linked", actor, { message: `${same[0] ? "Linked to" : "Created"} Lead Alchemist Company ${companyId}` });
     }
     const people = await db.select().from(schema.contacts).where(eq(schema.contacts.clientId, account.id));
-    const r = await connectContactsToCompany(people, companyId, actor);
+    const r = await connectContactsToCompany(people, companies ? companyId : null, actor, { ...opts, companyName: laCompanyName(account) });
+    if (r.blocked) companies = null;
     if (r.notes.length) result.notes.push(...r.notes.map((n) => `${account.name}: ${n}`));
     if (deps.sf && account.sfAccountId) await writeAccountLinks(deps.sf, deps.links, { ...account, ghlCompanyId: companyId }).catch(() => {});
     result.done++;
   }
+  if (!companies) result.notes.unshift(COMPANIES_BLOCKED);
   return result;
 }
 
-/** Link each person to their Lead Alchemist contact (exact matches only) and add them to the Company. */
-export async function connectContactsToCompany(people: Contact[], companyId: string, actor: string): Promise<BulkResult> {
-  const result: BulkResult = { done: 0, notes: [] };
+/**
+ * Link each person to their Lead Alchemist contact (exact email or phone match only; created when
+ * `createMissing` and there's no match at all) and add them to the Company. A contact already in a
+ * different Company is left there. `companyId` null: link and create only.
+ */
+export async function connectContactsToCompany(
+  people: Contact[],
+  companyId: string | null,
+  actor: string,
+  opts: LeadAlchemistSyncOptions & { companyName?: string | null } = {},
+): Promise<BulkResult & { blocked?: boolean }> {
+  const result: BulkResult & { blocked?: boolean } = { done: 0, notes: [] };
   const toAdd: string[] = [];
   let unmatched = 0;
+  let unclear = 0;
+  let created = 0;
   let elsewhere = 0;
   for (const p of people) {
     let laId = p.ghlContactId;
     if (!laId) {
-      const match = exactMatch(await laCandidates(p, { byName: false }));
-      if (!match) {
+      const candidates = await laCandidates(p, { byName: false });
+      const match = exactMatch(candidates);
+      if (match) {
+        await linkLaContact(p.id, match.id, actor);
+        laId = match.id;
+      } else if (candidates.length) {
+        unclear++; // more than one Lead Alchemist contact shares this email or phone
+        continue;
+      } else if (opts.createMissing && (p.primaryEmail || p.phones[0])) {
+        const res = await upsertContact({
+          email: p.primaryEmail ?? undefined,
+          firstName: p.firstName ?? (p.lastName ? undefined : p.name),
+          lastName: p.lastName ?? undefined,
+          phone: p.phones[0],
+          companyName: opts.companyName ?? undefined,
+          source: "Online Applications App",
+        });
+        await linkLaContact(p.id, res.contact.id, actor);
+        laId = res.contact.id;
+        created++;
+      } else {
         unmatched++;
         continue;
       }
-      await linkLaContact(p.id, match.id, actor);
-      laId = match.id;
     }
+    if (!companyId) continue;
     const la = await getLaContact(laId);
     if (!la) continue;
     if (la.businessId === companyId) continue;
@@ -240,35 +389,54 @@ export async function connectContactsToCompany(people: Contact[], companyId: str
     }
     toAdd.push(laId);
   }
-  if (toAdd.length) await addContactsToBusiness(toAdd, companyId);
-  result.done = toAdd.length;
-  if (unmatched) result.notes.push(`${unmatched} contact${unmatched === 1 ? " has" : "s have"} no single email or phone match in Lead Alchemist (pick by hand)`);
+  if (toAdd.length && companyId) {
+    try {
+      await addContactsToBusiness(toAdd, companyId);
+      result.done = toAdd.length;
+    } catch (err) {
+      if (!isScopeError(err)) throw err;
+      result.blocked = true;
+    }
+  }
+  if (created) result.notes.push(`${created} contact${created === 1 ? "" : "s"} created in Lead Alchemist`);
+  if (unmatched)
+    result.notes.push(
+      `${unmatched} contact${unmatched === 1 ? " is" : "s are"} not in Lead Alchemist${opts.createMissing ? " and have no email or phone" : " (tick \"Create missing contacts\" to add them)"}`,
+    );
+  if (unclear) result.notes.push(`${unclear} contact${unclear === 1 ? " matches" : "s match"} more than one Lead Alchemist contact (pick by hand on the Salesforce Account page)`);
   if (elsewhere) result.notes.push(`${elsewhere} contact${elsewhere === 1 ? " is" : "s are"} already in a different Company (left there)`);
   return result;
 }
 
-/** "Connect to Company" for selected contacts: each joins their account's Company. */
-export async function connectSelectedContacts(contactIds: string[], actor: string): Promise<BulkResult> {
+/**
+ * Contacts → Lead Alchemist: link each selected person (exact email or phone match; created when
+ * `createMissing`), then add them to their account's Company when it has one.
+ */
+export async function connectSelectedContacts(contactIds: string[], actor: string, opts: LeadAlchemistSyncOptions = {}): Promise<BulkResult> {
   if (!(await ghlConfig())) throw new Error("Lead Alchemist isn't connected. Add the keys in Settings → Integrations.");
   const db = await getDb();
   const rows = await db
-    .select({ contact: schema.contacts, companyId: schema.clients.ghlCompanyId })
+    .select({ contact: schema.contacts, account: { id: schema.clients.id, name: schema.clients.name, sfSnapshot: schema.clients.sfSnapshot, companyId: schema.clients.ghlCompanyId } })
     .from(schema.contacts)
     .innerJoin(schema.clients, eq(schema.clients.id, schema.contacts.clientId))
     .where(inArray(schema.contacts.id, contactIds.slice(0, 100)));
   const result: BulkResult = { done: 0, notes: [] };
-  const byCompany = new Map<string, Contact[]>();
+  const byAccount = new Map<string, { account: (typeof rows)[number]["account"]; people: Contact[] }>();
+  for (const r of rows) byAccount.set(r.account.id, { account: r.account, people: [...(byAccount.get(r.account.id)?.people ?? []), r.contact] });
   let noCompany = 0;
-  for (const r of rows) {
-    if (!r.companyId) noCompany++;
-    else byCompany.set(r.companyId, [...(byCompany.get(r.companyId) ?? []), r.contact]);
+  let blocked = false;
+  for (const { account, people } of byAccount.values()) {
+    if (!account.companyId) noCompany += people.length;
+    const before = people.filter((p) => p.ghlContactId).length;
+    const r = await connectContactsToCompany(people, blocked ? null : account.companyId, actor, { ...opts, companyName: laCompanyName(account) });
+    blocked ||= !!r.blocked;
+    // Done = now linked in Lead Alchemist (and in the Company where there is one).
+    const linkedNow = (await db.select({ id: schema.contacts.id }).from(schema.contacts).where(and(inArray(schema.contacts.id, people.map((p) => p.id)), isNotNull(schema.contacts.ghlContactId)))).length;
+    result.done += Math.max(linkedNow - before, 0) + r.done;
+    result.notes.push(...r.notes.map((n) => `${account.name}: ${n}`));
   }
-  for (const [companyId, people] of byCompany) {
-    const r = await connectContactsToCompany(people, companyId, actor);
-    result.done += r.done;
-    result.notes.push(...r.notes);
-  }
-  if (noCompany) result.notes.push(`${noCompany} contact${noCompany === 1 ? "'s account has" : "s' accounts have"} no Lead Alchemist Company yet (sync the account first)`);
+  if (blocked) result.notes.unshift(COMPANIES_BLOCKED);
+  if (noCompany) result.notes.push(`${noCompany} contact${noCompany === 1 ? "'s account has" : "s' accounts have"} no Lead Alchemist Company yet: they were linked only (sync the account on the Accounts tab to add its Company).`);
   return result;
 }
 

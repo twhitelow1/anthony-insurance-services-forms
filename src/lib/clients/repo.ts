@@ -422,8 +422,27 @@ export async function assignApplicationClient(applicationId: string, details: Cl
   const db = await getDb();
   const { clientId, contactId } = await resolveAccountAndContact(details);
   await db.update(applications).set({ clientId, contactId }).where(eq(applications.id, applicationId));
+  await reactivateForApplication(clientId, applicationId);
   await db.update(drafts).set({ clientId, contactId }).where(and(eq(drafts.email, normalizeEmail(details.email)), isNull(drafts.clientId)));
   return clientId;
+}
+
+/** A new application for a deactivated account brings it back, and the team is told. */
+async function reactivateForApplication(clientId: string, applicationId: string) {
+  const db = await getDb();
+  const [account] = await db.select().from(clients).where(eq(clients.id, clientId)).limit(1);
+  if (!account?.deactivatedAt) return;
+  await db.update(clients).set({ deactivatedAt: null, deactivatedBy: null, updatedAt: new Date() }).where(eq(clients.id, clientId));
+  await addClientEvent(clientId, "reactivated", "system", { message: "Reactivated: a new application came in for this deactivated account" });
+  const { raiseNotification } = await import("@/lib/notifications/repo");
+  await raiseNotification({
+    kind: "other",
+    title: `Deactivated account reactivated: ${account.name}`,
+    detail: "A new application came in for this account, which had been deactivated. It's active again (still unsynced); check whether to sync it.",
+    clientId,
+    applicationId,
+    dedupeKey: `reactivated:${clientId}`,
+  });
 }
 
 export async function assignDraftClient(draftId: string, details: ClientDetails): Promise<string> {
@@ -531,7 +550,7 @@ function searchWhere(q: string | undefined): SQL | undefined {
   return digits ? or(ilike(clients.searchText, `%${esc(text)}%`), ilike(clients.searchText, `%${esc(digits)}%`)) : ilike(clients.searchText, `%${esc(text)}%`);
 }
 
-export type ClientFilter = "all" | "review" | "individuals" | "businesses";
+export type ClientFilter = "all" | "review" | "individuals" | "businesses" | "deactivated";
 
 /** Accounts for Admin → Accounts, with counts and their latest application. */
 export async function listClients({
@@ -550,7 +569,9 @@ export async function listClients({
         : filter === "businesses"
           ? eq(clients.isIndividual, false)
           : undefined;
-  const where = and(isNull(clients.mergedInto), searchWhere(q), filterWhere);
+  // Deactivated accounts show only under their own filter.
+  const active = filter === "deactivated" ? isNotNull(clients.deactivatedAt) : isNull(clients.deactivatedAt);
+  const where = and(isNull(clients.mergedInto), active, searchWhere(q), filterWhere);
   // Written out in full: inside a subquery a bare column could bind to the subquery's own table.
   const cid = sql.raw(`"clients"."id"`);
   const cPrimary = sql.raw(`"clients"."primary_email"`);

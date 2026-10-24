@@ -5,13 +5,17 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { requireStaff } from "@/lib/auth/session";
 import { getClient, getContact } from "@/lib/clients/repo";
+import { laCompanyName } from "@/lib/clients/text";
 import { setFlash } from "@/lib/flash";
 import { ghlConfig, upsertContact } from "@/lib/ghl/client";
 import { exactMatch, laCandidates, laName, linkLaContact, unlinkLaContact } from "@/lib/ghl/match";
 import { links } from "@/lib/integrations/links";
+import { resumeBulkSync, startBulkSync, stepBulkSync, stopBulkSync } from "@/lib/salesforce/bulk-sync";
 import { salesforceClient } from "@/lib/salesforce/client";
 import {
-  removeAccountFromDashboard,
+  deactivateAccount,
+  reactivateAccount,
+  relinkSalesforceAccount,
   removeContactFromDashboard,
   resumeAccount,
   syncAccount,
@@ -26,7 +30,7 @@ import { SF_SEARCH_COOKIE } from "./search-cookie";
 
 const backTo = (formData: FormData) => {
   const b = String(formData.get("back") ?? "");
-  return b.startsWith("/admin/salesforce") && !b.includes("//") ? b : "/admin/salesforce";
+  return /^\/admin\/(salesforce|clients)(\/|\?|$)/.test(b) && !b.includes("//") ? b : "/admin/salesforce";
 };
 
 async function done(formData: FormData, tone: "ok" | "error", text: string): Promise<never> {
@@ -103,6 +107,45 @@ export async function syncSelectedAccountsAction(formData: FormData) {
   });
 }
 
+/** "Select all N matching → Sync all": starts a run over every Account matching the search and Type. */
+export async function startBulkSyncAction(formData: FormData) {
+  return run(formData, async (actor) => {
+    if (formData.get("confirm") !== "yes") throw new Error("Tick the box to confirm syncing every matching Account.");
+    const q = (await cookies()).get(SF_SEARCH_COOKIE)?.value ?? "";
+    const type = String(formData.get("type") ?? "").slice(0, 80);
+    const r = await startBulkSync(await sf(), { q, type, writeLinks: formData.get("writeLinks") === "yes" }, actor);
+    return `Started syncing ${r.total === null ? "every matching" : r.total.toLocaleString("en-US")} Account${r.total === 1 ? "" : "s"}. Keep this page open; it continues on its own.`;
+  });
+}
+
+/** One batch of the run; the progress panel submits this again until it's done. */
+export async function stepBulkSyncAction(formData: FormData) {
+  await requireStaff();
+  try {
+    await stepBulkSync({ sf: await sf(), links: await links() });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error("[salesforce screen] bulk sync step failed:", message);
+    return done(formData, "error", `The sync paused on an error: ${message}. Press Continue to try again.`);
+  }
+  revalidatePath("/admin/salesforce");
+  redirect(backTo(formData));
+}
+
+export async function stopBulkSyncAction(formData: FormData) {
+  return run(formData, async (actor) => {
+    await stopBulkSync(actor);
+    return "Stopped. Accounts already synced stay synced.";
+  });
+}
+
+export async function resumeBulkSyncAction(formData: FormData) {
+  return run(formData, async () => {
+    await resumeBulkSync();
+    return "Resumed. Keep this page open; it continues on its own.";
+  });
+}
+
 export async function unsyncAccountAction(formData: FormData) {
   return run(formData, async (actor) => {
     const c = await unsyncAccount(id(formData, "clientId"), actor);
@@ -114,11 +157,24 @@ export async function resumeAccountAction(formData: FormData) {
   return run(formData, async (actor) => `Syncing "${(await resumeAccount(id(formData, "clientId"), actor)).name}" again.`);
 }
 
-export async function removeAccountAction(formData: FormData) {
+/** Deactivate an unsynced Account in this app (never deleted; reactivate any time). */
+export async function deactivateAccountAction(formData: FormData) {
   return run(formData, async (actor) => {
     if (formData.get("confirm") !== "yes") throw new Error("Tick the box to confirm.");
-    const c = await removeAccountFromDashboard(id(formData, "clientId"), actor);
-    return `Removed "${c.name}" from this app. It's still in Salesforce${c.ghlCompanyId ? " and Lead Alchemist" : ""}; delete it there if it should go.`;
+    const c = await deactivateAccount(id(formData, "clientId"), actor, String(formData.get("reason") ?? ""));
+    return `Deactivated "${c.name}" in this app. It's still in Salesforce, keeps its history, and can be reactivated.`;
+  });
+}
+
+export async function reactivateAccountAction(formData: FormData) {
+  return run(formData, async (actor) => `Reactivated "${(await reactivateAccount(id(formData, "clientId"), actor)).name}". Sync it again when you're ready.`);
+}
+
+/** Point an app Account at a different Salesforce Account; the old link stays in its activity. */
+export async function relinkAccountAction(formData: FormData) {
+  return run(formData, async (actor) => {
+    const r = await relinkSalesforceAccount(id(formData, "clientId"), String(formData.get("sfAccount") ?? "").slice(0, 300), await sf(), actor);
+    return `"${r.client.name}" is now linked to the Salesforce Account "${r.account.Name}". The previous link is in its activity.`;
   });
 }
 
@@ -168,7 +224,7 @@ export async function createLaContactAction(formData: FormData) {
       firstName: contact.firstName ?? (contact.lastName ? undefined : contact.name),
       lastName: contact.lastName ?? undefined,
       phone: contact.phones[0],
-      companyName: account && !account.isIndividual ? account.name : undefined,
+      companyName: account ? laCompanyName(account) : undefined,
       source: "Online Applications App",
     });
     await linkLaContact(contact.id, res.contact.id, actor);

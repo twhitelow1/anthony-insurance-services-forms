@@ -27,7 +27,7 @@ import { hiddenSet, hide, unhide } from "./hidden";
  *   Salesforce or Lead Alchemist; the screen links there.
  */
 
-export type AppState = "not_in_app" | "synced" | "unsynced" | "removed";
+export type AppState = "not_in_app" | "synced" | "unsynced" | "removed" | "deactivated";
 
 export interface SfAccountListRow {
   id: string;
@@ -86,7 +86,13 @@ export async function listSalesforceAccounts(sf: SalesforceApi, opts: { q?: stri
   const db = await getDb();
   const linked = ids.length
     ? await db
-        .select({ id: schema.clients.id, name: schema.clients.name, sfAccountId: schema.clients.sfAccountId, paused: schema.clients.sfSyncPaused })
+        .select({
+          id: schema.clients.id,
+          name: schema.clients.name,
+          sfAccountId: schema.clients.sfAccountId,
+          paused: schema.clients.sfSyncPaused,
+          deactivated: schema.clients.deactivatedAt,
+        })
         .from(schema.clients)
         .where(and(inArray(schema.clients.sfAccountId, ids), isNull(schema.clients.mergedInto)))
     : [];
@@ -102,7 +108,7 @@ export async function listSalesforceAccounts(sf: SalesforceApi, opts: { q?: stri
       city: r.BillingCity,
       state: r.BillingState,
       contacts: contactsVisible ? (r.Contacts?.totalSize ?? r.Contacts?.records.length ?? 0) : null,
-      appState: c ? (c.paused ? "unsynced" : "synced") : hidden.has(r.Id) ? "removed" : "not_in_app",
+      appState: c ? (c.deactivated ? "deactivated" : c.paused ? "unsynced" : "synced") : hidden.has(r.Id) ? "removed" : "not_in_app",
       client: c ? { id: c.id, name: c.name } : undefined,
     };
   });
@@ -124,10 +130,13 @@ export async function appSalesforceCounts() {
   const [synced] = await db
     .select({ n: count() })
     .from(schema.clients)
-    .where(and(isNull(schema.clients.mergedInto), eq(schema.clients.sfSyncPaused, false), isNotNull(schema.clients.sfAccountId)));
-  const [unsynced] = await db.select({ n: count() }).from(schema.clients).where(and(isNull(schema.clients.mergedInto), eq(schema.clients.sfSyncPaused, true)));
-  const [removed] = await db.select({ n: count() }).from(schema.salesforceHidden);
-  return { synced: synced.n, unsynced: unsynced.n, removed: removed.n };
+    .where(and(isNull(schema.clients.mergedInto), isNull(schema.clients.deactivatedAt), eq(schema.clients.sfSyncPaused, false), isNotNull(schema.clients.sfAccountId)));
+  const [unsynced] = await db
+    .select({ n: count() })
+    .from(schema.clients)
+    .where(and(isNull(schema.clients.mergedInto), isNull(schema.clients.deactivatedAt), eq(schema.clients.sfSyncPaused, true)));
+  const [deactivated] = await db.select({ n: count() }).from(schema.clients).where(and(isNull(schema.clients.mergedInto), isNotNull(schema.clients.deactivatedAt)));
+  return { synced: synced.n, unsynced: unsynced.n, deactivated: deactivated.n };
 }
 
 async function fetchAccount(sf: SalesforceApi, sfAccountId: string): Promise<AccountRow> {
@@ -141,8 +150,8 @@ async function fetchAccount(sf: SalesforceApi, sfAccountId: string): Promise<Acc
  * Links to the app Account it matches (already linked, a Contact's email, or same name and
  * phone/website); otherwise creates one, flagged as a possible duplicate when only the name matches.
  */
-export async function syncAccount(sfAccountId: string, deps: SalesforceImportDeps, actor: string) {
-  const account = await fetchAccount(deps.sf, sfAccountId);
+export async function syncAccount(sfAccountId: string, deps: SalesforceImportDeps, actor: string, prefetched?: AccountRow) {
+  const account = prefetched ?? (await fetchAccount(deps.sf, sfAccountId));
   await unhide([sfAccountId]);
   const proposal = await proposeForAccount(account);
   const row = { sourceId: account.Id, sourceName: account.Name, sourceDetail: accountDetail(account) };
@@ -188,24 +197,65 @@ export async function accountBlockers(clientId: string) {
 }
 
 /**
- * Remove: delete the Account and its Contacts from this app only. Salesforce and Lead Alchemist
- * aren't touched. The Salesforce Account is kept out of later imports until it's synced again.
+ * Deactivate: hide the Account in this app (it's never deleted, here or in Salesforce). It must be
+ * unsynced first. It keeps its Salesforce link, contacts, applications and activity, stays out of
+ * imports and bulk syncs, and can be reactivated at any time.
  */
-export async function removeAccountFromDashboard(clientId: string, actor: string) {
+export async function deactivateAccount(clientId: string, actor: string, reason?: string | null) {
   const client = await getClient(clientId);
   if (!client) throw new Error("That Account no longer exists.");
-  const b = await accountBlockers(client.id);
-  if (b.applications || b.drafts) {
-    throw new Error(
-      `"${client.name}" has ${b.applications} application${b.applications === 1 ? "" : "s"}${b.drafts ? ` and ${b.drafts} draft${b.drafts === 1 ? "" : "s"}` : ""} in this app, so it can't be removed. Unsync it instead.`,
-    );
-  }
+  if (client.deactivatedAt) return client;
+  if (client.sfAccountId && !client.sfSyncPaused) throw new Error(`Unsync "${client.name}" first, then deactivate it.`);
   const db = await getDb();
-  if (client.sfAccountId) await hide(client.sfAccountId, "account", client.name, actor);
-  // Merged-away records point at this one; remove them with it.
-  await db.delete(schema.clients).where(or(eq(schema.clients.id, client.id), eq(schema.clients.mergedInto, client.id)));
-  console.info(`[salesforce] account ${client.id} removed from the dashboard by ${actor}`);
+  await db.update(schema.clients).set({ deactivatedAt: new Date(), deactivatedBy: actor, updatedAt: new Date() }).where(eq(schema.clients.id, client.id));
+  await addClientEvent(client.id, "deactivated", actor, {
+    message: `Deactivated in this app${client.sfAccountId ? ` (was synced with Salesforce Account ${client.sfAccountId}; nothing changed in Salesforce)` : ""}${reason?.trim() ? `. Reason: ${reason.trim().slice(0, 300)}` : ""}`,
+    data: { sfAccountId: client.sfAccountId },
+  });
   return client;
+}
+
+/** Reactivate: show the Account again. It stays unsynced until someone syncs it. */
+export async function reactivateAccount(clientId: string, actor: string) {
+  const client = await getClient(clientId);
+  if (!client) throw new Error("That Account no longer exists.");
+  if (!client.deactivatedAt) return client;
+  const db = await getDb();
+  await db.update(schema.clients).set({ deactivatedAt: null, deactivatedBy: null, updatedAt: new Date() }).where(eq(schema.clients.id, client.id));
+  await addClientEvent(client.id, "reactivated", actor, {
+    message: `Reactivated${client.sfAccountId ? `; still linked to Salesforce Account ${client.sfAccountId} (unsynced until synced again)` : ""}`,
+  });
+  return client;
+}
+
+/**
+ * Point the app Account at a different Salesforce Account (e.g. the client moved, or it was linked
+ * to the wrong one). Reads Salesforce only. The old link is kept in the activity log.
+ */
+export async function relinkSalesforceAccount(clientId: string, newSfAccountId: string, sf: SalesforceApi, actor: string) {
+  const client = await getClient(clientId);
+  if (!client) throw new Error("That Account no longer exists.");
+  const target = newSfAccountId.match(/\b(001[A-Za-z0-9]{12}(?:[A-Za-z0-9]{3})?)\b/)?.[1];
+  if (!target) throw new Error("Paste the Salesforce Account's ID or its address (it starts with 001).");
+  if (target === client.sfAccountId) throw new Error("It's already linked to that Salesforce Account.");
+  const [row] = await sf.query<{ Id: string; Name: string }>(`SELECT Id, Name FROM Account WHERE Id = ${soqlString(target)} LIMIT 1`);
+  if (!row) throw new Error("That Salesforce Account wasn't found.");
+  const db = await getDb();
+  const [other] = await db
+    .select({ id: schema.clients.id, name: schema.clients.name })
+    .from(schema.clients)
+    .where(and(eq(schema.clients.sfAccountId, row.Id), isNull(schema.clients.mergedInto)))
+    .limit(1);
+  if (other && other.id !== client.id) throw new Error(`"${other.name}" in this app is already linked to that Salesforce Account. Merge the two accounts instead.`);
+  const previous = client.sfAccountId;
+  await setClientSalesforce(client.id, { sfAccountId: row.Id, sfStatus: "linked", sfLastError: null, sfSyncPaused: false });
+  await db.update(schema.clients).set({ sfSnapshot: null, sfAccountType: null }).where(eq(schema.clients.id, client.id));
+  await unhide([row.Id]);
+  await addClientEvent(client.id, "sf_relinked", actor, {
+    message: `Linked to Salesforce Account "${row.Name}" (${row.Id})${previous ? `, instead of ${previous}` : ""}. Use Refresh from Salesforce to read it.`,
+    data: { from: previous, to: row.Id },
+  });
+  return { client, account: row, previous };
 }
 
 // ── Contacts ──────────────────────────────────────────────────────────
@@ -246,7 +296,15 @@ export async function salesforceAccountDetail(sf: SalesforceApi, sfAccountId: st
       contact: mine,
     });
   }
-  const accountState: AppState = client ? (client.sfSyncPaused ? "unsynced" : "synced") : hidden.has(sfAccountId) ? "removed" : "not_in_app";
+  const accountState: AppState = client
+    ? client.deactivatedAt
+      ? "deactivated"
+      : client.sfSyncPaused
+        ? "unsynced"
+        : "synced"
+    : hidden.has(sfAccountId)
+      ? "removed"
+      : "not_in_app";
   return { account, client: client as Client | undefined, accountState, contacts };
 }
 

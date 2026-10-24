@@ -101,9 +101,11 @@ export function mockSalesforce(
       ];
     if (/FROM Account\b/.test(soql) && /\(SELECT/.test(soql)) {
       // The import scan: accounts with their contacts, ordered by Id.
-      const after = soql.match(/WHERE Id > '([^']+)'/)?.[1];
+      const after = soql.match(/Id > '([^']+)'/)?.[1];
+      const limit = Number(soql.match(/LIMIT (\d+)$/)?.[1] ?? Infinity);
       return records.Account.filter((a) => !after || a.Id > after)
         .sort((a, b) => a.Id.localeCompare(b.Id))
+        .slice(0, limit)
         .map((a) => ({ ...a, Contacts: { records: records.Contact.filter((c) => c.AccountId === a.Id) } }));
     }
     throw new Error(`mock Salesforce: unexpected query ${soql}`);
@@ -117,6 +119,7 @@ export function mockSalesforce(
     },
     async queryPage<T extends Record<string, unknown>>(soql: string) {
       fail();
+      if (/^SELECT COUNT\(\) FROM Account$/.test(soql)) return { records: [], nextRecordsUrl: null, totalSize: records.Account.length };
       return { records: run(soql) as unknown as T[], nextRecordsUrl: null };
     },
     async describe(object) {
@@ -125,7 +128,7 @@ export function mockSalesforce(
     },
     async create(object, data) {
       fail();
-      const id = `${PREFIX[object] ?? "a00"}MOCK${String(++n).padStart(9, "0")}`;
+      const id = `${PREFIX[object] ?? "a00"}MOCK${String(++n).padStart(8, "0")}`;
       records[object] ??= [];
       records[object].push({ ...data, Id: id });
       writes.push({ op: "create", object, id, data });

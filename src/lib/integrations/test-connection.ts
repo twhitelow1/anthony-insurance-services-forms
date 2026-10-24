@@ -69,6 +69,6 @@ export async function testLeadAlchemist(): Promise<Check[]> {
     run("Contacts", "View/Edit Contacts", async () => `Can search contacts (${(await searchContacts({ query: "a", limit: 1 })).length ? "found some" : "none matched a test search"}).`),
     run("Custom fields", "View/Edit Custom Fields", async () => `${(await listCustomFields("contact")).length} contact fields.`),
     run("Opportunities", "View/Edit Opportunities", async () => `${(await listPipelines()).length} pipelines.`),
-    run("Companies", "Businesses (view, edit)", async () => `${(await listBusinesses(100)).length} Companies read.`),
+    run("Companies", "Companies (businesses.readonly, businesses.write)", async () => `${(await listBusinesses(100)).length} Companies read.`),
   ]);
 }

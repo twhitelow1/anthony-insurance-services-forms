@@ -7,10 +7,12 @@ import { requireStaff } from "@/lib/auth/session";
 import { setFlash } from "@/lib/flash";
 import { links } from "@/lib/integrations/links";
 import {
+  addCompaniesToApp,
   companiesToSalesforce,
   connectSelectedContacts,
   createAccountsInSalesforce,
   createContactsInSalesforce,
+  linkCompaniesToAccounts,
   linkContactsToLeadAlchemist,
   pushCompanyTags,
   syncAccountsToLeadAlchemist,
@@ -70,7 +72,8 @@ export async function searchMappingAction(formData: FormData) {
 }
 
 export async function accountsToLeadAlchemistAction(formData: FormData) {
-  return bulk(formData, UUID, async (ids, actor) => syncAccountsToLeadAlchemist(ids, actor, { sf: await salesforceClient(), links: await links() }), "Synced to Lead Alchemist");
+  const createMissing = formData.get("createMissing") === "yes";
+  return bulk(formData, UUID, async (ids, actor) => syncAccountsToLeadAlchemist(ids, actor, { sf: await salesforceClient(), links: await links() }, { createMissing }), "Synced to Lead Alchemist");
 }
 
 export async function accountsToSalesforceAction(formData: FormData) {
@@ -82,7 +85,8 @@ export async function contactsToLeadAlchemistAction(formData: FormData) {
 }
 
 export async function contactsToCompanyAction(formData: FormData) {
-  return bulk(formData, UUID, (ids, actor) => connectSelectedContacts(ids, actor), "Added to their Company");
+  const createMissing = formData.get("createMissing") === "yes";
+  return bulk(formData, UUID, (ids, actor) => connectSelectedContacts(ids, actor, { createMissing }), "Synced to Lead Alchemist");
 }
 
 export async function contactsToSalesforceAction(formData: FormData) {
@@ -95,4 +99,22 @@ export async function companiesToSalesforceAction(formData: FormData) {
 
 export async function companyTagsAction(formData: FormData) {
   return bulk(formData, UUID, (ids, actor) => pushCompanyTags(ids, actor), "Company tags added in Lead Alchemist");
+}
+
+/** Link each ticked Lead Alchemist Company to the Account chosen in its row (this app only). */
+export async function linkCompaniesAction(formData: FormData) {
+  return bulk(
+    formData,
+    LA_ID,
+    (ids, actor) =>
+      linkCompaniesToAccounts(
+        ids.map((businessId) => ({ businessId, accountId: String(formData.get(`match_${businessId}`) ?? "") })).filter((p) => UUID.test(p.accountId)),
+        actor,
+      ),
+    "Linked to accounts in this app",
+  );
+}
+
+export async function addCompaniesToAppAction(formData: FormData) {
+  return bulk(formData, LA_ID, (ids, actor) => addCompaniesToApp(ids, actor), "Added to this app");
 }

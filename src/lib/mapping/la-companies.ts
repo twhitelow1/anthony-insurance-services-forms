@@ -3,7 +3,7 @@ import { and, asc, eq, gt, isNull } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
 import type { Client, MappingRow } from "@/lib/db/schema";
 import { addClientEvent, clientsForCompany, contactEmailsOf, getClient, listAccountContacts, setClientSalesforce, setContactGhl } from "@/lib/clients/repo";
-import { nameKey, websiteDomain } from "@/lib/clients/text";
+import { laCompanyName, nameKey, websiteDomain } from "@/lib/clients/text";
 import {
   addContactsToBusiness,
   createBusiness,
@@ -22,7 +22,7 @@ import { addRows, applyBatch, finalChoice, saveRun, type MappingRun, type NewMap
  * - link (strong): one Company with the same name (ignoring punctuation and LLC/Inc), or the same website;
  * - link (name_only): several Companies share the name: staff pick one;
  * - create: no Company like it yet;
- * - skip: individuals (no business), unless staff choose otherwise.
+ * Individuals get a Company too, named like their Salesforce Account (laCompanyName).
  * Applying creates or links the Company and puts the Account's Contacts in it. A contact
  * can only be in one Company, so contacts already in a different Company are left there
  * unless "move" was chosen. Contacts not yet in Lead Alchemist are only created when
@@ -77,16 +77,13 @@ export async function proposeForClient(account: Client, idx: ReturnType<typeof i
     const b = idx.byId.get(account.ghlCompanyId)!;
     return { ...base, proposal: "link", confidence: "exact", targetId: b.id, targetName: b.name, reason: "Already linked to this Company" };
   }
-  const sameName = idx.byKey.get(account.nameKey || nameKey(account.name)) ?? [];
+  const sameName = idx.byKey.get(nameKey(laCompanyName(account))) ?? [];
   const site = websiteDomain(account.website);
   const sameSite = site ? (idx.bySite.get(site) ?? []) : [];
   const candidates = [...new Map([...sameName, ...sameSite].map((b) => [b.id, b])).values()]
     .slice(0, 8)
     .map((b) => toCandidate(b, sameSite.includes(b) && sameName.includes(b) ? "same name and website" : sameSite.includes(b) ? "same website" : "same name"));
 
-  if (account.isIndividual) {
-    return { ...base, proposal: "skip", confidence: "none", reason: "An individual (no business name): no Company needed", candidates };
-  }
   if (sameName.length === 1) {
     return { ...base, proposal: "link", confidence: "strong", targetId: sameName[0].id, targetName: sameName[0].name, reason: "One Company with the same name", candidates };
   }
@@ -149,7 +146,7 @@ async function applyRow(row: MappingRow, run: MappingRun, deps: LaCompaniesDeps)
   } else {
     const people = await listAccountContacts(account.id);
     const created = await createBusiness({
-      name: account.name,
+      name: laCompanyName(account),
       phone: account.phones[0] ?? null,
       email: account.primaryEmail ?? people.find((p) => p.primaryEmail)?.primaryEmail ?? null,
       website: account.website,
