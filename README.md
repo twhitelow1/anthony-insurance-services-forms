@@ -137,7 +137,7 @@ The full step-by-step guide is the shared setup doc. In short:
    - Optional: copy the pipeline ID and stage IDs.
 4. **Environment variables:** see `.env.example`, then redeploy.
 
-Microsoft 365 sign-in and Graph mail are still in the code but switched off. Setting the `AZURE_*` variables turns them back on.
+**Microsoft 365 single sign-on for staff:** set `AZURE_CLIENT_ID` and `AZURE_CLIENT_SECRET` (a multi-tenant Entra ID app registration, redirect URI `<APP_URL>/api/auth/microsoft/callback`; steps in `docs/microsoft-sso-setup.md`). Anyone signed in to *any* organisation's Microsoft 365 whose email (or domain) is on the Admins list goes straight into the admin; anyone else gets the email sign-in link. Personal Microsoft accounts are refused, and only Microsoft's verified `email` claim is trusted. Graph mail stays off unless `AZURE_TENANT_ID` and `MAIL_SENDER` are also set.
 
 ## Development
 

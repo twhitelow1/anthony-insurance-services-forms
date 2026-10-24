@@ -6,7 +6,7 @@ A proposed build order, grouped so each phase ships something usable. Feature nu
 ## Now (from the Oct 16 call)
 | Item | Status |
 |---|---|
-| Aerial Instructor live on dancestudioinsurance.com, replacing the Gravity Form | Fixes done (aggregate dropdown, "$" spacing, alcohol follow-up, additional-insured Yes/No, DSI logo, no portal link). Waiting on Caitlyn's test. |
+| Aerial Instructor live on dancestudioinsurance.com, replacing the Gravity Form | **Live** (by 2026-10-20). Caitlyn approved the test. |
 | Aerial Instructor waiver upload, with the "required before coverage starts" popup | Built |
 | Lead Alchemist: a fuller note per application, and links on every opportunity card | Built |
 | Fitness Class / Health Club A on the DSI site | Next |
