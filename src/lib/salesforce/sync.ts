@@ -231,8 +231,14 @@ export async function syncApplicationToSalesforce(applicationId: string, deps: S
     // The person who filled it out: on this Account, else their one Contact elsewhere (they're
     // tied to this application by the Opportunity's contact role), else a new Contact here.
     const existing = accountId!.startsWith("dry-run:") ? null : await matchContact(deps.sf, accountId!, app.applicantEmail);
-    if (existing) contactId = existing;
-    else {
+    if (existing) {
+      contactId = existing.id;
+      // A Contact with no Account goes under this one (only the AccountId changes).
+      if (!existing.accountId) {
+        await api.update("Contact", existing.id, { AccountId: accountId });
+        warnings.push("Their existing Salesforce Contact had no Account; it's now under this Account.");
+      }
+    } else {
       const first = str(app.values.first_name);
       const last = str(app.values.last_name) || app.applicantName || app.applicantEmail;
       const { data, skipped: s } = prepareFields(

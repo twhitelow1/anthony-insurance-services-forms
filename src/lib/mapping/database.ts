@@ -2,7 +2,7 @@ import "server-only";
 import { and, asc, count, eq, ilike, inArray, isNotNull, isNull, or, sql, type SQL } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
 import type { Client, Contact } from "@/lib/db/schema";
-import { accountsOfContact, addClientEvent, contactEmailsOf, createAccount, getClient, getContact, setClientSalesforce, setContactSalesforce } from "@/lib/clients/repo";
+import { accountsOfContact, addClientEvent, listAccountContacts, contactEmailsOf, createAccount, getClient, getContact, setClientSalesforce, setContactSalesforce } from "@/lib/clients/repo";
 import { nameKey, searchTerms } from "@/lib/clients/text";
 import { addContactsToBusiness, addTags, createBusiness, getContact as getLaContact, ghlConfig, listBusinesses, type GhlBusiness } from "@/lib/ghl/client";
 import { exactMatch, laCandidates, linkLaContact } from "@/lib/ghl/match";
@@ -294,14 +294,22 @@ export async function linkContactsToLeadAlchemist(contactIds: string[], actor: s
 
 /**
  * Accounts → Salesforce: link the Salesforce Account with exactly the same name, or create one
- * (name, phone, website, billing address). Several with the same name are left for staff.
+ * (name, phone, website, billing address; never Type), then put the account's people under it.
+ * Several Accounts with the same name are left for staff.
  */
 export async function createAccountsInSalesforce(clientIds: string[], actor: string, deps: { sf: SalesforceApi; links: Links }): Promise<BulkResult> {
   const result: BulkResult = { done: 0, notes: [] };
-  const describe = await deps.sf.describe("Account");
+  const [describe, contactDescribe] = await Promise.all([deps.sf.describe("Account"), deps.sf.describe("Contact")]);
+  const placed: PlaceResult[] = [];
   for (const id of clientIds.slice(0, 50)) {
     const account = await getClient(id);
-    if (!account || account.sfAccountId) continue;
+    if (!account) continue;
+    if (account.sfAccountId) {
+      // Already linked: still make sure its people are under it.
+      for (const p of await listAccountContacts(account.id)) placed.push(await placeContactUnderAccount(p, account, deps, contactDescribe, actor));
+      result.done++;
+      continue;
+    }
     const same = await deps.sf.query<{ Id: string }>(`SELECT Id FROM Account WHERE Name = ${soqlString(account.name)} LIMIT 3`);
     if (same.length > 1) {
       result.notes.push(`${account.name}: ${same.length} Salesforce Accounts have this name; sync the right one on Admin → Salesforce.`);
@@ -323,46 +331,101 @@ export async function createAccountsInSalesforce(clientIds: string[], actor: str
     await setClientSalesforce(account.id, { sfAccountId: sfId, sfStatus: "linked", sfLastError: null, sfSyncPaused: false });
     await addClientEvent(account.id, "sf_linked", actor, { message: `${same[0] ? "Linked to" : "Created"} Salesforce Account ${sfId}` });
     await writeAccountLinks(deps.sf, deps.links, { ...account, sfAccountId: sfId }).catch(() => {});
+    // The people on the account (everyone who filled out its applications) go under the Account too.
+    const linkedAccount = { ...account, sfAccountId: sfId };
+    for (const p of await listAccountContacts(account.id)) placed.push(await placeContactUnderAccount(p, linkedAccount, deps, contactDescribe, actor));
     result.done++;
+  }
+  if (tally(placed)) result.notes.push(tally(placed));
+  return result;
+}
+
+type PlaceResult = "created" | "linked" | "assigned" | "elsewhere" | "already";
+
+/**
+ * Put one person under a Salesforce Account:
+ * - their Salesforce Contact (saved, or found by email) with no Account is assigned to it;
+ * - one already under this Account is just linked;
+ * - one under a different Account is linked but left where it is (never moved);
+ * - otherwise a new Contact is created under the Account.
+ */
+async function placeContactUnderAccount(p: Contact, account: Client, deps: { sf: SalesforceApi; links: Links }, describe: Awaited<ReturnType<SalesforceApi["describe"]>>, actor: string): Promise<PlaceResult> {
+  const sfAccountId = account.sfAccountId!;
+  const email = p.primaryEmail ?? (await contactEmailsOf(p.id))[0] ?? null;
+  type Row = { Id: string; AccountId: string | null };
+  let found: Row | undefined;
+  if (p.sfContactId) {
+    [found] = await deps.sf.query<Row>(`SELECT Id, AccountId FROM Contact WHERE Id = ${soqlString(p.sfContactId)} LIMIT 1`);
+  }
+  if (!found && email) {
+    const byEmail = await deps.sf.query<Row>(`SELECT Id, AccountId FROM Contact WHERE Email = ${soqlString(email)} ORDER BY CreatedDate ASC LIMIT 10`);
+    found = byEmail.find((c) => c.AccountId === sfAccountId) ?? byEmail.find((c) => !c.AccountId) ?? byEmail[0];
+  }
+  let result: PlaceResult;
+  let sfId: string;
+  if (found) {
+    sfId = found.Id;
+    if (found.AccountId === sfAccountId) result = p.sfContactId === found.Id ? "already" : "linked";
+    else if (!found.AccountId) {
+      await deps.sf.update("Contact", found.Id, { AccountId: sfAccountId });
+      result = "assigned";
+    } else result = "elsewhere";
+  } else {
+    const { data } = prepareFields(describe, {
+      AccountId: sfAccountId,
+      FirstName: p.firstName,
+      LastName: p.lastName || p.name || email || "Unknown",
+      Email: email,
+      Phone: p.phones[0],
+      Title: p.title,
+      [LINK_FIELDS.Contact.applications]: deps.links.appClient(account.id),
+      [LINK_FIELDS.Contact.laContact]: deps.links.ghlContact(p.ghlContactId),
+    });
+    sfId = (await deps.sf.create("Contact", data)).id;
+    result = "created";
+  }
+  if (p.sfContactId !== sfId) await setContactSalesforce(p.id, sfId);
+  if (result !== "already") {
+    const what = {
+      created: "created under the Salesforce Account",
+      linked: "linked to their Contact on the Salesforce Account",
+      assigned: "their Salesforce Contact (which had no Account) was put under this Account",
+      elsewhere: "linked to their Salesforce Contact, which stays under a different Account",
+    }[result];
+    await addClientEvent(account.id, "sf_linked", actor, { message: `${p.name}: ${what} (${sfId})` });
   }
   return result;
 }
 
-/** Contacts → Salesforce: link the Contact with the same email on the account's Salesforce Account, or create one there. */
+const tally = (results: PlaceResult[]) => {
+  const n = (r: PlaceResult) => results.filter((x) => x === r).length;
+  const parts = [
+    n("created") && `${n("created")} contact${n("created") === 1 ? "" : "s"} created`,
+    n("assigned") && `${n("assigned")} put under the Account`,
+    n("linked") && `${n("linked")} already there and linked`,
+    n("elsewhere") && `${n("elsewhere")} left under a different Salesforce Account`,
+  ].filter(Boolean);
+  return parts.length ? `${parts.join(", ")}.` : "";
+};
+
+/** Contacts → Salesforce: put each under their account's Salesforce Account (see placeContactUnderAccount). */
 export async function createContactsInSalesforce(contactIds: string[], actor: string, deps: { sf: SalesforceApi; links: Links }): Promise<BulkResult> {
   const result: BulkResult = { done: 0, notes: [] };
   const describe = await deps.sf.describe("Contact");
   let noAccount = 0;
+  const placed: PlaceResult[] = [];
   for (const id of contactIds.slice(0, 100)) {
     const p = await getContact(id);
-    if (!p || p.sfContactId) continue;
+    if (!p) continue;
     const account = await getClient(p.clientId);
     if (!account?.sfAccountId) {
       noAccount++;
       continue;
     }
-    const email = p.primaryEmail ?? (await contactEmailsOf(p.id))[0] ?? null;
-    const [existing] = email
-      ? await deps.sf.query<{ Id: string }>(`SELECT Id FROM Contact WHERE AccountId = ${soqlString(account.sfAccountId)} AND Email = ${soqlString(email)} LIMIT 1`)
-      : [];
-    let sfId = existing?.Id;
-    if (!sfId) {
-      const { data } = prepareFields(describe, {
-        AccountId: account.sfAccountId,
-        FirstName: p.firstName,
-        LastName: p.lastName || p.name || email || "Unknown",
-        Email: email,
-        Phone: p.phones[0],
-        Title: p.title,
-        [LINK_FIELDS.Contact.applications]: deps.links.appClient(account.id),
-        [LINK_FIELDS.Contact.laContact]: deps.links.ghlContact(p.ghlContactId),
-      });
-      sfId = (await deps.sf.create("Contact", data)).id;
-    }
-    await setContactSalesforce(p.id, sfId);
-    await addClientEvent(account.id, "sf_linked", actor, { message: `${p.name}: ${existing ? "linked to" : "created"} Salesforce Contact ${sfId}` });
+    placed.push(await placeContactUnderAccount(p, account, deps, describe, actor));
     result.done++;
   }
+  if (tally(placed)) result.notes.push(tally(placed));
   if (noAccount) result.notes.push(`${noAccount} contact${noAccount === 1 ? "'s account isn't" : "s' accounts aren't"} in Salesforce yet (create the account first)`);
   return result;
 }

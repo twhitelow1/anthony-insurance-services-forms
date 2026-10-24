@@ -84,12 +84,14 @@ export async function matchSalesforce(api: SalesforceApi, input: MatchInput): Pr
   return { kind: "new" };
 }
 
-/** The applicant's Salesforce Contact: on this Account first, else the one Contact anywhere with this email. */
-export async function matchContact(api: SalesforceApi, accountId: string, email: string): Promise<string | null> {
+/**
+ * The applicant's Salesforce Contact: on this Account first, else one with no Account (it's then
+ * put under this Account), else the one Contact elsewhere with this email (left where it is).
+ */
+export async function matchContact(api: SalesforceApi, accountId: string, email: string): Promise<{ id: string; accountId: string | null } | null> {
   const e = email.trim().toLowerCase();
   if (!e) return null;
   const contacts = await contactsByEmail(api, e);
-  const here = contacts.find((c) => c.AccountId === accountId);
-  if (here) return here.Id;
-  return contacts.length === 1 ? contacts[0].Id : null;
+  const pick = contacts.find((c) => c.AccountId === accountId) ?? contacts.find((c) => !c.AccountId) ?? (contacts.length === 1 ? contacts[0] : undefined);
+  return pick ? { id: pick.Id, accountId: pick.AccountId } : null;
 }
