@@ -39,7 +39,6 @@ export default async function SalesforceAccounts({ searchParams }: PageProps<"/a
       <div className="mb-2 flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-2xl font-semibold">Salesforce Accounts</h1>
         <div className="flex flex-wrap gap-2">
-          <Link className="btn-secondary" href="/admin/settings/sync">Automatic sync</Link>
           <Link className="btn-secondary" href="/admin/settings/integrations">Integrations</Link>
         </div>
       </div>

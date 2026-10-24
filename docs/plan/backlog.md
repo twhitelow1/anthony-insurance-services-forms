@@ -16,7 +16,7 @@ Status key: ✅ built · 🟡 partly built · ⬜ not started.
 | 8 | Click-to-type signature | ✅ draw or type, switchable |
 | 9 | Conditional carrier routing based on answers | ⬜ |
 | 10 | Embeddable, branded forms for the websites | ✅ |
-| 11 | Salesforce sync, including PDFs on account records | 🟡 built (accounts, contacts, mapping screens), waiting on Salesforce setup |
+| 11 | Salesforce sync, including PDFs on account records | 🟡 built (accounts, contacts, mapping, Salesforce screen, keys in the admin); Salesforce set up 2026-10-24, waiting on the keys and a test |
 | 12 | Ask AI for querying application data | ✅ |
 | 13 | Carrier-submission portal with multiple carriers | 🟡 Outlook draft only |
 | 14 | Automated follow-up and reactivation for unconverted leads | 🟡 app-started trigger ready; workflows still to build in Lead Alchemist |
@@ -127,7 +127,7 @@ Example: an Aerial Yoga Studio with height over 10 ft can only go to two specifi
 - The iframe resizes to fit its content automatically, with no inner scrollbars.
 
 ## 🟡 11. Salesforce sync
-**Built (2026-10-23, branch feature/salesforce-sync), off until Anthony's Salesforce admin does the setup** in `docs/salesforce-setup.md`:
+**Built (2026-10-23, branch feature/salesforce-sync), off until the keys are entered and tested.** Salesforce itself was set up on 2026-10-24 (`docs/salesforce-setup.md`; SharePoint file 7):
 - **Every submitted application** (never test ones) syncs to Salesforce.
   - The business's Account is matched by exact name and phone (an individual: their Contact's email first).
   - An uncertain match is marked **Needs review** and nothing is created.
@@ -147,6 +147,10 @@ Example: an Aerial Yoga Studio with height over 10 ft can only go to two specifi
   - **Salesforce Accounts → app**: imports every Salesforce Account and its Contacts (replaces the one-time backfill);
   - **App → Lead Alchemist Companies**: links or creates Companies and puts the contacts in them;
   - **Past applications → Salesforce**: picks each account's Salesforce Account and queues its applications.
+- **Settings → Integrations** (2026-10-24): enter and test the Salesforce and Lead Alchemist keys in the admin. Encrypted, secrets write-only, and they take the place of the Vercel variables.
+- **Admin → Salesforce** (2026-10-24): every Salesforce Account with Sync, Unsync, Remove from this app (local only, blocked while it has applications) and View in Salesforce; the same for each Contact; and Lead Alchemist matching by email or phone with Link, Unlink here and Create in Lead Alchemist.
+- **No deletes** (2026-10-24): the app can't delete anything in Salesforce or Lead Alchemist (a guard refuses it on every request).
+- ⬜ **Automatic sync**: Synced accounts pull Salesforce changes (Salesforce wins) and pass them to Lead Alchemist, daily and with "Sync now", with a run log.
 - **Lead Alchemist Companies**: built (2026-10-24). Linked accounts add new applicants to their Company; a setting creates Companies for new businesses. The token needs the Businesses scopes (`docs/lead-alchemist-companies-plan.md`).
 
 **Decided**
@@ -264,4 +268,4 @@ Part of #13: carrier replies and quotes are attached to the application automati
 
 ### G. 🟡 Three-way bridge: app, Lead Alchemist and Salesforce
 The long-term shape of #11 and D: one record of each business, person and application, kept in step across all three systems.
-**Built (2026-10-24):** Accounts and Contacts in the app mirror Salesforce; Salesforce Accounts can be pulled in and app accounts pushed to Lead Alchemist Companies through the mapping screens. **Still to do:** keeping later Salesforce edits in step automatically (needs the conflict rule, open question 8).
+**Built (2026-10-24):** Accounts and Contacts in the app mirror Salesforce; Salesforce Accounts can be pulled in and app accounts pushed to Lead Alchemist Companies through the mapping screens; Admin → Salesforce picks what syncs and matches people to Lead Alchemist contacts. **In progress:** the automatic sync of later Salesforce edits (defaults in the decisions log).

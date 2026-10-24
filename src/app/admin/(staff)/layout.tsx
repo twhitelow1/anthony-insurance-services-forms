@@ -21,6 +21,7 @@ export default async function StaffLayout({ children }: LayoutProps<"/admin">) {
           <Link href="/admin" className="hover:underline">Applications</Link>
           <Link href="/admin/unfinished" className="hover:underline">Unfinished</Link>
           <Link href="/admin/clients" className="hover:underline">Accounts</Link>
+          <Link href="/admin/salesforce" className="hover:underline">Salesforce</Link>
           <Link href="/admin/assistant" className="hover:underline">Ask AI</Link>
           <Link href="/admin/lead-alchemist" className="hover:underline">Lead Alchemist setup</Link>
           <Link href="/admin/forms" className="hover:underline">Forms</Link>
