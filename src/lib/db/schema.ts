@@ -639,7 +639,7 @@ export const loginTokens = pgTable("login_tokens", {
  * a phone or email on an application that differs from Salesforce or Lead Alchemist. Never
  * deleted; dismissing is a status. Every change is in notification_log with who and when.
  */
-export type NotificationKind = "contact_changed" | "sf_new_contact" | "unmapped" | "renewal_due" | "other";
+export type NotificationKind = "contact_changed" | "sf_new_contact" | "unmapped" | "renewal_due" | "possible_duplicate" | "other";
 export type NotificationStatus = "open" | "in_progress" | "done" | "dismissed";
 export const notifications = pgTable(
   "notifications",

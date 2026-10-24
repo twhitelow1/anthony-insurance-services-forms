@@ -20,6 +20,7 @@ export const KIND_LABELS: Record<NotificationKind, string> = {
   sf_new_contact: "New Salesforce contact",
   unmapped: "Not mapped",
   renewal_due: "Renewal due",
+  possible_duplicate: "Possible existing account",
   other: "Other",
 };
 

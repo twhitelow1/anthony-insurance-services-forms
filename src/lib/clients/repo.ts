@@ -37,7 +37,7 @@ export interface ClientDetails {
 export const isIndividualForm = (formSlug: string) => /instructor/.test(formSlug);
 
 /** How an application's Account was found. "review": a new Account that shares only its name with another. */
-export type AccountMatch = "contact" | "strong" | "new" | "review";
+export type AccountMatch = "contact" | "strong" | "salesforce" | "new" | "review";
 
 const clean = (s: string | null | undefined) => (s ?? "").trim() || null;
 const personName = (d: Pick<ClientDetails, "contactName" | "firstName" | "lastName">) =>
@@ -349,6 +349,71 @@ export async function isStrongMatch(account: Client, details: Pick<ClientDetails
 }
 
 /**
+ * The Salesforce Account a person belongs to, from the Salesforce data read into the contacts
+ * directory: their Contact's Account when exactly one Salesforce Account has a Contact with this email.
+ */
+async function salesforceAccountForEmail(email: string): Promise<{ sfAccountId: string; name: string | null } | null> {
+  const db = await getDb();
+  const d = schema.directoryContacts;
+  const rows = await db
+    .selectDistinct({ sfAccountId: d.companyId, name: d.companyName })
+    .from(d)
+    .where(and(eq(d.source, "salesforce"), eq(d.email, email), isNotNull(d.companyId)))
+    .limit(3);
+  return rows.length === 1 && rows[0].sfAccountId ? { sfAccountId: rows[0].sfAccountId, name: rows[0].name } : null;
+}
+
+/** The app's Account for a Salesforce Account, created (linked, named as in Salesforce) if it isn't here yet. */
+async function accountForSalesforce(sf: { sfAccountId: string; name: string | null }, fallbackName: string, individual: boolean, details: ClientDetails, email: string) {
+  const db = await getDb();
+  const [linked] = await db
+    .select()
+    .from(clients)
+    .where(and(eq(clients.sfAccountId, sf.sfAccountId), isNull(clients.mergedInto)))
+    .limit(1);
+  if (linked) return linked;
+  return createAccount({ name: sf.name ?? fallbackName, isIndividual: individual, phone: details.phone, address: details.address, website: details.website, primaryEmail: email, sfAccountId: sf.sfAccountId });
+}
+
+/**
+ * Accounts that look like this application's business without being a sure match: a similar
+ * name, or the same phone, website or business email domain under another name. For staff to check.
+ */
+async function closeAccounts(business: string, details: ClientDetails, exclude: string[]): Promise<{ account: Client; why: string }[]> {
+  const { nameSimilarity } = await import("@/lib/mapping/company-match");
+  const db = await getDb();
+  const key = nameKey(business);
+  const words = key.split(" ").filter((w) => w.length > 3);
+  const digits = phoneDigits(details.phone).slice(-10);
+  const site = websiteDomain(details.website);
+  const domain = businessDomain(details.email);
+  const conds: SQL[] = [
+    ...words.slice(0, 3).map((w) => ilike(clients.nameKey, `%${w}%`)),
+    ...(digits.length === 10 ? [sql`exists (select 1 from jsonb_array_elements_text(${clients.phones}) p where right(regexp_replace(p, '[^0-9]', '', 'g'), 10) = ${digits})`] : []),
+    ...(site ? [ilike(clients.website, `%${site}%`)] : []),
+    ...(domain ? [ilike(clients.website, `%${domain}%`), ilike(clients.primaryEmail, `%@${domain}`)] : []),
+  ];
+  if (!conds.length) return [];
+  const rows = await db
+    .select()
+    .from(clients)
+    .where(and(or(...conds), isNull(clients.mergedInto), isNull(clients.deactivatedAt)))
+    .limit(100);
+  const out: { account: Client; why: string }[] = [];
+  for (const a of rows) {
+    if (exclude.includes(a.id)) continue;
+    const why: string[] = [];
+    if (a.nameKey === key) why.push("same name");
+    else if (nameSimilarity(a.nameKey, key) >= 0.5 || (key.length > 5 && a.nameKey.length > 5 && (a.nameKey.includes(key) || key.includes(a.nameKey)))) why.push("similar name");
+    if (digits.length === 10 && a.phones.some((p) => phoneDigits(p).slice(-10) === digits)) why.push("same phone");
+    if (site && websiteDomain(a.website) === site) why.push("same website");
+    if (domain && (websiteDomain(a.website) === domain || businessDomain(a.primaryEmail) === domain)) why.push("same email domain");
+    if (why.length) out.push({ account: a, why: why.join(", ") });
+  }
+  return out.slice(0, 8);
+}
+
+/**
  * The Account and Contact for an application (or an unfinished one):
  * 1. The Contact with this email, if their home Account is this business (or, for an individual, them).
  * 2. Otherwise a business Account with the same name AND the same phone, business email domain or website.
@@ -367,10 +432,16 @@ export async function resolveAccountAndContact(details: ClientDetails): Promise<
 
   let account: Client | undefined;
   let match: AccountMatch = "new";
+  let checkLater: string | null = null;
+  const inSalesforce = home ? null : await salesforceAccountForEmail(email);
   if (!business || details.individual) {
     if (home?.isIndividual) {
       account = home;
       match = "contact";
+    } else if (inSalesforce) {
+      // Their Salesforce Contact's Account (a renewal, or new coverage for an existing client).
+      account = await accountForSalesforce(inSalesforce, business ?? person, true, details, email);
+      match = "salesforce";
     } else account = await createAccount({ name: business ?? person, isIndividual: true, phone: details.phone, address: details.address, primaryEmail: email });
   } else {
     const key = nameKey(business);
@@ -381,11 +452,17 @@ export async function resolveAccountAndContact(details: ClientDetails): Promise<
       const sameName = await accountsByNameKey(key);
       const strong: Client[] = [];
       for (const a of sameName) if (await isStrongMatch(a, details)) strong.push(a);
+      const { nameSimilarity } = await import("@/lib/mapping/company-match");
+      const sfName = inSalesforce?.name ? nameKey(inSalesforce.name) : null;
       if (strong.length === 1) {
         account = strong[0];
         match = "strong";
+      } else if (inSalesforce && sfName && (sfName === key || nameSimilarity(sfName, key) >= 0.5)) {
+        account = await accountForSalesforce(inSalesforce, business, false, details, email);
+        match = "salesforce";
       } else {
         match = sameName.length ? "review" : "new";
+        checkLater = business;
         account = await createAccount({
           name: business,
           phone: details.phone,
@@ -397,7 +474,31 @@ export async function resolveAccountAndContact(details: ClientDetails): Promise<
       }
     }
   }
-  if (match === "contact" || match === "strong") await touchAccount(account, details);
+  if (match === "contact" || match === "strong" || match === "salesforce") await touchAccount(account, details);
+  if (checkLater) {
+    // Not a sure match: a new Account, and a notification when something close already exists.
+    const close = await closeAccounts(checkLater, details, [account.id]);
+    if (inSalesforce) {
+      const [sfLinked] = await (await getDb()).select().from(clients).where(and(eq(clients.sfAccountId, inSalesforce.sfAccountId), isNull(clients.mergedInto))).limit(1);
+      if (sfLinked && !close.some((c) => c.account.id === sfLinked.id)) close.unshift({ account: sfLinked, why: "this person's Salesforce Account, under another name" });
+    }
+    if (close.length || inSalesforce) {
+      const { raiseNotification } = await import("@/lib/notifications/repo");
+      await raiseNotification({
+        kind: "possible_duplicate",
+        title: `Check: is "${checkLater}" an existing account?`,
+        detail: [
+          `A new account was made for this application because no account matched for sure. Similar accounts:`,
+          ...close.map((c) => `• ${c.account.name} (${c.why})`),
+          ...(inSalesforce && !close.length ? [`• Salesforce Account "${inSalesforce.name ?? inSalesforce.sfAccountId}" has a Contact with this email, under another name`] : []),
+          "Open the account to merge it into the right one, or mark it as separate.",
+        ].join("\n"),
+        clientId: account.id,
+        data: { candidates: close.map((c) => ({ id: c.account.id, name: c.account.name, why: c.why })), sfAccountId: inSalesforce?.sfAccountId ?? null },
+        dedupeKey: `possible_duplicate:${account.id}`,
+      });
+    }
+  }
 
   const contact = await ensureContact({
     clientId: account.id,
