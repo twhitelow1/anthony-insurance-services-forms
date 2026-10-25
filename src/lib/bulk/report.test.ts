@@ -60,3 +60,35 @@ describe("sync reports", () => {
     expect(card).toMatchObject({ kind: "sync_issues" });
   });
 });
+
+describe("rows not reached in a batch", () => {
+  it("are queued again instead of being dropped, and a batch always moves forward", async () => {
+    const { splitReached } = await import("./selection-run");
+    expect(splitReached(["a", "b", "c"], ["c"])).toEqual({ done: ["a", "b"], left: ["c"] });
+    // A person just added to AIS Connect comes back under their new key.
+    expect(splitReached(["d:1", "a:2"], ["a:9"])).toEqual({ done: ["d:1", "a:2"], left: ["a:9"] });
+    expect(splitReached(["a", "b"], ["a", "b"])).toEqual({ done: ["a"], left: ["b"] });
+    expect(splitReached(["a"], undefined)).toEqual({ done: ["a"], left: [] });
+  });
+});
+
+describe("a run whose work runs out of time", () => {
+  it("finishes every row, without the 'click again' note, and reports once", async () => {
+    const { startSelectionRun, stepSelectionRun } = await import("./selection-run");
+    const ids = Array.from({ length: 23 }, (_, i) => `row${i}`);
+    await startSelectionRun("mapping", { action: "test", label: "Synced to Lead Alchemist", ids, scopeText: "23 ticked" }, "staff:amy@x.com");
+    const seen: string[] = [];
+    // Each batch only gets to its first 3 rows, like a sync hitting its time limit.
+    const work = () => async (chunk: string[]) => {
+      seen.push(...chunk.slice(0, 3));
+      return { done: Math.min(3, chunk.length), notes: ["7 weren't reached in this run (time limit per click): click again to do the rest."], notReached: chunk.slice(3) };
+    };
+    let run = await stepSelectionRun("mapping", work, 0);
+    for (let i = 0; i < 30 && run?.phase === "running"; i++) run = await stepSelectionRun("mapping", work, 0);
+    expect(run?.phase).toBe("done");
+    expect(seen.sort()).toEqual([...ids].sort());
+    expect(run?.done).toBe(23);
+    expect(run?.notes.some((n) => /reached/.test(n))).toBe(false);
+    expect(run?.report?.clean).toBe(true);
+  });
+});

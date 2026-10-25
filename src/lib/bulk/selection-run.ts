@@ -44,7 +44,24 @@ export interface BatchResult {
   done: number;
   notes: string[];
   contacts?: ContactTally;
+  /** Rows the work didn't get to (its own time limit): the run puts them back in the queue. */
+  notReached?: string[];
 }
+
+/** The "click again to do the rest" notes, which don't apply when the rest is queued for you. */
+export const NOT_REACHED_NOTE = /(weren.?t|wasn.?t) reached in this run/;
+
+/** The rows of `chunk` that were done, and the ones to queue again (in their original order). */
+export function splitReached(chunk: string[], notReached: string[] | undefined) {
+  const left = new Set(notReached ?? []);
+  const done = chunk.filter((id) => !left.has(id));
+  // Always move forward: a batch that reached nothing counts its first row as done.
+  if (!done.length && chunk.length) return { done: chunk.slice(0, 1), left: chunk.slice(1).filter((id) => left.has(id)) };
+  return { done, left: [...(notReached ?? [])].filter((id) => !done.includes(id)) };
+}
+
+/** More ticked rows than this run as a run (in batches, continuing on its own) instead of in one click. */
+export const INLINE_LIMIT = 5;
 
 /** The most rows one run takes. */
 export const MAX_SELECTION = 20_000;
@@ -114,8 +131,15 @@ export async function stepSelectionRun(
     try {
       const r = await fn(chunk, run.startedBy);
       run.done += r.done;
-      run.notes = [...run.notes, ...r.notes].slice(0, 6000);
+      const { done, left } = splitReached(chunk, r.notReached);
+      run.notes = [...run.notes, ...(r.notReached ? r.notes.filter((n) => !NOT_REACHED_NOTE.test(n)) : r.notes)].slice(0, 6000);
       run.contacts = addTally(run.contacts, r.contacts);
+      if (left.length) {
+        // What wasn't reached goes straight back in the queue, right after what was done.
+        run.ids = [...run.ids.slice(0, run.position), ...done, ...left, ...run.ids.slice(run.position + chunk.length)];
+        run.position += done.length;
+        continue;
+      }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       // Stop rather than skip ahead: a connection or permission problem would fail every batch.

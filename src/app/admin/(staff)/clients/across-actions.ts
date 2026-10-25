@@ -19,7 +19,7 @@ import {
   type AccountSyncOptions,
 } from "@/lib/accounts/directory";
 import { saveSyncReport } from "@/lib/bulk/report";
-import { startSelectionRun, stepSelectionRun, stopSelectionRun, type BatchResult } from "@/lib/bulk/selection-run";
+import { INLINE_LIMIT, startSelectionRun, stepSelectionRun, stopSelectionRun, type BatchResult } from "@/lib/bulk/selection-run";
 import { CLIENT_SEARCH_COOKIE } from "@/lib/clients/search-cookie";
 import { setFlash } from "@/lib/flash";
 import { links } from "@/lib/integrations/links";
@@ -120,6 +120,16 @@ async function bulk(formData: FormData, key: keyof typeof WORK): Promise<never> 
   }
   const keys = formData.getAll("ids").map(String).filter((v) => KEY_RE.test(v)).slice(0, 200);
   if (!keys.length) return finish(backTo(formData), "error", "Tick at least one account first.");
+  // More than a few: run in batches that continue on their own, with one report at the end.
+  const asRun = async (ids: string[], scopeText: string, prefix = "") => {
+    try {
+      await startSelectionRun("accounts", { action: key, label: verb, options, ids, scopeText }, actor);
+    } catch (err) {
+      return finish(backTo(formData), "error", err instanceof Error ? err.message : String(err));
+    }
+    return finish(backTo(formData), "ok", `${prefix}Running on ${ids.length.toLocaleString("en-US")} accounts in batches. Keep this page open; it continues on its own and ends with a sync report.`);
+  };
+  if (keys.length > INLINE_LIMIT) return asRun(keys, `${keys.length} ticked on Accounts → Across all three`);
   let r: BatchResult;
   try {
     r = await work(keys, actor, options);
@@ -129,6 +139,7 @@ async function bulk(formData: FormData, key: keyof typeof WORK): Promise<never> 
     return finish(backTo(formData), "error", message);
   }
   const report = await saveSyncReport({ title: verb, scope: `${keys.length} ticked on Accounts → Across all three`, page: backTo(formData), actor, total: keys.length, done: r.done, notes: r.notes, contacts: r.contacts });
+  if (r.notReached?.length) return asRun(r.notReached, `the rest of ${keys.length} ticked on Accounts → Across all three`, `${report.text} `);
   return finish(backTo(formData), report.clean ? "ok" : "warn", report.text, report.href);
 }
 

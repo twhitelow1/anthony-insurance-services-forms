@@ -458,6 +458,8 @@ export async function accountsToLeadAlchemist(keys: string[], actor: string, dep
     result.done += r.done;
     result.notes.push(...r.notes);
     result.contacts = r.contacts;
+    const skipped = new Set(r.notReached ?? []);
+    result.notReached = rows.filter((row) => row.appId && skipped.has(row.appId)).map((row) => row.key);
   }
   return finish(result, 0, skipped);
 }
