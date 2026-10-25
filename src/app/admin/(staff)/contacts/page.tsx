@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { accountTypesAcross } from "@/lib/accounts/directory";
+import { NO_ACCOUNT_TYPE } from "@/lib/clients/repo";
 import { cookies } from "next/headers";
 import { AutoSubmit } from "@/components/AutoSubmit";
 import { SystemLink, LA_COMPANY_HINT } from "@/components/clients";
@@ -113,6 +115,7 @@ export default async function Contacts({ searchParams }: PageProps<"/admin/conta
   const account = yesNo(str("account"));
   const company = COMPANY_STATES.find((c) => c.value === str("company"))?.value;
   const tier = str("tier") === "primary" || str("tier") === "secondary" ? (str("tier") as "primary" | "secondary") : undefined;
+  const type = str("type").slice(0, 80) || undefined;
   const paging = pageState(sp);
   const q = (await cookies()).get(CONTACT_SEARCH_COOKIE)?.value ?? "";
   const importing = str("importing");
@@ -124,14 +127,14 @@ export default async function Contacts({ searchParams }: PageProps<"/admin/conta
     directoryCounts(),
     getImport("salesforce"),
     getImport("lead_alchemist"),
-    listDirectory({ q, filter, presence, account, company, tier, limit: paging.pageSize, offset: paging.offset }),
+    listDirectory({ q, filter, presence, account, company, tier, type, limit: paging.pageSize, offset: paging.offset }),
   ]);
-  const [breakdown, selectionRun] = await Promise.all([directoryBreakdown(q), getSelectionRun("contacts")]);
+  const [breakdown, selectionRun, types] = await Promise.all([directoryBreakdown(q), getSelectionRun("contacts"), accountTypesAcross()]);
   const runActive = selectionRun?.phase === "running";
-  const params = { filter: filter !== "all" ? filter : undefined, app: presence.app, sf: presence.sf, la: presence.la, account, company, tier };
+  const params = { filter: filter !== "all" ? filter : undefined, app: presence.app, sf: presence.sf, la: presence.la, account, company, tier, type };
   const href = pageHref("/admin/contacts", params);
   const comboHref = (c: Record<SystemKey, boolean>) => `/admin/contacts?${new URLSearchParams({ app: c.app ? "yes" : "no", sf: c.sf ? "yes" : "no", la: c.la ? "yes" : "no" })}`;
-  const isCombo = (c: Record<SystemKey, boolean>) => filter === "all" && !account && !company && !tier && SYSTEMS.every((x) => presence[x.key] === (c[x.key] ? "yes" : "no"));
+  const isCombo = (c: Record<SystemKey, boolean>) => filter === "all" && !account && !company && !tier && !type && SYSTEMS.every((x) => presence[x.key] === (c[x.key] ? "yes" : "no"));
   const back = href(paging.page, paging.pageSize);
 
   return (
@@ -176,6 +179,16 @@ export default async function Contacts({ searchParams }: PageProps<"/admin/conta
               <option value="">Either</option>
               <option value="yes">Yes</option>
               <option value="no">No</option>
+            </select>
+          </label>
+          <label className="text-sm" title="Their account's Salesforce Account Type (the same value as Account Type and Contact Type in Lead Alchemist)">
+            <span className="field-label !mb-1">Account Type</span>
+            <select name="type" defaultValue={type ?? ""} className="input">
+              <option value="">All types</option>
+              {types.map((t) => (
+                <option key={t} value={t}>{t}</option>
+              ))}
+              <option value={NO_ACCOUNT_TYPE}>No type</option>
             </select>
           </label>
           <label className="text-sm" title="Primary: the account's one primary contact. Secondary: everyone else on the account.">
@@ -313,6 +326,7 @@ export default async function Contacts({ searchParams }: PageProps<"/admin/conta
                   <span className="font-medium">{r.name}</span>
                   {r.tier === "primary" && <span className="badge badge-success ml-1">Primary</span>}
                   {r.tier === "secondary" && <span className="badge badge-neutral ml-1">Secondary</span>}
+                  {r.accountType && <span className="badge badge-neutral ml-1" title="Their account's Salesforce Account Type">{r.accountType}</span>}
                   <div className="text-xs text-[var(--muted)]">{[r.email, r.phone].filter(Boolean).join(" · ")}</div>
                 </td>
                 <td className="text-sm">

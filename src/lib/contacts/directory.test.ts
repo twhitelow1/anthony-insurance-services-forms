@@ -140,3 +140,24 @@ describe("contacts directory", () => {
     la.businesses = [{ id: "biz-dir", name: "Directory Studio" }];
   });
 });
+
+describe("Account Type filter on Contacts", () => {
+  it("keeps only people whose account (AIS Connect or Salesforce) has that Type, including Salesforce contacts not in AIS Connect yet", async () => {
+    const { listDirectory, directoryKeys } = await import("./directory");
+    const { NO_ACCOUNT_TYPE } = await import("@/lib/clients/repo");
+    const tag = uniq();
+    const db = await getDb();
+    const cust = await ensureClient({ email: `cu.${tag}@gmail.com`, contactName: `Cu Typed${tag}`, businessName: `Typed Cust ${tag}` });
+    await ensureClient({ email: `pa.${tag}@gmail.com`, contactName: `Pa Typed${tag}`, businessName: `Typed Past ${tag}` });
+    await db.update(schema.clients).set({ sfAccountType: "Customer" }).where(eq(schema.clients.id, cust));
+    // A Salesforce contact (not in AIS Connect) under a Customer Salesforce Account.
+    await db.insert(schema.directoryAccounts).values({ id: `001CT${tag}`, name: `SF Cust ${tag}`, nameKey: `sf cust ${tag}`, type: "Customer" });
+    await db.insert(schema.directoryContacts).values({ source: "salesforce", externalId: `003CT${tag}`, name: `Sf Typed${tag}`, email: `sf.${tag}@gmail.com`, companyId: `001CT${tag}`, companyName: `SF Cust ${tag}` });
+
+    const names = async (type?: string) => (await listDirectory({ q: `Typed${tag}`, type })).rows.map((r) => r.name).sort();
+    expect(await names("Customer")).toEqual([`Cu Typed${tag}`, `Sf Typed${tag}`]);
+    expect(await names(NO_ACCOUNT_TYPE)).toEqual([`Pa Typed${tag}`]);
+    expect((await listDirectory({ q: `Typed${tag}`, type: "Customer", presence: { app: "no" } })).rows.map((r) => r.accountType)).toEqual(["Customer"]);
+    expect((await directoryKeys({ q: `Typed${tag}`, type: "Customer" })).length).toBe(2); // "select all matching" uses it too
+  });
+});
