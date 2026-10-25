@@ -176,7 +176,30 @@ async function salesforceStep(sf: SalesforceApi, run: DirectoryImport) {
       .catch(() => null);
   }
   const page = await (visible.includes("AccountId") ? query(true).catch(() => query(false)) : query(false));
-  const rows: Row[] = page.records.map((c) => ({
+  const rows = salesforceRows(page.records);
+  await upsert(rows);
+  run.imported += rows.length;
+  run.cursor = rows.at(-1)?.externalId ?? run.cursor;
+  return rows.length < SF_BATCH;
+}
+
+/** Refresh AIS Connect's copy of these Salesforce Contacts (a change in Salesforce, by webhook). */
+export async function refreshSalesforceContactCopy(sf: SalesforceApi, ids: string[]) {
+  if (!ids.length) return [];
+  const visible = await visibleFields(sf, "Contact", ["FirstName", "LastName", "Email", "Phone", "MobilePhone", "AccountId"]);
+  const select = (withAccount: boolean) =>
+    sf.query<Record<string, unknown> & { Id: string }>(
+      `SELECT ${["Id", "Name", ...visible, ...(withAccount ? ["Account.Name"] : [])].join(", ")} FROM Contact WHERE Id IN (${ids.map(soqlString).join(", ")})`,
+    );
+  const records = await (visible.includes("AccountId") ? select(true).catch(() => select(false)) : select(false));
+  const rows = salesforceRows(records);
+  await upsert(rows);
+  await rematch();
+  return rows;
+}
+
+function salesforceRows(records: (Record<string, unknown> & { Id: string })[]): Row[] {
+  return records.map((c) => ({
     source: "salesforce",
     externalId: c.Id,
     name: String(c.Name ?? [c.FirstName, c.LastName].filter(Boolean).join(" ") ?? ""),
@@ -185,10 +208,6 @@ async function salesforceStep(sf: SalesforceApi, run: DirectoryImport) {
     companyId: (c.AccountId as string | null) ?? null,
     companyName: ((c.Account as { Name?: string } | null)?.Name as string | undefined) ?? null,
   }));
-  await upsert(rows);
-  run.imported += rows.length;
-  run.cursor = rows.at(-1)?.externalId ?? run.cursor;
-  return rows.length < SF_BATCH;
 }
 
 async function leadAlchemistStep(run: DirectoryImport, companies: Map<string, string>) {

@@ -70,7 +70,7 @@ export const describeChanges = (changes: ContactChange[]) =>
   );
 
 /** Read the linked Salesforce Contact's and Lead Alchemist contact's email and phone, and store them beside the app's. */
-export async function refreshContactExternal(contactId: string): Promise<Contact> {
+export async function refreshContactExternal(contactId: string, actor = "system"): Promise<Contact> {
   const contact = await getContact(contactId);
   if (!contact) throw new Error("That contact no longer exists.");
   const patch: Partial<Contact> = { externalCheckedAt: new Date() };
@@ -91,6 +91,21 @@ export async function refreshContactExternal(contactId: string): Promise<Contact
   }
   const db = await getDb();
   const [updated] = await db.update(schema.contacts).set(patch).where(eq(schema.contacts.id, contact.id)).returning();
+  // Log what changed since the last read (the very first read of a person is a baseline, not a change).
+  if (contact.externalCheckedAt) {
+    const { recordContactChanges } = await import("./changes");
+    await recordContactChanges(
+      contact.id,
+      contact.clientId,
+      [
+        ...("sfEmail" in patch ? [{ system: "salesforce" as const, direction: "read" as const, field: "Email", oldValue: contact.sfEmail, newValue: patch.sfEmail }] : []),
+        ...("sfPhone" in patch ? [{ system: "salesforce" as const, direction: "read" as const, field: "Phone", oldValue: contact.sfPhone, newValue: patch.sfPhone }] : []),
+        ...("laEmail" in patch ? [{ system: "lead_alchemist" as const, direction: "read" as const, field: "Email", oldValue: contact.laEmail, newValue: patch.laEmail }] : []),
+        ...("laPhone" in patch ? [{ system: "lead_alchemist" as const, direction: "read" as const, field: "Phone", oldValue: contact.laPhone, newValue: patch.laPhone }] : []),
+      ],
+      actor,
+    );
+  }
   return updated;
 }
 
@@ -237,6 +252,10 @@ export async function updateLeadAlchemistDetails(contactId: string, actor: strin
       return null;
     });
   for (const c of written?.changed ?? []) notes.push(`${c.field} changed in Lead Alchemist: ${c.from} → ${c.to}`);
+  const { recordContactChanges } = await import("./changes");
+  const log = (entries: { field: string; oldValue?: string | null; newValue?: string | null }[]) =>
+    recordContactChanges(contact.id, contact.clientId, entries.map((e) => ({ ...e, system: "lead_alchemist" as const, direction: "wrote" as const })), actor).catch(() => {});
+  await log((written?.changed ?? []).map((c) => ({ field: c.field, oldValue: c.from, newValue: c.to })));
   if (written?.missing.length) notes.push(`couldn't create the Lead Alchemist field${written.missing.length === 1 ? "" : "s"} ${written.missing.join(", ")} (the token needs the custom fields scope)`);
   // The built-in Contact Type is the Salesforce Account Type (Anthony's account has the same
   // options). Salesforce is the only place it changes; an empty Type never blanks it.
@@ -246,13 +265,17 @@ export async function updateLeadAlchemistDetails(contactId: string, actor: strin
     try {
       await updateLaContact(contact.ghlContactId, { type: sfType });
       notes.push(laType ? `Contact Type changed in Lead Alchemist: ${laType} → ${sfType}` : `Contact Type set in Lead Alchemist: ${sfType}`);
+      await log([{ field: "Contact Type", oldValue: laType || null, newValue: sfType }]);
     } catch (err) {
       notes.push(`couldn't set the Lead Alchemist Contact Type to "${sfType}" (${err instanceof Error ? err.message : String(err)}); check that it's one of the Contact Type options there`);
     }
   }
   // Tags so marketing can find everyone AIS Connect put in Lead Alchemist (only ever added).
   const wantTags = ["ais-connect", account?.isIndividual ? "ais-personal" : "ais-business"].filter((tag) => !(la.tags ?? []).includes(tag));
-  if (wantTags.length) await addLaTags(contact.ghlContactId, wantTags).catch((err: unknown) => notes.push(`couldn't add the tags ${wantTags.join(", ")} (${err instanceof Error ? err.message : String(err)})`));
+  if (wantTags.length)
+    await addLaTags(contact.ghlContactId, wantTags)
+      .then(() => log([{ field: "Tags added", newValue: wantTags.join(", ") }]))
+      .catch((err: unknown) => notes.push(`couldn't add the tags ${wantTags.join(", ")} (${err instanceof Error ? err.message : String(err)})`));
   // And on the Salesforce Contact: its Lead Alchemist contact and the app's account page.
   if (contact.sfContactId) {
     const sf = await salesforceClient();
@@ -279,5 +302,6 @@ export async function updateLeadAlchemistDetails(contactId: string, actor: strin
   await addClientEvent(contact.clientId, "contact_pushed", actor, {
     message: `${contact.name}: Lead Alchemist contact updated from AIS Connect (${fields.map((f) => FIELD_LABEL[f]).join(", ")})`,
   });
+  await log(fields.map((f) => ({ field: FIELD_LABEL[f], oldValue: have[f] ?? null, newValue: changes[f] ?? null })));
   return { contact, fields, changes: notes };
 }

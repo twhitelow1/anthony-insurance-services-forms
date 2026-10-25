@@ -5,6 +5,7 @@ import type { Client, Contact } from "@/lib/db/schema";
 import { accountsOfContact, addClientEvent, listAccountContacts, contactEmailsOf, createAccount, getClient, getContact, setClientSalesforce, setContactSalesforce } from "@/lib/clients/repo";
 import { laCompanyName, nameKey, phoneDigits, searchTerms } from "@/lib/clients/text";
 import { addTally, describeTally, emptyTally, skippedOf, type ContactTally } from "@/lib/bulk/tally";
+import { recordContactChanges } from "@/lib/contacts/changes";
 import { addContactsToBusiness, addTags, createBusiness, createContact as createLaContact, getContact as getLaContact, ghlConfig, isScopeError, listBusinesses, upsertContact, type GhlBusiness } from "@/lib/ghl/client";
 import { exactMatch, laCandidates, linkLaContact } from "@/lib/ghl/match";
 import type { Links } from "@/lib/integrations/urls";
@@ -477,6 +478,7 @@ export async function connectContactsToCompany(
         if (match) {
           await linkLaContact(p.id, match.id, actor);
           laId = match.id;
+          await recordContactChanges(p.id, p.clientId, [{ system: "lead_alchemist", direction: "wrote", field: "Linked to Lead Alchemist contact", newValue: laId }], actor);
         } else if (candidates.length) {
           t.severalMatches++;
           continue;
@@ -496,6 +498,7 @@ export async function connectContactsToCompany(
           await linkLaContact(p.id, res.contact.id, actor);
           laId = res.contact.id;
           created = (res as { new?: boolean }).new !== false;
+          await recordContactChanges(p.id, p.clientId, [{ system: "lead_alchemist", direction: "wrote", field: created ? "Created in Lead Alchemist" : "Linked to Lead Alchemist contact", newValue: laId }], actor);
         } else {
           t.notCreated++;
           continue;
@@ -531,7 +534,10 @@ export async function connectContactsToCompany(
         if (!result.blocked) await addContactsToBusiness(chunk.map((x) => x.laId), companyId);
         for (const x of chunk) {
           if (result.blocked) t.noCompanyAccess++;
-          else t[x.created ? "created" : "linked"]++;
+          else {
+            t[x.created ? "created" : "linked"]++;
+            await recordContactChanges(x.p.id, x.p.clientId, [{ system: "lead_alchemist", direction: "wrote", field: "Company", newValue: opts.companyName ?? companyId }], actor);
+          }
           placed.push({ ...x, inCompany: result.blocked ? null : companyId });
         }
         result.done += result.blocked ? 0 : chunk.length;

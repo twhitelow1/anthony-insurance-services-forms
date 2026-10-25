@@ -1,4 +1,7 @@
 import { ListSummary, pageHref, pageState, Pagination } from "@/components/Pagination";
+import { changesForContacts } from "@/lib/contacts/changes";
+
+const CHANGE_SYSTEM = { salesforce: "Salesforce", lead_alchemist: "Lead Alchemist", ais_connect: "AIS Connect" } as const;
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { forms } from "@/forms";
@@ -96,6 +99,7 @@ export default async function AccountPage({ params, searchParams }: PageProps<"/
     client.possibleDuplicateOf ? getClient(client.possibleDuplicateOf) : Promise.resolve(undefined),
   ]);
   const contactEmails = new Map(await Promise.all(people.map(async (p) => [p.id, await contactEmailsOf(p.id)] as const)));
+  const history = await changesForContacts(people.map((p) => p.id));
   const appsBy = (contactId: string) => apps.filter((a) => a.contactId === contactId).length;
   const sfReady = !!(await salesforceConfig()) && settings.salesforceEnabled;
   const laConnected = !!(await ghlConfig());
@@ -370,6 +374,21 @@ export default async function AccountPage({ params, searchParams }: PageProps<"/
                     {p.title && <div className="text-xs text-[var(--muted)]">{p.title}</div>}
                     {p.homeHere && (primary ? <span className="badge badge-success ml-1">Primary</span> : <span className="badge badge-neutral ml-1">Secondary</span>)}
                     {!p.homeHere && <div className="text-xs text-[var(--muted)]">Belongs to another account; filled out an application here</div>}
+                    {(history.get(p.id)?.length ?? 0) > 0 && (
+                      <details className="mt-1 text-xs">
+                        <summary className="cursor-pointer text-[var(--muted)]">Change history ({history.get(p.id)!.length})</summary>
+                        <ul className="mt-1 space-y-1">
+                          {history.get(p.id)!.map((c) => (
+                            <li key={c.id}>
+                              <span className="text-[var(--muted)]">{c.createdAt.toLocaleString("en-US", { timeZone: process.env.APP_TIMEZONE ?? "America/Chicago", dateStyle: "short", timeStyle: "short" })}</span>{" "}
+                              {CHANGE_SYSTEM[c.system]} {c.direction === "wrote" ? "updated" : "changed"}: <strong>{c.field}</strong>
+                              {c.oldValue || c.newValue ? ` ${c.oldValue ?? "(empty)"} → ${c.newValue ?? "(empty)"}` : ""}
+                              <span className="text-[var(--muted)]"> · {c.actor.replace(/^staff:/, "").replace("salesforce:change", "change in Salesforce")}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </details>
+                    )}
                   </td>
                   <td className="text-sm">
                     {mails.map((e) => (

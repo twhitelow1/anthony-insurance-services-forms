@@ -1,4 +1,5 @@
 import "server-only";
+import { recordContactChanges } from "@/lib/contacts/changes";
 import { eq } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
 import type { SfAccountSnapshot } from "@/lib/db/schema";
@@ -90,6 +91,7 @@ export async function refreshAccountFromSalesforce(clientId: string, sf: Salesfo
     }
     const contact = await ensureContact({ clientId: client.id, email: c.Email, firstName: c.FirstName, lastName: c.LastName, title: c.Title, phone: c.Phone, sfContactId: c.Id });
     added++;
+    await recordContactChanges(contact.id, client.id, [{ system: "salesforce", direction: "read", field: "Added from Salesforce", newValue: c.Id }], actor);
     await raiseNotification(
       {
         kind: "sf_new_contact",
@@ -106,7 +108,7 @@ export async function refreshAccountFromSalesforce(clientId: string, sf: Salesfo
 
   // Everyone on the Account: their Salesforce and Lead Alchemist email and phone, for comparison.
   const people = await db.select({ id: schema.contacts.id }).from(schema.contacts).where(eq(schema.contacts.clientId, client.id));
-  for (const p of people) await refreshContactExternal(p.id).catch((err) => console.warn("[refresh] contact", err instanceof Error ? err.message : err));
+  for (const p of people) await refreshContactExternal(p.id, actor).catch((err) => console.warn("[refresh] contact", err instanceof Error ? err.message : err));
 
   await addClientEvent(client.id, "sf_refreshed", actor, {
     message: `Read from Salesforce${added ? `; ${added} new contact${added === 1 ? "" : "s"} added` : ""}. Nothing in AIS Connect was overwritten.`,

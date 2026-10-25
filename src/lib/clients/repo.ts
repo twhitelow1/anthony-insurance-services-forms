@@ -939,6 +939,11 @@ export async function setPrimaryContact(clientId: string, contactId: string, act
       data: { contactId: c.id, previous: old?.id ?? null },
     });
   });
+  const { recordContactChanges } = await import("@/lib/contacts/changes");
+  if (old?.id !== c.id) {
+    await recordContactChanges(c.id, clientId, [{ system: "ais_connect", direction: "wrote", field: "Client tier", oldValue: "Secondary", newValue: "Primary" }], actor);
+    if (old) await recordContactChanges(old.id, clientId, [{ system: "ais_connect", direction: "wrote", field: "Client tier", oldValue: "Primary", newValue: "Secondary" }], actor);
+  }
 }
 
 /** Accounts linked to this Salesforce Account. */
