@@ -53,3 +53,17 @@ describe("client tier: one primary contact per account", () => {
     await expect(setPrimaryContact(a, bo.id, ACTOR)).rejects.toThrow(/isn't on this account/);
   });
 });
+
+describe("Account Type filter on Accounts", () => {
+  it("lists only accounts with that Salesforce Account Type, or none", async () => {
+    const { NO_ACCOUNT_TYPE } = await import("./repo");
+    const tag = uniq();
+    const db = await getDb();
+    const cust = await ensureClient({ email: `c.${tag}@gmail.com`, contactName: `Cu ${tag}`, businessName: `Type Gym A ${tag}` });
+    const none = await ensureClient({ email: `n.${tag}@gmail.com`, contactName: `No ${tag}`, businessName: `Type Gym B ${tag}` });
+    await db.update(schema.clients).set({ sfAccountType: "Customer" }).where(eq(schema.clients.id, cust));
+    expect((await listClients({ q: tag, type: "Customer" })).rows.map((r) => [r.id, r.sfAccountType])).toEqual([[cust, "Customer"]]);
+    expect((await listClients({ q: tag, type: NO_ACCOUNT_TYPE })).rows.map((r) => r.id)).toEqual([none]);
+    expect((await listClients({ q: tag })).rows).toHaveLength(2);
+  });
+});

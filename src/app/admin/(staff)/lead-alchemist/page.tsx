@@ -111,6 +111,9 @@ export default async function GhlPipelinesPage() {
 
   return (
     <div className="mx-auto max-w-3xl">
+      <p className="mb-2 text-sm">
+        <Link className="btn-link" href="/admin/settings#lead-alchemist">← Settings</Link>
+      </p>
       <h1 className="text-2xl font-semibold">Lead Alchemist pipelines</h1>
       <p className="mb-6 text-sm text-[var(--muted)]">
         Choose the pipeline, stages and lead pipeline in{" "}

@@ -116,7 +116,10 @@ export default async function AccountPage({ params, searchParams }: PageProps<"/
         <div>
           <h1 className="text-2xl font-semibold">
             {client.name}{" "}
-            <span className="badge badge-neutral align-middle text-xs">{client.isIndividual ? "Individual" : "Business"}</span>
+            <span className="badge badge-neutral align-middle text-xs">{client.isIndividual ? "Individual" : "Business"}</span>{" "}
+            <span className="badge badge-neutral align-middle text-xs" title="Salesforce Account Type: changed only in Salesforce. Synced to Lead Alchemist as Account Type and Contact Type.">
+              Account Type: {client.sfAccountType || "none"}
+            </span>
           </h1>
           {client.contactName && client.contactName !== client.name && <p className="text-sm">Primary contact: {client.contactName}</p>}
           <p className="text-sm text-[var(--muted)]">

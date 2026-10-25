@@ -113,10 +113,14 @@ export default async function SettingsPage({ searchParams }: PageProps<"/admin/s
 
         <section className="card !p-5" aria-labelledby="lead-alchemist">
           <h2 id="lead-alchemist" className="mb-1 font-semibold">Lead Alchemist pipeline</h2>
+          <p className="mb-3 text-sm text-[var(--muted)]">
+            Check the connection and see every Lead Alchemist pipeline and stage on{" "}
+            <Link className="btn-link" href="/admin/lead-alchemist">Lead Alchemist setup</Link>.
+          </p>
           {!(await ghlConfig()) ? (
             <p className="text-sm text-[var(--muted)]">Connect Lead Alchemist first in Settings → Integrations.</p>
           ) : ghlError ? (
-            <p className="text-sm text-[var(--danger)]">Lead Alchemist didn&apos;t return pipelines: {ghlError}. See Lead Alchemist setup.</p>
+            <p className="text-sm text-[var(--danger)]">Lead Alchemist didn&apos;t return pipelines: {ghlError}. See <Link className="btn-link" href="/admin/lead-alchemist">Lead Alchemist setup</Link>.</p>
           ) : null}
           <label className="field-label" htmlFor="ghlAppUrl">Lead Alchemist web address (for links to contacts and opportunities)</label>
           <input id="ghlAppUrl" name="ghlAppUrl" className="input" defaultValue={saved.ghlAppUrl ?? ""} placeholder={env.ghlAppUrl || DEFAULT_GHL_APP_URL} />

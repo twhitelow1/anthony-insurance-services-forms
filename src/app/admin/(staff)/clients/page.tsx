@@ -4,7 +4,8 @@ import { cookies } from "next/headers";
 import { fmtDate, StatusBadge } from "@/components/portal";
 import { SalesforceBadge, SystemLink, LA_COMPANY_HINT } from "@/components/clients";
 import { requireStaff } from "@/lib/auth/session";
-import { countPossibleDuplicates, listClients, type ClientFilter, type ClientSort } from "@/lib/clients/repo";
+import { countPossibleDuplicates, listClients, NO_ACCOUNT_TYPE, type ClientFilter, type ClientSort } from "@/lib/clients/repo";
+import { accountTypesInApp } from "@/lib/mapping/database";
 import { links } from "@/lib/integrations/links";
 import { CLIENT_SEARCH_COOKIE } from "@/lib/clients/search-cookie";
 import { searchClientsAction } from "./actions";
@@ -47,9 +48,14 @@ export default async function Accounts({ searchParams }: PageProps<"/admin/clien
   }
   const sort = SORTS.some((s) => s.value === sp.sort) ? (sp.sort as ClientSort) : "latest";
   const filter = FILTERS.some((f) => f.value === sp.filter) ? (sp.filter as ClientFilter) : "all";
+  const type = typeof sp.type === "string" ? sp.type.slice(0, 80) : "";
   const paging = pageState(sp);
   const { page } = paging;
-  const [{ rows, total }, duplicates] = await Promise.all([listClients({ q, sort, filter, page, pageSize: paging.pageSize }), countPossibleDuplicates()]);
+  const [{ rows, total }, duplicates, types] = await Promise.all([
+    listClients({ q, sort, filter, type: type || null, page, pageSize: paging.pageSize }),
+    countPossibleDuplicates(),
+    accountTypesInApp(),
+  ]);
   const l = await links();
   const n = (k: string) => Math.max(0, Number(sp[k]) || 0);
   const ghlMessage =
@@ -61,7 +67,7 @@ export default async function Accounts({ searchParams }: PageProps<"/admin/clien
           ? "Lead Alchemist isn't connected yet."
           : null;
   const qs = (over: Record<string, string | number>) => {
-    const p = new URLSearchParams({ sort, filter, page: String(page), ...Object.fromEntries(Object.entries(over).map(([k, v]) => [k, String(v)])) });
+    const p = new URLSearchParams({ sort, filter, ...(type ? { type } : {}), page: String(page), ...Object.fromEntries(Object.entries(over).map(([k, v]) => [k, String(v)])) });
     return `?${p}`;
   };
 
@@ -95,7 +101,7 @@ export default async function Accounts({ searchParams }: PageProps<"/admin/clien
       )}
 
       {ghlMessage && <p className="callout mb-4 text-sm" role="status">{ghlMessage}</p>}
-      <form action={searchClientsAction} className="card mb-6 grid gap-3 !p-4 sm:grid-cols-[1fr_auto_auto_auto_auto]" role="search">
+      <form action={searchClientsAction} className="card mb-6 grid gap-3 !p-4 sm:grid-cols-[1fr_auto_auto_auto_auto_auto]" role="search">
         <label className="sr-only" htmlFor="q">Search accounts</label>
         <input id="q" name="q" defaultValue={q} className="input" placeholder="Name, business, email or phone" />
         <label className="sr-only" htmlFor="filter">Show</label>
@@ -103,6 +109,14 @@ export default async function Accounts({ searchParams }: PageProps<"/admin/clien
           {FILTERS.map((f) => (
             <option key={f.value} value={f.value}>{f.label}</option>
           ))}
+        </select>
+        <label className="sr-only" htmlFor="type">Account Type</label>
+        <select id="type" name="type" defaultValue={type} className="input" title="The Salesforce Account Type (the same value is Account Type and Contact Type in Lead Alchemist)">
+          <option value="">All Account Types</option>
+          {types.map((t) => (
+            <option key={t} value={t}>{t}</option>
+          ))}
+          <option value={NO_ACCOUNT_TYPE}>No Account Type</option>
         </select>
         <label className="sr-only" htmlFor="sort">Sort</label>
         <select id="sort" name="sort" defaultValue={sort} className="input">
@@ -139,6 +153,7 @@ export default async function Accounts({ searchParams }: PageProps<"/admin/clien
                 <td>
                   <Link className="row-link font-medium" href={`/admin/clients/${c.id}`}>{c.name}</Link>
                   {c.isIndividual && <span className="badge badge-neutral ml-1">Individual</span>}
+                  {c.sfAccountType && <span className="badge badge-neutral ml-1" title="Salesforce Account Type">{c.sfAccountType}</span>}
                   {c.possibleDuplicateOf && <span className="badge badge-warning ml-1" title="Shares its name with another account">Possible duplicate</span>}
                 </td>
                 <td className="text-sm">
@@ -198,7 +213,7 @@ export default async function Accounts({ searchParams }: PageProps<"/admin/clien
           </tbody>
         </table>
       </div>
-      <Pagination total={total} state={paging} noun="account" href={pageHref("/admin/clients", { sort, filter })} />
+      <Pagination total={total} state={paging} noun="account" href={pageHref("/admin/clients", { sort, filter, type: type || undefined })} />
     </div>
   );
 }

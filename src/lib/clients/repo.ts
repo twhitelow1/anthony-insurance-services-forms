@@ -704,6 +704,8 @@ export interface ClientListRow {
   sfContactId: string | null;
   ghlCompanyId: string | null;
   possibleDuplicateOf: string | null;
+  /** The Salesforce Account Type (e.g. Customer): the account's status. */
+  sfAccountType: string | null;
 }
 
 /** Search clause shared by the list and the CSV export. */
@@ -713,6 +715,9 @@ function searchWhere(q: string | undefined): SQL | undefined {
   const esc = (s: string) => s.replace(/[\\%_]/g, (m) => `\\${m}`);
   return digits ? or(ilike(clients.searchText, `%${esc(text)}%`), ilike(clients.searchText, `%${esc(digits)}%`)) : ilike(clients.searchText, `%${esc(text)}%`);
 }
+
+/** The "no Account Type" choice of the Account Type filters. */
+export const NO_ACCOUNT_TYPE = "__none__";
 
 export type ClientFilter = "all" | "review" | "individuals" | "businesses" | "deactivated" | "no_primary";
 
@@ -730,7 +735,8 @@ export async function listClients({
   filter = "all",
   page = 1,
   pageSize = 50,
-}: { q?: string; sort?: ClientSort; filter?: ClientFilter; page?: number; pageSize?: number } = {}): Promise<{ rows: ClientListRow[]; total: number }> {
+  type,
+}: { q?: string; sort?: ClientSort; filter?: ClientFilter; page?: number; pageSize?: number; type?: string | null } = {}): Promise<{ rows: ClientListRow[]; total: number }> {
   const db = await getDb();
   const filterWhere =
     filter === "review"
@@ -744,7 +750,9 @@ export async function listClients({
             : undefined;
   // Deactivated accounts show only under their own filter.
   const active = filter === "deactivated" ? isNotNull(clients.deactivatedAt) : isNull(clients.deactivatedAt);
-  const where = and(isNull(clients.mergedInto), active, searchWhere(q), filterWhere);
+  // The Salesforce Account Type (same values as Lead Alchemist's Account Type and Contact Type); NO_ACCOUNT_TYPE = none.
+  const typeWhere = !type ? undefined : type === NO_ACCOUNT_TYPE ? or(isNull(clients.sfAccountType), eq(clients.sfAccountType, "")) : eq(clients.sfAccountType, type);
+  const where = and(isNull(clients.mergedInto), active, searchWhere(q), filterWhere, typeWhere);
   // Written out in full: inside a subquery a bare column could bind to the subquery's own table.
   const cid = sql.raw(`"clients"."id"`);
   const cPrimary = sql.raw(`"clients"."primary_email"`);
@@ -781,6 +789,7 @@ export async function listClients({
         sfContactId: sfContact,
         ghlCompanyId: clients.ghlCompanyId,
         possibleDuplicateOf: clients.possibleDuplicateOf,
+        sfAccountType: clients.sfAccountType,
       })
       .from(clients)
       .where(where)
