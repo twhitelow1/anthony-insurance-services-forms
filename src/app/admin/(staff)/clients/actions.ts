@@ -133,11 +133,12 @@ export async function searchClientsAction(formData: FormData) {
   await requireStaff();
   const q = formData.get("clear") ? "" : String(formData.get("q") ?? "").trim().slice(0, 100);
   const sort = String(formData.get("sort") ?? "latest").replace(/[^a-z]/g, "");
-  const filter = String(formData.get("filter") ?? "all").replace(/[^a-z]/g, "");
+  const filter = String(formData.get("filter") ?? "all").replace(/[^a-z_]/g, "");
+  const type = String(formData.get("type") ?? "").trim().slice(0, 80);
   const jar = await cookies();
   if (q) jar.set(CLIENT_SEARCH_COOKIE, q, { httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "lax", path: "/admin/clients", maxAge: 3600 });
   else jar.delete({ name: CLIENT_SEARCH_COOKIE, path: "/admin/clients" });
-  redirect(`/admin/clients?sort=${sort}&filter=${filter}`);
+  redirect(`/admin/clients?${new URLSearchParams({ sort, filter, ...(type ? { type } : {}) })}`);
 }
 
 /** "Refresh from Salesforce": read the linked Account and its contacts; nothing in the app is overwritten. */
