@@ -1,7 +1,7 @@
 import "server-only";
 import { and, asc, desc, eq, ilike, inArray, like, isNotNull, isNull, ne, or, sql, type SQL } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
-import type { Client, ClientAddress, ClientEventType, Contact, SalesforceStatus } from "@/lib/db/schema";
+import type { Client, ClientAddress, ClientEventType, Contact, RecordSource, SalesforceStatus } from "@/lib/db/schema";
 import type { ApplicationStatus } from "@/lib/applications/status";
 import { businessDomain, clientSearchText, nameKey, phoneDigits, searchTerms, websiteDomain } from "./text";
 
@@ -31,6 +31,8 @@ export interface ClientDetails {
    * individual one, named after the business field when it's filled in, else after the person.
    */
   individual?: boolean;
+  /** Where new records come from: an application unless said otherwise. */
+  source?: RecordSource;
 }
 
 /** Forms that insure one person (instructors), not a business such as a gym or studio. */
@@ -96,6 +98,8 @@ export interface NewContact {
   phone?: string | null;
   sfContactId?: string | null;
   ghlContactId?: string | null;
+  /** Where the person came from; by default Salesforce or Lead Alchemist when linked to one, else added by staff. */
+  source?: RecordSource;
 }
 
 /**
@@ -141,6 +145,7 @@ export async function ensureContact(input: NewContact): Promise<Contact> {
       phones: mergePhones([], input.phone),
       sfContactId: input.sfContactId ?? null,
       ghlContactId: input.ghlContactId ?? null,
+      source: input.source ?? (input.sfContactId ? "salesforce" : input.ghlContactId ? "lead_alchemist" : "manual"),
     })
     .returning();
   if (email) {
@@ -317,6 +322,8 @@ export interface NewAccount {
   sfAccountId?: string | null;
   primaryEmail?: string | null;
   possibleDuplicateOf?: string | null;
+  /** Where the account came from; by default Salesforce when linked to it, else added by staff. */
+  source?: RecordSource;
 }
 
 export async function createAccount(input: NewAccount, actor = "system"): Promise<Client> {
@@ -334,6 +341,7 @@ export async function createAccount(input: NewAccount, actor = "system"): Promis
       sfAccountId: input.sfAccountId ?? null,
       sfStatus: input.sfAccountId ? "linked" : "not_synced",
       possibleDuplicateOf: input.possibleDuplicateOf ?? null,
+      source: input.source ?? (input.sfAccountId ? "salesforce" : "manual"),
     })
     .returning();
   await addClientEvent(created.id, "created", actor, { message: `Account created${input.isIndividual ? " (individual)" : ""}` });
@@ -480,7 +488,7 @@ export async function resolveAccountAndContact(details: ClientDetails): Promise<
       // Their Salesforce Contact's Account (a renewal, or new coverage for an existing client).
       account = await accountForSalesforce(inSalesforce, business ?? person, true, details, email);
       match = "salesforce";
-    } else account = await createAccount({ name: business ?? person, isIndividual: true, phone: details.phone, address: details.address, primaryEmail: email });
+    } else account = await createAccount({ name: business ?? person, isIndividual: true, phone: details.phone, address: details.address, primaryEmail: email, source: details.source ?? "application" });
   } else {
     const key = nameKey(business);
     if (home && !home.isIndividual && home.nameKey === key) {
@@ -508,6 +516,7 @@ export async function resolveAccountAndContact(details: ClientDetails): Promise<
           website: details.website,
           primaryEmail: email,
           possibleDuplicateOf: (strong[0] ?? sameName[0])?.id ?? null,
+          source: details.source ?? "application",
         });
       }
     }
@@ -545,6 +554,7 @@ export async function resolveAccountAndContact(details: ClientDetails): Promise<
     lastName: details.lastName,
     name: person,
     phone: details.phone,
+    source: details.source ?? "application",
   });
   await refreshSearch(account.id);
   if (contact.clientId !== account.id) await refreshSearch(contact.clientId);
@@ -706,6 +716,7 @@ export interface ClientListRow {
   possibleDuplicateOf: string | null;
   /** The Salesforce Account Type (e.g. Customer): the account's status. */
   sfAccountType: string | null;
+  source: RecordSource;
 }
 
 /** Search clause shared by the list and the CSV export. */
@@ -736,7 +747,8 @@ export async function listClients({
   page = 1,
   pageSize = 50,
   type,
-}: { q?: string; sort?: ClientSort; filter?: ClientFilter; page?: number; pageSize?: number; type?: string | null } = {}): Promise<{ rows: ClientListRow[]; total: number }> {
+  source,
+}: { q?: string; sort?: ClientSort; filter?: ClientFilter; page?: number; pageSize?: number; type?: string | null; source?: RecordSource | null } = {}): Promise<{ rows: ClientListRow[]; total: number }> {
   const db = await getDb();
   const filterWhere =
     filter === "review"
@@ -752,7 +764,7 @@ export async function listClients({
   const active = filter === "deactivated" ? isNotNull(clients.deactivatedAt) : isNull(clients.deactivatedAt);
   // The Salesforce Account Type (same values as Lead Alchemist's Account Type and Contact Type); NO_ACCOUNT_TYPE = none.
   const typeWhere = !type ? undefined : type === NO_ACCOUNT_TYPE ? or(isNull(clients.sfAccountType), eq(clients.sfAccountType, "")) : eq(clients.sfAccountType, type);
-  const where = and(isNull(clients.mergedInto), active, searchWhere(q), filterWhere, typeWhere);
+  const where = and(isNull(clients.mergedInto), active, searchWhere(q), filterWhere, typeWhere, source ? eq(clients.source, source) : undefined);
   // Written out in full: inside a subquery a bare column could bind to the subquery's own table.
   const cid = sql.raw(`"clients"."id"`);
   const cPrimary = sql.raw(`"clients"."primary_email"`);
@@ -790,6 +802,7 @@ export async function listClients({
         ghlCompanyId: clients.ghlCompanyId,
         possibleDuplicateOf: clients.possibleDuplicateOf,
         sfAccountType: clients.sfAccountType,
+        source: clients.source,
       })
       .from(clients)
       .where(where)

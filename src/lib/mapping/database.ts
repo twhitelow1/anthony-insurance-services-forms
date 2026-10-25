@@ -249,6 +249,7 @@ export async function addCompaniesToApp(businessIds: string[], actor: string): P
         website: b.website,
         primaryEmail: b.email,
         address: { street: b.address ?? undefined, city: b.city ?? undefined, state: b.state ?? undefined, postalCode: b.postalCode ?? undefined },
+        source: "lead_alchemist",
       },
       actor,
     );
@@ -786,6 +787,7 @@ export async function companiesToSalesforce(businessIds: string[], actor: string
           website: b.website,
           primaryEmail: b.email,
           address: { street: b.address ?? undefined, city: b.city ?? undefined, state: b.state ?? undefined, postalCode: b.postalCode ?? undefined },
+          source: "lead_alchemist",
         },
         actor,
       );

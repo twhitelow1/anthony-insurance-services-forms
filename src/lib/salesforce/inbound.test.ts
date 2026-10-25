@@ -78,6 +78,7 @@ describe("changes made in Salesforce", () => {
     expect((await getClient(clientId))!.sfAccountType).toBe("Customer");
     const people = await db.select().from(schema.contacts).where(eq(schema.contacts.clientId, clientId));
     expect(people.map((p) => p.primaryEmail)).toContain(`new.${tag}@gmail.com`);
+    expect(people.find((p) => p.primaryEmail === `new.${tag}@gmail.com`)!.source).toBe("salesforce");
     const [copy] = await db.select().from(schema.directoryAccounts).where(eq(schema.directoryAccounts.id, acct.id));
     expect(copy.type).toBe("Customer");
     const events = await db.select().from(schema.clientEvents).where(eq(schema.clientEvents.clientId, clientId));

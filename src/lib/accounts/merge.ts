@@ -222,7 +222,7 @@ export async function mergeAccounts(choice: MergeChoice, actor: string, deps: { 
   else {
     const v = choice.values;
     const account = await createAccount(
-      { name: v.name || keepSf?.name || keepLa?.name || "Unnamed", phone: v.phone, primaryEmail: v.email, website: v.website, address: { street: v.street, city: v.city, state: v.state, postalCode: v.postalCode } },
+      { name: v.name || keepSf?.name || keepLa?.name || "Unnamed", phone: v.phone, primaryEmail: v.email, website: v.website, address: { street: v.street, city: v.city, state: v.state, postalCode: v.postalCode }, source: keepLa ? "lead_alchemist" : "manual" },
       actor,
     );
     targetId = account.id;

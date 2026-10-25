@@ -620,7 +620,7 @@ export async function addToApp(groups: string[][], actor: string, deps: { sf: Sa
           if (!account) await syncAccount(sfRow.companyId, { sf: deps.sf, links: deps.links, writeLinks: false }, actor);
           contactId = (await syncContact(deps.sf, sfRow.externalId, actor)).contact.id;
         } else {
-          const account = await createAccount({ name: sfRow.name || sfRow.email || "Unnamed", isIndividual: true, primaryEmail: sfRow.email, phone: sfRow.phone }, actor);
+          const account = await createAccount({ name: sfRow.name || sfRow.email || "Unnamed", isIndividual: true, primaryEmail: sfRow.email, phone: sfRow.phone, source: "salesforce" }, actor);
           contactId = (await ensureContact({ clientId: account.id, name: sfRow.name, email: sfRow.email, phone: sfRow.phone, sfContactId: sfRow.externalId })).id;
           await refreshSearch(account.id);
         }
@@ -640,7 +640,7 @@ export async function addToApp(groups: string[][], actor: string, deps: { sf: Sa
             account?.id ??
             (
               await createAccount(
-                { name: laRow.companyName || laRow.name || laRow.email || "Unnamed", isIndividual: !laRow.companyName, primaryEmail: laRow.email, phone: laRow.phone },
+                { name: laRow.companyName || laRow.name || laRow.email || "Unnamed", isIndividual: !laRow.companyName, primaryEmail: laRow.email, phone: laRow.phone, source: "lead_alchemist" },
                 actor,
               )
             ).id;

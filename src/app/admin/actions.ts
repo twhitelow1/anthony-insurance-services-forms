@@ -125,7 +125,7 @@ export async function deleteApplicationAction(formData: FormData) {
  * and phones never go in the address.
  */
 async function clientHref(email: string, code: string) {
-  const clientId = (await getClientIdForEmail(email)) ?? (await ensureClient({ email }));
+  const clientId = (await getClientIdForEmail(email)) ?? (await ensureClient({ email, source: "manual" }));
   return `/admin/clients/${clientId}?la=${code}`;
 }
 

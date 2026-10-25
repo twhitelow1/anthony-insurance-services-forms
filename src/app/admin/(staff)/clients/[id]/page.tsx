@@ -22,7 +22,7 @@ import {
 } from "@/lib/clients/repo";
 import { links } from "@/lib/integrations/links";
 import { ghlConfig, listBusinesses } from "@/lib/ghl/client";
-import type { Contact } from "@/lib/db/schema";
+import { RECORD_SOURCE_LABEL, type Contact } from "@/lib/db/schema";
 import { matchCompanies } from "@/lib/mapping/company-match";
 import { salesforceConfig } from "@/lib/salesforce/config";
 import { getSettings } from "@/lib/settings";
@@ -123,6 +123,9 @@ export default async function AccountPage({ params, searchParams }: PageProps<"/
             <span className="badge badge-neutral align-middle text-xs">{client.isIndividual ? "Individual" : "Business"}</span>{" "}
             <span className="badge badge-neutral align-middle text-xs" title="Salesforce Account Type: changed only in Salesforce. Synced to Lead Alchemist as Account Type and Contact Type.">
               Account Type: {client.sfAccountType || "none"}
+            </span>{" "}
+            <span className="badge badge-neutral align-middle text-xs" title="Where this account first came into AIS Connect">
+              Source: {RECORD_SOURCE_LABEL[client.source]}
             </span>
           </h1>
           {client.contactName && client.contactName !== client.name && <p className="text-sm">Primary contact: {client.contactName}</p>}
@@ -372,6 +375,7 @@ export default async function AccountPage({ params, searchParams }: PageProps<"/
                   <td>
                     <span className="font-medium">{p.name}</span>
                     {p.title && <div className="text-xs text-[var(--muted)]">{p.title}</div>}
+                    <div className="text-xs text-[var(--muted)]" title="Where this person first came into AIS Connect">Source: {RECORD_SOURCE_LABEL[p.source]}</div>
                     {p.homeHere && (primary ? <span className="badge badge-success ml-1">Primary</span> : <span className="badge badge-neutral ml-1">Secondary</span>)}
                     {!p.homeHere && <div className="text-xs text-[var(--muted)]">Belongs to another account; filled out an application here</div>}
                     {(history.get(p.id)?.length ?? 0) > 0 && (

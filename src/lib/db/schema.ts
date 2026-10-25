@@ -56,6 +56,8 @@ export const clients = pgTable(
      * Salesforce is the only place it changes; the app reads it and passes it to Lead Alchemist.
      */
     sfAccountType: text("sf_account_type"),
+    /** Where this account first came from (see RecordSource). Set once, when it's created. */
+    source: text("source").$type<RecordSource>().notNull().default("manual"),
     /**
      * Client tier: the account's one primary contact (every other contact on it is secondary).
      * One column, so an account can never have two primaries.
@@ -83,6 +85,18 @@ export const clients = pgTable(
     index("clients_primary_contact_idx").on(t.primaryContactId),
   ],
 );
+
+/**
+ * Where an account or contact first came into AIS Connect: imported from Salesforce or Lead
+ * Alchemist, from an application (or unfinished one), or added by staff in AIS Connect.
+ */
+export type RecordSource = "salesforce" | "lead_alchemist" | "application" | "manual";
+export const RECORD_SOURCE_LABEL: Record<RecordSource, string> = {
+  salesforce: "Salesforce",
+  lead_alchemist: "Lead Alchemist",
+  application: "AIS Connect (application)",
+  manual: "AIS Connect (added by staff)",
+};
 
 /** The Salesforce Account as last read: contact details and the policy fields used for renewals. */
 export interface SfAccountSnapshot {
@@ -128,6 +142,8 @@ export const contacts = pgTable(
     primaryEmail: text("primary_email"),
     phones: jsonb("phones").$type<string[]>().notNull().default([]),
     sfContactId: text("sf_contact_id"),
+    /** Where this person first came from (see RecordSource). Set once, when they're created. */
+    source: text("source").$type<RecordSource>().notNull().default("manual"),
     /** Unsynced on the Salesforce screen: stays linked, but isn't updated from Salesforce. */
     sfSyncPaused: boolean("sf_sync_paused").notNull().default(false),
     /** The linked Salesforce Contact's email and phone as last read. Shown beside the app's, never copied over them. */
