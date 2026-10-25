@@ -33,7 +33,7 @@ export const metadata = { title: "Contacts | AIS Connect" };
 export const dynamic = "force-dynamic";
 
 const FILTERS: { value: DirectoryFilter; label: string }[] = [
-  { value: "all", label: "Anyone" },
+  { value: "all", label: "Any" },
   { value: "app_only", label: "Only in AIS Connect" },
   { value: "sf_only", label: "Only in Salesforce" },
   { value: "la_only", label: "Only in Lead Alchemist" },
@@ -46,12 +46,22 @@ const FILTERS: { value: DirectoryFilter; label: string }[] = [
 ];
 
 const COMPANY_STATES: { value: CompanyState; label: string }[] = [
-  { value: "linked", label: "Has one" },
-  { value: "suggested", label: "Suggested match" },
-  { value: "none", label: "None found" },
+  { value: "linked", label: "Matched to a company" },
+  { value: "suggested", label: "Suggested company (not linked yet)" },
+  { value: "none", label: "No company match" },
 ];
 
 const fmt = (n: number) => n.toLocaleString("en-US");
+
+/** One-click combinations for the usual sweeps. */
+const PRESETS: { label: string; params: Record<string, string> }[] = [
+  { label: "Needs adding to Lead Alchemist", params: { app: "yes", la: "no" } },
+  { label: "Customers not in Lead Alchemist", params: { type: "Customer", la: "no" } },
+  { label: "In Salesforce, no AIS Connect account", params: { sf: "yes", account: "no" } },
+  { label: "Needs adding to Salesforce", params: { app: "yes", sf: "no" } },
+  { label: "Unmatched company", params: { company: "none" } },
+  { label: "Lead Alchemist details differ", params: { filter: "la_outdated" } },
+];
 
 const SYSTEMS = [
   { key: "app", label: "AIS Connect" },
@@ -132,6 +142,18 @@ export default async function Contacts({ searchParams }: PageProps<"/admin/conta
   const [breakdown, selectionRun, types] = await Promise.all([directoryBreakdown(q), getSelectionRun("contacts"), accountTypesAcross()]);
   const runActive = selectionRun?.phase === "running";
   const params = { filter: filter !== "all" ? filter : undefined, app: presence.app, sf: presence.sf, la: presence.la, account, company, tier, type };
+  const filterParams: Record<string, string | undefined> = params;
+  const activeText = [
+    ...SYSTEMS.filter((x) => presence[x.key]).map((x) => `${x.label} = ${presence[x.key] === "yes" ? "Yes" : "No"}`),
+    account && `AIS Connect account = ${account === "yes" ? "Yes" : "No"}`,
+    type && `Account Type = ${type === NO_ACCOUNT_TYPE ? "none" : type}`,
+    tier && `Client tier = ${tier === "primary" ? "Primary" : "Secondary"}`,
+    company && `Company match = ${COMPANY_STATES.find((c) => c.value === company)?.label}`,
+    filter !== "all" && FILTERS.find((f) => f.value === filter)?.label,
+    q && `matching "${q}"`,
+  ]
+    .filter(Boolean)
+    .join(", ");
   const href = pageHref("/admin/contacts", params);
   const comboHref = (c: Record<SystemKey, boolean>) => `/admin/contacts?${new URLSearchParams({ app: c.app ? "yes" : "no", sf: c.sf ? "yes" : "no", la: c.la ? "yes" : "no" })}`;
   const isCombo = (c: Record<SystemKey, boolean>) => filter === "all" && !account && !company && !tier && !type && SYSTEMS.every((x) => presence[x.key] === (c[x.key] ? "yes" : "no"));
@@ -152,6 +174,32 @@ export default async function Contacts({ searchParams }: PageProps<"/admin/conta
         <ImportCard source="lead_alchemist" label="Lead Alchemist" connected={!!laOn} count={counts.leadAlchemist} run={laImport} active={importing === "lead_alchemist"} back={back} />
       </div>
 
+      <div className="mb-3 flex flex-wrap items-center gap-2 text-sm" aria-label="Presets">
+        <span className="text-xs font-semibold uppercase tracking-wide text-[var(--muted)]">Quick filters</span>
+        {PRESETS.map((p) => (
+          <Link key={p.label} className="btn-secondary !px-3 !py-1 text-sm" href={`/admin/contacts?${new URLSearchParams(p.params)}`}>{p.label}</Link>
+        ))}
+      </div>
+
+      <div className="mb-3 flex flex-wrap items-center gap-2 text-sm" aria-label="Where they exist">
+        <span className="text-xs font-semibold uppercase tracking-wide text-[var(--muted)]">Where they exist</span>
+        {SYSTEMS.map((x) => {
+          const now = presence[x.key];
+          const next = now === undefined ? "yes" : now === "yes" ? "no" : undefined;
+          const params = Object.fromEntries(Object.entries({ ...filterParams, [x.key]: next }).filter(([, v]) => v !== undefined) as [string, string][]);
+          return (
+            <Link
+              key={x.key}
+              href={`/admin/contacts?${new URLSearchParams(params)}`}
+              title={`Found in ${x.label}: ${now === "yes" ? "yes" : now === "no" ? "no" : "any"}. Click to change (yes, no, any).`}
+              className={`rounded-full border px-3 py-1 font-medium ${now === "yes" ? "border-[var(--success)] bg-[var(--success-bg)] text-[var(--success)]" : now === "no" ? "border-[var(--danger)] bg-[var(--danger-bg)] text-[var(--danger)]" : "border-[var(--border)] bg-[var(--surface)]"}`}
+            >
+              {x.label} {now === "yes" ? "✓" : now === "no" ? "✗" : "· any"}
+            </Link>
+          );
+        })}
+      </div>
+
       <div className="card mb-4 flex flex-wrap items-end gap-3 !p-4">
         <form action={searchContactsAction} className="flex flex-1 flex-wrap gap-3" role="search">
           <input type="hidden" name="back" value={back} />
@@ -162,66 +210,70 @@ export default async function Contacts({ searchParams }: PageProps<"/admin/conta
             <button name="clear" value="1" className="btn-secondary">Clear</button>
           )}
         </form>
-        <form method="get" className="flex flex-wrap items-end gap-2">
-          {SYSTEMS.map((x) => (
-            <label key={x.key} className="text-sm">
-              <span className="field-label !mb-1">In {x.label}</span>
-              <select name={x.key} defaultValue={presence[x.key] ?? ""} className="input">
-                <option value="">Either</option>
+        <form method="get" className="w-full space-y-3">
+          {SYSTEMS.map((x) => presence[x.key] && <input key={x.key} type="hidden" name={x.key} value={presence[x.key]} />)}
+          <fieldset className="flex flex-wrap items-end gap-3">
+            <legend className="mb-1 text-xs font-semibold uppercase tracking-wide text-[var(--muted)]">Who they are</legend>
+            <label className="text-sm" title="Whether their business has an account in AIS Connect: their own, or the one linked to their Salesforce Account or Lead Alchemist Company">
+              <span className="field-label !mb-1">Has an AIS Connect account</span>
+              <select name="account" defaultValue={account ?? ""} className="input">
+                <option value="">Any</option>
                 <option value="yes">Yes</option>
                 <option value="no">No</option>
               </select>
             </label>
-          ))}
-          <label className="text-sm" title="Their account: their own, or the one linked to their Salesforce Account or Lead Alchemist Company">
-            <span className="field-label !mb-1">Account in AIS Connect</span>
-            <select name="account" defaultValue={account ?? ""} className="input">
-              <option value="">Either</option>
-              <option value="yes">Yes</option>
-              <option value="no">No</option>
-            </select>
-          </label>
-          <label className="text-sm" title="Their account's Salesforce Account Type (the same value as Account Type and Contact Type in Lead Alchemist)">
-            <span className="field-label !mb-1">Account Type</span>
-            <select name="type" defaultValue={type ?? ""} className="input">
-              <option value="">All types</option>
-              {types.map((t) => (
-                <option key={t} value={t}>{t}</option>
-              ))}
-              <option value={NO_ACCOUNT_TYPE}>No type</option>
-            </select>
-          </label>
-          <label className="text-sm" title="Primary: the account's one primary contact. Secondary: everyone else on the account.">
-            <span className="field-label !mb-1">Client tier</span>
-            <select name="tier" defaultValue={tier ?? ""} className="input">
-              <option value="">Any</option>
-              <option value="primary">Primary</option>
-              <option value="secondary">Secondary</option>
-            </select>
-          </label>
-          <label className="text-sm" title="The Lead Alchemist Company they're in or their account is linked to, else a Company with the same name or phone">
-            <span className="field-label !mb-1">Lead Alchemist Company</span>
-            <select name="company" defaultValue={company ?? ""} className="input">
-              <option value="">Any</option>
-              {COMPANY_STATES.map((c) => (
-                <option key={c.value} value={c.value}>{c.label}</option>
-              ))}
-            </select>
-          </label>
-          <label className="text-sm">
-            <span className="field-label !mb-1">Also</span>
-            <select name="filter" defaultValue={filter} className="input">
-              {FILTERS.map((f) => (
-                <option key={f.value} value={f.value}>{f.label}</option>
-              ))}
-            </select>
-          </label>
-          <button className="btn-secondary">Filter</button>
-          {(presence.app || presence.sf || presence.la || account || company || filter !== "all") && (
-            <Link className="btn-link text-sm" href="/admin/contacts">Clear filters</Link>
-          )}
+            <label className="text-sm" title="Their account's Salesforce Account Type (the same value as Account Type and Contact Type in Lead Alchemist)">
+              <span className="field-label !mb-1">Account Type</span>
+              <select name="type" defaultValue={type ?? ""} className="input">
+                <option value="">Any</option>
+                {types.map((t) => (
+                  <option key={t} value={t}>{t}</option>
+                ))}
+                <option value={NO_ACCOUNT_TYPE}>No type</option>
+              </select>
+            </label>
+            <label className="text-sm" title="Primary: the account's one primary contact. Secondary: everyone else on the account.">
+              <span className="field-label !mb-1">Client tier (Primary / Secondary)</span>
+              <select name="tier" defaultValue={tier ?? ""} className="input">
+                <option value="">Any</option>
+                <option value="primary">Primary</option>
+                <option value="secondary">Secondary</option>
+              </select>
+            </label>
+          </fieldset>
+          <fieldset className="flex flex-wrap items-end gap-3">
+            <legend className="mb-1 text-xs font-semibold uppercase tracking-wide text-[var(--muted)]">Matching</legend>
+            <label className="text-sm" title="Whether they (or their account) are matched to a Lead Alchemist Company. This is about the Company, not about whether the person is in Lead Alchemist.">
+              <span className="field-label !mb-1">Lead Alchemist company match</span>
+              <select name="company" defaultValue={company ?? ""} className="input">
+                <option value="">Any</option>
+                {COMPANY_STATES.map((c) => (
+                  <option key={c.value} value={c.value}>{c.label}</option>
+                ))}
+              </select>
+            </label>
+            <label className="text-sm" title="Other checks: details that differ in Lead Alchemist, possible duplicates, and shortcuts for who is (or isn't) in each system">
+              <span className="field-label !mb-1">Other checks</span>
+              <select name="filter" defaultValue={filter} className="input">
+                {FILTERS.map((f) => (
+                  <option key={f.value} value={f.value}>{f.label}</option>
+                ))}
+              </select>
+            </label>
+            <button className="btn-secondary">Filter</button>
+          </fieldset>
         </form>
       </div>
+
+      <p className="mb-4 text-sm" role="status">
+        <span className="font-medium">Showing:</span> {activeText || "everyone"} · {fmt(list.total)} {list.total === 1 ? "person" : "people"}
+        {activeText && (
+          <>
+            {" "}
+            · <Link className="btn-link" href="/admin/contacts">Clear filters</Link>
+          </>
+        )}
+      </p>
 
       {breakdown.total > 0 && (
         <section className="card mb-4 !p-4" aria-labelledby="where-heading">
