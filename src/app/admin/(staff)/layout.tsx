@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { TopBar } from "@/components/portal";
+import { NavMenu } from "@/components/NavMenu";
 import { requireStaff } from "@/lib/auth/session";
 import { userModeAction } from "../actions";
 import { OpenAccessBanner } from "@/components/OpenAccessBanner";
@@ -22,20 +23,29 @@ export default async function StaffLayout({ children }: LayoutProps<"/admin">) {
       <ShiftClickRange />
       <TopBar title="AIS Connect" href="/admin" who={staff.email}>
         <nav className="flex flex-wrap items-center gap-4 font-medium">
-          <Link href="/admin" className="hover:underline">Applications</Link>
-          <Link href="/admin/unfinished" className="hover:underline">Unfinished</Link>
-          <Link href="/admin/clients" className="hover:underline">Accounts</Link>
-          <Link href="/admin/contacts" className="hover:underline">Contacts</Link>
+          <NavMenu
+            label="Applications"
+            items={[
+              { href: "/admin", label: "View all" },
+              { href: "/admin/unfinished", label: "Unfinished" },
+              { href: "/admin/forms", label: "Forms" },
+              { href: "/admin/documents", label: "Documents" },
+            ]}
+          />
+          <NavMenu
+            label="Accounts"
+            items={[
+              { href: "/admin/clients", label: "View all" },
+              { href: "/admin/contacts", label: "Contacts" },
+              { href: "/admin/mapping", label: "Mapping" },
+            ]}
+          />
           <Link href="/admin/salesforce" className="hover:underline">Salesforce</Link>
-          <Link href="/admin/mapping" className="hover:underline">Mapping</Link>
           <Link href="/admin/notifications" className="hover:underline">
             Notifications{alerts > 0 && <span className="badge badge-warning ml-1">{alerts}</span>}
           </Link>
           <Link href="/admin/sync-reports" className="hover:underline">Sync reports</Link>
           <Link href="/admin/assistant" className="hover:underline">Ask AI</Link>
-          <Link href="/admin/lead-alchemist" className="hover:underline">Lead Alchemist setup</Link>
-          <Link href="/admin/forms" className="hover:underline">Forms</Link>
-          <Link href="/admin/documents" className="hover:underline">Documents</Link>
           <Link href="/admin/settings" className="hover:underline">Settings</Link>
           <form action={userModeAction}>
             <button className="btn-link font-medium" title="See the client portal for your own email address">Switch to user mode</button>
