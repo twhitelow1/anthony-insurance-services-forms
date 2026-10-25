@@ -57,7 +57,7 @@ export default async function SettingsPage({ searchParams }: PageProps<"/admin/s
   const sfStageLabels = sf.stages.map((st) => st.label);
 
   return (
-    <div className="mx-auto max-w-3xl">
+    <div className="mx-auto max-w-4xl">
       <h1 className="text-2xl font-semibold">Settings</h1>
       <p className="mb-6 text-sm text-[var(--muted)]">
         Changes apply right away, no redeploy needed. Anything left blank uses its Vercel environment variable. API keys and other
@@ -69,9 +69,38 @@ export default async function SettingsPage({ searchParams }: PageProps<"/admin/s
         <p className="mb-4 rounded-lg bg-[var(--danger-bg)] p-3 text-sm text-[var(--danger)]" role="alert">{sp.error}</p>
       )}
 
-      <form action={saveSettingsAction} className="space-y-6">
+      <nav aria-label="Settings sections" className="sticky top-0 z-20 -mx-4 mb-6 flex flex-wrap items-center gap-2 border-b border-[var(--border)] bg-[var(--bg)] px-4 py-3">
+        <a className="btn-secondary !px-3 !py-1 text-sm" href="#tools">Tools</a>
+        <a className="btn-secondary !px-3 !py-1 text-sm" href="#admins">Admins</a>
+        <a className="btn-secondary !px-3 !py-1 text-sm" href="#notifications">Notifications</a>
+        <a className="btn-secondary !px-3 !py-1 text-sm" href="#email">Email sender</a>
+        <a className="btn-secondary !px-3 !py-1 text-sm" href="#carrier">Carriers</a>
+        <a className="btn-secondary !px-3 !py-1 text-sm" href="#lead-alchemist">Lead Alchemist</a>
+        <a className="btn-secondary !px-3 !py-1 text-sm" href="#salesforce">Salesforce</a>
+        <button form="settings-form" className="btn-primary ml-auto !px-3 !py-1 text-sm">Save settings</button>
+      </nav>
+
+      <section id="tools" className="mb-6 scroll-mt-24" aria-labelledby="tools-heading">
+        <h2 id="tools-heading" className="scroll-mt-24 mb-3 font-semibold">Tools</h2>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {[
+            { href: "/admin/settings/integrations", title: "Integrations", text: "Enter and test the Salesforce and Lead Alchemist keys. AIS Connect never deletes anything in either." },
+            { href: "/admin/settings/mapping", title: "Data mapping", text: "Bring Salesforce Accounts in, link accounts to Lead Alchemist Companies, send past applications to Salesforce." },
+            { href: "/admin/salesforce", title: "Salesforce Accounts", text: "Every Salesforce Account and Contact: sync into AIS Connect, unsync, deactivate, match people to Lead Alchemist." },
+            { href: "/admin/lead-alchemist", title: "Lead Alchemist setup", text: "The connection, and every Lead Alchemist pipeline and stage." },
+            { href: "/admin/sync-reports", title: "Sync reports", text: "The result of every bulk sync: what was done, skipped, in conflict or failed." },
+          ].map((t) => (
+            <Link key={t.href} href={t.href} className="card block !p-4 hover:border-[var(--brand)]">
+              <span className="font-semibold">{t.title} →</span>
+              <span className="mt-1 block text-sm text-[var(--muted)]">{t.text}</span>
+            </Link>
+          ))}
+        </div>
+      </section>
+
+      <form id="settings-form" action={saveSettingsAction} className="space-y-6">
         <section className="card !p-5" aria-labelledby="admins">
-          <h2 id="admins" className="mb-3 font-semibold">Admins</h2>
+          <h2 id="admins" className="scroll-mt-24 mb-3 font-semibold">Admins</h2>
           <label className="field-label" htmlFor="staffEmails">Who can sign in to admin (one email per line)</label>
           <textarea id="staffEmails" name="staffEmails" rows={4} className="input" defaultValue={lines(saved.staffEmails)} placeholder="melanie@anthonyinsuranceservices.com" />
           {env.staffEmails.length > 0 && (
@@ -84,14 +113,14 @@ export default async function SettingsPage({ searchParams }: PageProps<"/admin/s
         </section>
 
         <section className="card !p-5" aria-labelledby="notifications">
-          <h2 id="notifications" className="mb-3 font-semibold">Notifications</h2>
+          <h2 id="notifications" className="scroll-mt-24 mb-3 font-semibold">Notifications</h2>
           <label className="field-label" htmlFor="notifyEmails">Email these people about every new application (one per line)</label>
           <textarea id="notifyEmails" name="notifyEmails" rows={3} className="input" defaultValue={lines(saved.notifyEmails)} />
           <FromVercel value={env.notifyEmails.join(", ")} saved={!!saved.notifyEmails} />
         </section>
 
         <section className="card !p-5" aria-labelledby="email">
-          <h2 id="email" className="mb-3 font-semibold">Email sender</h2>
+          <h2 id="email" className="scroll-mt-24 mb-3 font-semibold">Email sender</h2>
           <p className="mb-3 text-sm">
             Resend: {resendConfigured() ? <span className="badge badge-success">connected</span> : <span className="badge">RESEND_API_KEY missing in Vercel</span>}
           </p>
@@ -102,17 +131,21 @@ export default async function SettingsPage({ searchParams }: PageProps<"/admin/s
           <label className="field-label mt-4" htmlFor="mailReplyTo">Replies go to</label>
           <input id="mailReplyTo" name="mailReplyTo" type="email" className="input" defaultValue={saved.mailReplyTo ?? ""} placeholder={env.mailReplyTo || "melanie@anthonyinsuranceservices.com"} />
           <FromVercel value={env.mailReplyTo} saved={!!saved.mailReplyTo} />
+          <div className="mt-4">
+            <button formAction={sendTestEmailAction} className="btn-secondary" disabled={!resendConfigured()}>Send me a test email</button>
+            <Hint>Uses the saved sender settings. Save first if you changed them.</Hint>
+          </div>
         </section>
 
         <section className="card !p-5" aria-labelledby="carrier">
-          <h2 id="carrier" className="mb-3 font-semibold">Carrier submissions</h2>
+          <h2 id="carrier" className="scroll-mt-24 mb-3 font-semibold">Carrier submissions</h2>
           <label className="field-label" htmlFor="carrierEmails">Carrier email (pre-filled on the &quot;email to carrier&quot; draft)</label>
           <textarea id="carrierEmails" name="carrierEmails" rows={2} className="input" defaultValue={lines(saved.carrierEmails)} />
           <FromVercel value={env.carrierEmails.join(", ")} saved={!!saved.carrierEmails} />
         </section>
 
         <section className="card !p-5" aria-labelledby="lead-alchemist">
-          <h2 id="lead-alchemist" className="mb-1 font-semibold">Lead Alchemist pipeline</h2>
+          <h2 id="lead-alchemist" className="scroll-mt-24 mb-1 font-semibold">Lead Alchemist pipeline</h2>
           <p className="mb-3 text-sm text-[var(--muted)]">
             Check the connection and see every Lead Alchemist pipeline and stage on{" "}
             <Link className="btn-link" href="/admin/lead-alchemist">Lead Alchemist setup</Link>.
@@ -201,26 +234,8 @@ export default async function SettingsPage({ searchParams }: PageProps<"/admin/s
           <Hint>Pick stages from the applications pipeline. Bound, declined and withdrawn also mark the opportunity won, lost or abandoned.</Hint>
         </section>
 
-        <section className="card !p-5" aria-labelledby="integrations">
-          <h2 id="integrations" className="mb-1 font-semibold">Integrations</h2>
-          <p className="mb-3 text-sm text-[var(--muted)]">
-            Enter and test the Salesforce and Lead Alchemist keys. The app reads, creates and makes limited updates in both, and never deletes
-            anything there: records are deleted only in Salesforce or Lead Alchemist.
-          </p>
-          <Link className="btn-secondary" href="/admin/settings/integrations">Open integrations</Link>
-        </section>
-
-        <section className="card !p-5" aria-labelledby="mapping">
-          <h2 id="mapping" className="mb-1 font-semibold">Data mapping</h2>
-          <p className="mb-3 text-sm text-[var(--muted)]">
-            Bring every Salesforce Account into AIS Connect, link its accounts to Lead Alchemist Companies, and send past applications to
-            Salesforce. Each one shows its proposed matches side by side for you to check and change, and writes nothing until you confirm.
-          </p>
-          <Link className="btn-secondary" href="/admin/settings/mapping">Open data mapping</Link>
-        </section>
-
         <section className="card !p-5" aria-labelledby="salesforce">
-          <h2 id="salesforce" className="mb-1 font-semibold">Salesforce</h2>
+          <h2 id="salesforce" className="scroll-mt-24 mb-1 font-semibold">Salesforce</h2>
           <p className="mb-3 text-sm text-[var(--muted)]">
             Submitted applications (never test ones) create or link the business&apos;s Account, the Contact who filled it out and an Opportunity, upload the PDF and
             post a note. Set up in docs/salesforce-setup.md.
@@ -330,10 +345,6 @@ export default async function SettingsPage({ searchParams }: PageProps<"/admin/s
         <button className="btn-primary">Save settings</button>
       </form>
 
-      <form action={sendTestEmailAction} className="mt-6">
-        <button className="btn-secondary" disabled={!resendConfigured()}>Send me a test email</button>
-        <Hint>Uses the saved sender settings. Save first if you changed them.</Hint>
-      </form>
     </div>
   );
 }
