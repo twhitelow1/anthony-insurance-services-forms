@@ -55,6 +55,8 @@ export function leadAlchemistErrorMessage(method: string, path: string, status: 
   const where = path.split("?")[0];
   if ((status === 401 || status === 403) && COMPANY_PATHS.test(path))
     return `Lead Alchemist won't let AIS Connect use Companies (${status}): the token is missing the Companies scopes. In Lead Alchemist, open Settings → Private Integrations, edit AIS Connect's integration, add the two Companies scopes (listed as businesses.readonly and businesses.write), and save. If it shows a new token, paste it in Admin → Settings → Integrations.`;
+  if ((status === 401 || status === 403) && /^\/objects\//.test(path))
+    return `Lead Alchemist won't let AIS Connect fill in Company fields (${status}): the token is missing the Objects scopes. In Lead Alchemist, open Settings → Private Integrations, edit AIS Connect's integration, add objects/schema.readonly, objects/record.readonly and objects/record.write, and save. If it shows a new token, paste it in Admin → Settings → Integrations.`;
   if (status === 401 || status === 403)
     return `Lead Alchemist refused ${method} ${where} (${status}): the token is invalid or missing a scope. Check it in Admin → Settings → Integrations (Test connection).`;
   return `Lead Alchemist ${method} ${where} failed: ${status}`;
@@ -390,4 +392,43 @@ export async function addContactsToBusiness(contactIds: string[], businessId: st
       cache: "no-store",
     });
   }
+}
+
+// ── Company custom fields (the Objects API: Companies are the "business" object) ─────
+// Scopes: objects/schema.readonly, objects/record.readonly, objects/record.write.
+
+export interface GhlObjectField {
+  name: string;
+  /** e.g. "business.renewal_status"; the record's property key is the part after "business.". */
+  fieldKey: string;
+  dataType: string; // TEXT, LARGE_TEXT, NUMERICAL, MONETORY, DATE, SINGLE_OPTIONS, MULTIPLE_OPTIONS, CHECKBOX, RADIO, ...
+  options?: { key: string; label: string }[];
+  standard?: boolean;
+}
+
+/** The Company object's fields (standard and custom). */
+export async function listBusinessFields(): Promise<GhlObjectField[]> {
+  const { locationId } = (await ghlConfig())!;
+  const data = await ghlFetch<{ fields?: GhlObjectField[] }>(`/objects/business?locationId=${encodeURIComponent(locationId)}&fetchProperties=true`, { cache: "no-store" });
+  return data.fields ?? [];
+}
+
+/** A Company's field values, keyed like `properties` on a write. */
+export async function getBusinessProperties(id: string): Promise<Record<string, unknown>> {
+  const { locationId } = (await ghlConfig())!;
+  const data = await ghlFetch<{ record?: { properties?: Record<string, unknown> } }>(
+    `/objects/business/records/${encodeURIComponent(id)}?locationId=${encodeURIComponent(locationId)}`,
+    { cache: "no-store" },
+  );
+  return data.record?.properties ?? {};
+}
+
+/** Set some of a Company's field values (only the ones given change). */
+export async function updateBusinessProperties(id: string, properties: Record<string, unknown>) {
+  const { locationId } = (await ghlConfig())!;
+  return ghlFetch(`/objects/business/records/${encodeURIComponent(id)}?locationId=${encodeURIComponent(locationId)}`, {
+    method: "PUT",
+    body: JSON.stringify({ properties }),
+    cache: "no-store",
+  });
 }

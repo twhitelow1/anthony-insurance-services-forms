@@ -423,6 +423,7 @@ export type ClientEventType =
   | "contact_moved"
   | "imported"
   | "la_company_linked"
+  | "la_company_updated"
   | "duplicate_resolved"
   | "sf_sync_paused"
   | "sf_sync_resumed"

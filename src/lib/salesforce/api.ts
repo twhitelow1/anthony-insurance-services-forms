@@ -11,6 +11,8 @@ export interface PicklistValue {
 
 export interface FieldDescribe {
   name: string;
+  /** What Salesforce shows staff, e.g. "Renewal Status". */
+  label?: string;
   /** string, picklist, multipicklist, url, double, currency, date, boolean, reference, ... */
   type: string;
   length?: number;

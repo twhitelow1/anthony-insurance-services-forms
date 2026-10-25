@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { linksFor } from "@/lib/integrations/urls";
-import { ensureClient, getClient, getContactByEmail } from "@/lib/clients/repo";
+import { createAccount, ensureClient, ensureContact, getClient, getContactByEmail, listClientEvents } from "@/lib/clients/repo";
+import { mockSalesforce } from "@/test/salesforce-mock";
 
 // Lead Alchemist stand-in. `scope` false = the token lacks the Businesses scopes (401 on Companies).
 const la = vi.hoisted(() => ({
@@ -8,6 +9,17 @@ const la = vi.hoisted(() => ({
   businesses: [] as { id: string; name: string }[],
   contacts: new Map<string, { id: string; email?: string; phone?: string; firstName?: string; lastName?: string; businessId?: string | null; companyName?: string; customFields?: unknown; tags?: string[]; type?: string }>(),
   attached: [] as { ids: string[]; businessId: string }[],
+  companyProps: new Map<string, Record<string, unknown>>(),
+  companyFields: [
+    { name: "Program", fieldKey: "business.program", dataType: "SINGLE_OPTIONS", options: [{ key: "gymnastics", label: "Gymnastics" }] },
+    { name: "Legal Entity", fieldKey: "business.legal_entity", dataType: "SINGLE_OPTIONS", options: [{ key: "llc", label: "LLC" }] },
+    { name: "GL Aggregate Limit", fieldKey: "business.gl_aggregate_limit", dataType: "MONETORY" },
+    { name: "Number of Participants", fieldKey: "business.number_of_participants", dataType: "NUMERICAL" },
+    { name: "Effective Date", fieldKey: "business.effective_date", dataType: "DATE" },
+    { name: "Account Owner Alias", fieldKey: "business.account_owner_alias", dataType: "TEXT" },
+    { name: "Inland Marine Policy", fieldKey: "business.inland_marine_policy", dataType: "TEXT" },
+    { name: "Company Name", fieldKey: "business.name", dataType: "TEXT", standard: true },
+  ],
 }));
 vi.mock("@/lib/ghl/client", async (orig) => {
   const real = await orig<typeof import("@/lib/ghl/client")>();
@@ -54,6 +66,12 @@ vi.mock("@/lib/ghl/client", async (orig) => {
       return {};
     },
     listCustomFields: async () => [],
+    listBusinessFields: async () => la.companyFields,
+    getBusinessProperties: async (id: string) => ({ ...(la.companyProps.get(id) ?? {}) }),
+    updateBusinessProperties: async (id: string, props: Record<string, unknown>) => {
+      la.companyProps.set(id, { ...(la.companyProps.get(id) ?? {}), ...props });
+      return {};
+    },
     createCustomField: async (name: string) => ({ id: `f-${name}`, name, fieldKey: name }),
   };
 });
@@ -282,5 +300,48 @@ describe("the sync report counts every contact", () => {
     await syncAccountsToLeadAlchemist([clientId], ACTOR, { sf: null, links: LINKS });
     expect(JSON.stringify(la.contacts.get(`eve-${tag}`)!.customFields)).not.toContain("f-Account Type");
     expect(la.contacts.get(`eve-${tag}`)!.type).toBeUndefined();
+  });
+});
+
+describe("Salesforce Account details → Lead Alchemist Company fields", () => {
+  it("fills the Company's matching custom fields from Salesforce, changes only what differs, and never blanks", async () => {
+    la.scope = true;
+    const { syncAccountsToLeadAlchemist } = await import("./database");
+    const tag = uniq();
+    const sf = mockSalesforce();
+    const { id: sfId } = await sf.api.create("Account", {
+      Name: `Field Gym ${tag}`,
+      Program__c: "Gymnastics",
+      Legal_Entity__c: "LLC",
+      GL_Aggregate_Limit__c: 2000000,
+      Number_of_Participants__c: 120,
+      Effective_Date__c: "2026-03-01",
+      Owner: { Alias: "abaker" },
+    });
+    const account = await createAccount({ name: `Field Gym ${tag}`, sfAccountId: sfId });
+    await ensureContact({ clientId: account.id, name: `Fi ${tag}`, email: `f.${tag}@gmail.com` });
+
+    const r = await syncAccountsToLeadAlchemist([account.id], ACTOR, { sf: sf.api, links: LINKS }, { createMissing: true });
+    const company = (await getClient(account.id))!.ghlCompanyId!;
+    expect(la.companyProps.get(company)).toEqual({
+      program: "gymnastics",
+      legal_entity: "llc",
+      gl_aggregate_limit: { currency: "default", value: 2000000 },
+      number_of_participants: 120,
+      effective_date: "2026-03-01",
+      account_owner_alias: "abaker",
+    });
+    expect(r.notes.join(" ")).toMatch(/Company details updated from Salesforce: Program \(empty\) → gymnastics/);
+    expect((await listClientEvents(account.id)).some((e) => e.type === "la_company_updated")).toBe(true);
+
+    // Salesforce changes one value and empties another: only the change is written; nothing is blanked.
+    const rec = sf.records.Account.find((a) => a.Id === sfId)!;
+    rec.Number_of_Participants__c = 150;
+    rec.Program__c = null;
+    rec.Legal_Entity__c = "Partnership"; // not an option in Lead Alchemist
+    const again = await syncAccountsToLeadAlchemist([account.id], ACTOR, { sf: sf.api, links: LINKS });
+    expect(la.companyProps.get(company)).toMatchObject({ program: "gymnastics", legal_entity: "llc", number_of_participants: 150 });
+    expect(again.notes.join(" ")).toMatch(/Number of Participants 120 → 150/);
+    expect(again.notes.join(" ")).toMatch(/Legal Entity: "Partnership" isn't one of its options/);
   });
 });

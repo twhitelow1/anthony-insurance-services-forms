@@ -1,4 +1,5 @@
 import "server-only";
+import { pushCompanyFields } from "@/lib/ghl/company-fields";
 import { and, asc, count, eq, ilike, inArray, isNotNull, isNull, or, sql, type SQL } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
 import type { Client, Contact } from "@/lib/db/schema";
@@ -393,6 +394,21 @@ export async function syncAccountsToLeadAlchemist(
       if (people.length) result.notes.push(`${account.name}: ${describeTally(r.tally)}.`);
       result.notes.push(...r.notes.map((n) => `${account.name}: ${n}`));
       if (deps.sf && account.sfAccountId) await writeAccountLinks(deps.sf, deps.links, { ...account, ghlCompanyId: companyId }).catch(() => {});
+      if (deps.sf && account.sfAccountId && companies && companyId) {
+        // The Salesforce Account's details into the Company's custom fields (Program, Renewal Status, …).
+        try {
+          const f = await pushCompanyFields(deps.sf, account.sfAccountId, companyId);
+          if (f.changed.length) {
+            result.notes.push(`${account.name}: Company details updated from Salesforce: ${f.changed.map((c) => `${c.field} ${c.from} → ${c.to}`).join("; ")}.`);
+            await addClientEvent(account.id, "la_company_updated", actor, {
+              message: `Lead Alchemist Company details updated from Salesforce: ${f.changed.map((c) => `${c.field} ${c.from} → ${c.to}`).join("; ")}`,
+            });
+          }
+          result.notes.push(...f.skipped.map((n) => `${account.name}: Company field not filled in: ${n}`));
+        } catch (err) {
+          result.notes.push(`${account.name}: Company details weren't filled in: ${err instanceof Error ? err.message : String(err)}`);
+        }
+      }
       if (!r.tally.failed && !skippedOf(r.tally)) result.done++;
     } catch (err) {
       result.notes.push(`${account.name}: failed: ${err instanceof Error ? err.message : String(err)}`);
