@@ -573,8 +573,11 @@ export async function addToApp(groups: string[][], actor: string, deps: { sf: Sa
   const result: BulkResult & { contactIds: string[] } = { done: 0, notes: [], contactIds: [] };
   const started = Date.now();
   let left = groups.length;
-  for (const ids of groups) {
-    if (Date.now() - started > budgetMs) break;
+  for (const [i, ids] of groups.entries()) {
+    if (Date.now() - started > budgetMs) {
+      result.notReached = groups.slice(i).map((g) => `d:${g.join(".")}`);
+      break;
+    }
     left--;
     const rows = await db.select().from(d).where(inArray(d.id, ids));
     if (!rows.length) continue;
@@ -649,7 +652,9 @@ export async function sendToLeadAlchemist(values: string[], actor: string, deps:
   if (!ids.length) return { done: 0, notes: added.notes };
   const r = await syncContactsToLeadAlchemist(ids, actor, deps, { createMissing, timeBudgetMs: 25_000 });
   await rematch();
-  return { done: r.done, notes: [...added.notes, ...r.notes], contacts: r.contacts };
+  // People not reached go back in the queue by their AIS Connect key (they may have just been added).
+  const notReached = [...(added.notReached ?? []), ...(r.notReached ?? []).map((id) => `a:${id}`)];
+  return { done: r.done, notes: [...added.notes, ...r.notes], contacts: r.contacts, notReached };
 }
 
 /** Selected people → app (if needed) → Salesforce, under their account's Salesforce Account. */

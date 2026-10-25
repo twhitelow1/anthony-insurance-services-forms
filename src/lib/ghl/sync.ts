@@ -222,11 +222,23 @@ export function applicationNote(
 const ensureOnce = new Map<string, Promise<{ fields: GhlCustomField[]; missing: string[] }>>();
 export const resetOpportunityFieldCache = () => ensureOnce.clear();
 
+const fieldCache = new Map<string, { at: number; fields: GhlCustomField[] }>();
+
 export async function ensureCustomFields(model: "contact" | "opportunity", names: string[]): Promise<{ fields: GhlCustomField[]; missing: string[] }> {
-  const fields = await listCustomFields(model).catch((err) => {
-    console.warn(`[ghl] couldn't list ${model} custom fields`, err);
-    return [] as GhlCustomField[];
-  });
+  // Read once per few minutes: a sync writes these fields on every contact.
+  const cached = fieldCache.get(model);
+  const fields =
+    cached && !process.env.VITEST && Date.now() - cached.at < 300_000
+      ? cached.fields
+      : await listCustomFields(model)
+          .then((list) => {
+            fieldCache.set(model, { at: Date.now(), fields: list });
+            return list;
+          })
+          .catch((err) => {
+            console.warn(`[ghl] couldn't list ${model} custom fields`, err);
+            return [] as GhlCustomField[];
+          });
   const absent = names.filter((n) => !findField(fields, n));
   if (!absent.length) return { fields, missing: [] };
   const key = `${model}:${absent.join("|")}`;
@@ -251,6 +263,7 @@ export async function ensureCustomFields(model: "contact" | "opportunity", names
   const made = await ensureOnce.get(key)!;
   // A failed attempt is retried on a later submission (the token's scopes may have been fixed).
   if (made.missing.length) ensureOnce.delete(key);
+  if (made.fields.length) fieldCache.delete(model);
   return { fields: [...fields, ...made.fields], missing: made.missing };
 }
 

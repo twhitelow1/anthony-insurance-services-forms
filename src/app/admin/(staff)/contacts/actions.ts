@@ -5,7 +5,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { requireStaff } from "@/lib/auth/session";
 import { saveSyncReport } from "@/lib/bulk/report";
-import { startSelectionRun, stepSelectionRun, stopSelectionRun, type BatchResult } from "@/lib/bulk/selection-run";
+import { INLINE_LIMIT, startSelectionRun, stepSelectionRun, stopSelectionRun, type BatchResult } from "@/lib/bulk/selection-run";
 import {
   addSelectedToApp,
   directoryKeys,
@@ -115,6 +115,16 @@ async function bulk(formData: FormData, key: keyof typeof WORK): Promise<never> 
   }
   const values = selected(formData);
   if (!values.length) return finish(backTo(formData), "error", "Tick at least one person first.");
+  // More than a few: run in batches that continue on their own, with one report at the end.
+  const asRun = async (ids: string[], scopeText: string, prefix = "") => {
+    try {
+      await startSelectionRun("contacts", { action: key, label: verb, options, ids, scopeText }, actor);
+    } catch (err) {
+      return finish(backTo(formData), "error", err instanceof Error ? err.message : String(err));
+    }
+    return finish(backTo(formData), "ok", `${prefix}Running on ${ids.length.toLocaleString("en-US")} people in batches. Keep this page open; it continues on its own and ends with a sync report.`);
+  };
+  if (values.length > INLINE_LIMIT) return asRun(values, `${values.length} ticked on Contacts`);
   let r: BatchResult;
   try {
     r = await work(values, actor, options);
@@ -124,6 +134,7 @@ async function bulk(formData: FormData, key: keyof typeof WORK): Promise<never> 
     return finish(backTo(formData), "error", message);
   }
   const report = await saveSyncReport({ title: verb, scope: `${values.length} ticked on Contacts`, page: backTo(formData), actor, total: values.length, done: r.done, notes: r.notes, contacts: r.contacts });
+  if (r.notReached?.length) return asRun(r.notReached, `the rest of ${values.length} ticked on Contacts`, `${report.text} `);
   return finish(backTo(formData), report.clean ? "ok" : "warn", report.text, report.href);
 }
 

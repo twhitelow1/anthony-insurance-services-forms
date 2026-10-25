@@ -265,6 +265,8 @@ export interface BulkResult {
   notes: string[];
   /** Lead Alchemist syncs: what happened to each contact. */
   contacts?: ContactTally;
+  /** Rows not reached before the time limit (a "select all" run queues them again). */
+  notReached?: string[];
 }
 
 /** Write the app's links onto a Salesforce Account (only fields the org has, only when known). */
@@ -301,6 +303,18 @@ const COMPANIES_BLOCKED =
   "Companies were skipped: the Lead Alchemist token is missing the Companies scopes (Settings → Private Integrations → add businesses.readonly and businesses.write). Contacts were still linked.";
 
 /**
+ * Every Lead Alchemist Company, read once and reused for two minutes, so a run's batches don't
+ * each re-read the whole list. Companies the sync creates are added to the same list.
+ */
+let companyCache: { at: number; list: GhlBusiness[] } | null = null;
+async function companiesForSync(): Promise<GhlBusiness[]> {
+  if (companyCache && !process.env.VITEST && Date.now() - companyCache.at < 120_000) return companyCache.list;
+  const list = await listBusinesses();
+  companyCache = { at: Date.now(), list };
+  return list;
+}
+
+/**
  * Accounts → Lead Alchemist, the one sync every screen uses (Mapping, Accounts → Across all three,
  * the account page, Contacts and "Select all N matching" runs). Per account: link the Company it's
  * linked to, else the one with exactly the same name, else create it (one per account, never one
@@ -320,7 +334,7 @@ export async function syncAccountsToLeadAlchemist(
   opts: LeadAlchemistSyncOptions = {},
 ): Promise<BulkResult> {
   if (!(await ghlConfig())) throw new Error("Lead Alchemist isn't connected. Add the keys in Settings → Integrations.");
-  let companies: GhlBusiness[] | null = await listBusinesses().catch((err) => {
+  let companies: GhlBusiness[] | null = await companiesForSync().catch((err) => {
     if (isScopeError(err)) return null;
     throw err;
   });
@@ -383,7 +397,10 @@ export async function syncAccountsToLeadAlchemist(
     }
   }
   if (!companies) result.notes.unshift(COMPANIES_BLOCKED);
-  if (reached < ids.length) result.notes.unshift(notReached(ids.length - reached, "account"));
+  if (reached < ids.length) {
+    result.notes.unshift(notReached(ids.length - reached, "account"));
+    result.notReached = ids.slice(reached);
+  }
   return result;
 }
 
@@ -569,8 +586,14 @@ export async function syncContactsToLeadAlchemist(contactIds: string[], actor: s
   const people = await db.select({ id: schema.contacts.id, clientId: schema.contacts.clientId }).from(schema.contacts).where(inArray(schema.contacts.id, ids));
   const accountIds = [...new Set(people.map((p) => p.clientId))];
   const r = await syncAccountsToLeadAlchemist(accountIds, actor, deps, { ...opts, contactIds: ids });
+  const skippedAccounts = new Set(r.notReached ?? []);
   // Done = people now linked and in their Company.
-  return { done: r.contacts ? r.contacts.linked + r.contacts.created : 0, notes: r.notes, contacts: r.contacts };
+  return {
+    done: r.contacts ? r.contacts.linked + r.contacts.created : 0,
+    notes: r.notes,
+    contacts: r.contacts,
+    notReached: people.filter((p) => skippedAccounts.has(p.clientId)).map((p) => p.id),
+  };
 }
 
 /** Link selected contacts to their Lead Alchemist contact where there's exactly one email or phone match. */

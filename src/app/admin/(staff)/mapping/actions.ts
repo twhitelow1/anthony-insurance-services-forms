@@ -8,7 +8,7 @@ import { setFlash } from "@/lib/flash";
 import { ghlConfig } from "@/lib/ghl/client";
 import { links } from "@/lib/integrations/links";
 import { saveSyncReport } from "@/lib/bulk/report";
-import { startSelectionRun, stepSelectionRun, stopSelectionRun } from "@/lib/bulk/selection-run";
+import { INLINE_LIMIT, startSelectionRun, stepSelectionRun, stopSelectionRun } from "@/lib/bulk/selection-run";
 import { findLaMatches, resetLaMatches } from "@/lib/mapping/la-matches";
 import type { CompanyFilter } from "@/lib/mapping/company-match";
 import {
@@ -172,6 +172,17 @@ async function bulk(formData: FormData, key: keyof typeof WORK): Promise<never> 
   }
   const ids = rowValues(formData, key);
   if (!ids.length) return finish(formData, "error", "Tick at least one row first.");
+  const tabName = new URL(backTo(formData), "http://x").searchParams.get("tab") ?? "accounts";
+  // More than a few: run in batches that continue on their own, with one report at the end.
+  const asRun = async (runIds: string[], scopeText: string, prefix = "") => {
+    try {
+      await startSelectionRun("mapping", { action: key, label: verb, options, ids: runIds, scopeText }, actor);
+    } catch (err) {
+      return finish(formData, "error", err instanceof Error ? err.message : String(err));
+    }
+    return finish(formData, "ok", `${prefix}Running on ${runIds.length.toLocaleString("en-US")} rows in batches. Keep this page open; it continues on its own and ends with a sync report.`);
+  };
+  if (ids.length > INLINE_LIMIT) return asRun(ids, `${ids.length} ticked on Mapping → ${tabName}`);
   let r: BulkResult;
   try {
     r = await work(ids, actor, options);
@@ -182,6 +193,7 @@ async function bulk(formData: FormData, key: keyof typeof WORK): Promise<never> 
   }
   const tab = new URL(backTo(formData), "http://x").searchParams.get("tab") ?? "accounts";
   const report = await saveSyncReport({ title: verb, scope: `${ids.length} ticked on Mapping → ${tab}`, page: backTo(formData), actor, total: ids.length, done: r.done, notes: r.notes, contacts: r.contacts });
+  if (r.notReached?.length) return asRun(r.notReached, `the rest of ${ids.length} ticked on Mapping → ${tab}`, `${report.text} `);
   return finish(formData, report.clean ? "ok" : "warn", report.text, report.href);
 }
 
