@@ -83,6 +83,7 @@ async function listFilters(formData: FormData) {
   const account = yesNo(p.get("account"));
   const company = COMPANY.find((c) => c === p.get("company"));
   const tier = p.get("tier") === "primary" || p.get("tier") === "secondary" ? (p.get("tier") as "primary" | "secondary") : undefined;
+  const type = p.get("type")?.slice(0, 80) || undefined;
   const q = (await cookies()).get(CONTACT_SEARCH_COOKIE)?.value ?? "";
   const words = [
     q && `matching "${q}"`,
@@ -91,8 +92,9 @@ async function listFilters(formData: FormData) {
     account && `account in AIS Connect: ${account}`,
     company && `Lead Alchemist Company: ${company}`,
     tier && `client tier: ${tier}`,
+    type && `Account Type: ${type === "__none__" ? "none" : type}`,
   ].filter(Boolean);
-  return { q, filter, presence, account, company, tier, text: words.length ? `Contacts ${words.join(", ")}` : "All contacts" };
+  return { q, filter, presence, account, company, tier, type, text: words.length ? `Contacts ${words.join(", ")}` : "All contacts" };
 }
 
 async function bulk(formData: FormData, key: keyof typeof WORK): Promise<never> {

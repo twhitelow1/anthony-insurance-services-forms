@@ -3,7 +3,7 @@ import { and, eq, inArray, isNull, lt, sql } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
 import type { DirectoryContact } from "@/lib/db/schema";
 import { nameKey, phoneDigits } from "@/lib/clients/text";
-import { addClientEvent, createAccount, ensureContact, refreshSearch } from "@/lib/clients/repo";
+import { addClientEvent, createAccount, ensureContact, NO_ACCOUNT_TYPE, refreshSearch } from "@/lib/clients/repo";
 import { ghlConfig, isScopeError, listBusinesses, listContactsPage, type GhlBusiness, type GhlContact } from "@/lib/ghl/client";
 import { laName } from "@/lib/ghl/match";
 import type { Links } from "@/lib/integrations/urls";
@@ -268,6 +268,8 @@ export interface DirectoryRow {
   laOutdated: boolean;
   /** Client tier on their AIS Connect account (null when they aren't in AIS Connect). */
   tier: "primary" | "secondary" | null;
+  /** Their account's Salesforce Account Type. */
+  accountType: string | null;
   /** Their AIS Connect account: their own, or (not in AIS Connect yet) the one linked to their Salesforce Account or Lead Alchemist Company. */
   account: { id: string; name: string; sfAccountId: string | null } | null;
   /** The Lead Alchemist Company they're in, or their account is linked to. */
@@ -289,6 +291,8 @@ export interface DirectoryQuery {
   company?: CompanyState;
   /** Client tier on their AIS Connect account. */
   tier?: "primary" | "secondary";
+  /** Their account's Salesforce Account Type (e.g. "Customer"), or NO_ACCOUNT_TYPE for none. */
+  type?: string | null;
 }
 
 const FILTER_SQL: Record<DirectoryFilter, string> = {
@@ -311,7 +315,7 @@ const COMPANY_SQL: Record<CompanyState, string> = {
 };
 
 /** The WHERE clause for the list (over `enriched p`). */
-function whereSql({ q, filter = "all", presence, account, company, tier }: DirectoryQuery) {
+function whereSql({ q, filter = "all", presence, account, company, tier, type }: DirectoryQuery) {
   const parts = [
     FILTER_SQL[filter],
     presenceSql(presence),
@@ -319,7 +323,8 @@ function whereSql({ q, filter = "all", presence, account, company, tier }: Direc
     company ? COMPANY_SQL[company] : "true",
     tier ? `tier = '${tier === "primary" ? "primary" : "secondary"}'` : "true",
   ];
-  return sql`${sql.raw(parts.join(" and "))} ${searchSql(q)}`;
+  const typeSql = !type ? sql`` : type === NO_ACCOUNT_TYPE ? sql`and nullif(p.acct_type, '') is null` : sql`and p.acct_type = ${type}`;
+  return sql`${sql.raw(parts.join(" and "))} ${searchSql(q)} ${typeSql}`;
 }
 
 /** In (yes) or not in (no) a system; leave a system out for "either". */
@@ -409,6 +414,8 @@ const enrichedSql = () => sql`
       select f.*,
         acct.id as acct_id, acct.name as acct_name, acct.sf_account_id as acct_sf_id,
         case when f.app_id is null or f.client_id is null then null when acct.primary_contact_id::text = f.app_id then 'primary' else 'secondary' end as tier,
+        -- Their account's Salesforce Account Type: the AIS Connect account's, else their Salesforce Account's.
+        coalesce(nullif(acct.sf_account_type, ''), (select da.type from directory_accounts da where da.id = coalesce(acct.sf_account_id, f.sf_company_id))) as acct_type,
         coalesce(acct.ghl_company_id, f.la_company_id) as co_id,
         (select dc.name from directory_companies dc where dc.id = coalesce(acct.ghl_company_id, f.la_company_id)) as co_name,
         sug.id as sug_id, sug.name as sug_name, sug.how as sug_how,
@@ -425,7 +432,7 @@ const enrichedSql = () => sql`
         ) as id
       ) aid on true
       left join lateral (
-        select cl.id::text as id, cl.name, cl.name_key, cl.phones, cl.ghl_company_id, cl.sf_account_id, cl.primary_contact_id from clients cl where cl.id = aid.id
+        select cl.id::text as id, cl.name, cl.name_key, cl.phones, cl.ghl_company_id, cl.sf_account_id, cl.primary_contact_id, cl.sf_account_type from clients cl where cl.id = aid.id
       ) acct on true
       left join lateral (
         select dc.id, dc.name, case when dc.name_key = coalesce(nullif(acct.name_key, ''), f.sf_key) then 'same name' else 'same phone' end as how
@@ -488,6 +495,7 @@ export async function listDirectory({
     sfAccountId: (r.sf_company_id as string) ?? null,
     laOutdated: !!r.la_outdated,
     tier: (r.tier as "primary" | "secondary" | null) ?? null,
+    accountType: (r.acct_type as string) ?? null,
     account: r.acct_id ? { id: r.acct_id as string, name: (r.acct_name as string) ?? "Account", sfAccountId: (r.acct_sf_id as string) ?? null } : null,
     company: r.co_id ? { id: r.co_id as string, name: (r.co_name as string) ?? (r.la_company as string) ?? null } : null,
     suggestedCompany: r.sug_id ? { id: r.sug_id as string, name: r.sug_name as string, how: r.sug_how as string } : null,
