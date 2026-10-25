@@ -56,6 +56,8 @@ export const clients = pgTable(
      * Salesforce is the only place it changes; the app reads it and passes it to Lead Alchemist.
      */
     sfAccountType: text("sf_account_type"),
+    /** Where this account first came from (see RecordSource). Set once, when it's created. */
+    source: text("source").$type<RecordSource>().notNull().default("manual"),
     /**
      * Client tier: the account's one primary contact (every other contact on it is secondary).
      * One column, so an account can never have two primaries.
@@ -83,6 +85,18 @@ export const clients = pgTable(
     index("clients_primary_contact_idx").on(t.primaryContactId),
   ],
 );
+
+/**
+ * Where an account or contact first came into AIS Connect: imported from Salesforce or Lead
+ * Alchemist, from an application (or unfinished one), or added by staff in AIS Connect.
+ */
+export type RecordSource = "salesforce" | "lead_alchemist" | "application" | "manual";
+export const RECORD_SOURCE_LABEL: Record<RecordSource, string> = {
+  salesforce: "Salesforce",
+  lead_alchemist: "Lead Alchemist",
+  application: "AIS Connect (application)",
+  manual: "AIS Connect (added by staff)",
+};
 
 /** The Salesforce Account as last read: contact details and the policy fields used for renewals. */
 export interface SfAccountSnapshot {
@@ -128,6 +142,8 @@ export const contacts = pgTable(
     primaryEmail: text("primary_email"),
     phones: jsonb("phones").$type<string[]>().notNull().default([]),
     sfContactId: text("sf_contact_id"),
+    /** Where this person first came from (see RecordSource). Set once, when they're created. */
+    source: text("source").$type<RecordSource>().notNull().default("manual"),
     /** Unsynced on the Salesforce screen: stays linked, but isn't updated from Salesforce. */
     sfSyncPaused: boolean("sf_sync_paused").notNull().default(false),
     /** The linked Salesforce Contact's email and phone as last read. Shown beside the app's, never copied over them. */
@@ -446,7 +462,7 @@ export const syncJobs = pgTable(
   "sync_jobs",
   {
     id: serial("id").primaryKey(),
-    /** "salesforce_application" (target = application ID) */
+    /** "salesforce_application" (target = application ID), "salesforce_inbound" (target = "Account:<id>" or "Contact:<id>", a change made in Salesforce) */
     kind: text("kind").$type<SyncJobKind>().notNull(),
     targetId: text("target_id").notNull(),
     /** pending · running · done · failed */
@@ -459,7 +475,7 @@ export const syncJobs = pgTable(
   },
   (t) => [index("sync_jobs_due_idx").on(t.status, t.nextAttemptAt), index("sync_jobs_target_idx").on(t.kind, t.targetId)],
 );
-export type SyncJobKind = "salesforce_application";
+export type SyncJobKind = "salesforce_application" | "salesforce_inbound";
 
 /**
  * The one-time Salesforce backfill's report: one row per Salesforce Account per run
@@ -729,6 +745,35 @@ export type NotificationStatus = "open" | "in_progress" | "done" | "dismissed";
  * were done, and every error, conflict and skipped item, so staff can see whether everything
  * synced. Shown at Admin → Sync reports.
  */
+/**
+ * Every change a sync makes or sees on a person, so staff can tell when something changed: a
+ * value read from Salesforce or Lead Alchemist that differs from last time, a field AIS Connect
+ * wrote to Lead Alchemist, a contact created or linked there, a Company joined, a tier change.
+ */
+export const contactChanges = pgTable(
+  "contact_changes",
+  {
+    id: serial("id").primaryKey(),
+    contactId: uuid("contact_id")
+      .notNull()
+      .references(() => contacts.id, { onDelete: "cascade" }),
+    clientId: uuid("client_id"),
+    /** Where the change is: "salesforce", "lead_alchemist" or "ais_connect". */
+    system: text("system").$type<"salesforce" | "lead_alchemist" | "ais_connect">().notNull(),
+    /** "read" (seen in that system) or "wrote" (AIS Connect changed it there). */
+    direction: text("direction").$type<"read" | "wrote">().notNull(),
+    /** e.g. "Email", "Phone", "Contact Type", "Company", "Client tier", "Created". */
+    field: text("field").notNull(),
+    oldValue: text("old_value"),
+    newValue: text("new_value"),
+    /** Who or what: "staff:<email>", "salesforce:change" (webhook), "system". */
+    actor: text("actor").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("contact_changes_contact_idx").on(t.contactId, t.createdAt), index("contact_changes_created_idx").on(t.createdAt)],
+);
+export type ContactChangeRow = typeof contactChanges.$inferSelect;
+
 export const syncReports = pgTable(
   "sync_reports",
   {

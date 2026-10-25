@@ -88,6 +88,7 @@ export default async function SettingsPage({ searchParams }: PageProps<"/admin/s
             { href: "/admin/settings/mapping", title: "Data mapping", text: "Bring Salesforce Accounts in, link accounts to Lead Alchemist Companies, send past applications to Salesforce." },
             { href: "/admin/salesforce", title: "Salesforce Accounts", text: "Every Salesforce Account and Contact: sync into AIS Connect, unsync, deactivate, match people to Lead Alchemist." },
             { href: "/admin/lead-alchemist", title: "Lead Alchemist setup", text: "The connection, and every Lead Alchemist pipeline and stage." },
+            { href: "/admin/changes", title: "Change log", text: "Every change a sync made or saw on each person, field by field, with when and who." },
             { href: "/admin/sync-reports", title: "Sync reports", text: "The result of every bulk sync: what was done, skipped, in conflict or failed." },
           ].map((t) => (
             <Link key={t.href} href={t.href} className="card block !p-4 hover:border-[var(--brand)]">

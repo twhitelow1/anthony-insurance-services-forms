@@ -64,6 +64,9 @@ export default async function SalesforceAccounts({ searchParams }: PageProps<"/a
 
   return (
     <div>
+      <p className="mb-2 text-sm">
+        <Link className="btn-link" href="/admin/settings#tools">← Settings</Link>
+      </p>
       <div className="mb-2 flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-2xl font-semibold">Salesforce Accounts</h1>
         <div className="flex flex-wrap gap-2">

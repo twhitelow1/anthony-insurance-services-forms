@@ -5,6 +5,8 @@ import { credentialStatus, type CredentialKey, type CredentialSource } from "@/l
 import { testLeadAlchemist, testSalesforce, type Check } from "@/lib/integrations/test-connection";
 import { getSettings } from "@/lib/settings";
 import { clearIntegrationAction, saveIntegrationAction } from "./actions";
+import { CopyButton } from "@/components/CopyButton";
+import { inboundActivity, salesforceWebhookToken } from "@/lib/salesforce/inbound";
 
 export const metadata = { title: "Integrations | AIS Connect" };
 export const dynamic = "force-dynamic";
@@ -95,6 +97,10 @@ export default async function Integrations({ searchParams }: PageProps<"/admin/s
   const one = (k: string) => (typeof sp[k] === "string" ? (sp[k] as string) : null);
   const { status, unreadable } = await credentialStatus();
   const settings = await getSettings();
+  const webhookToken = salesforceWebhookToken();
+  const appBase = (process.env.APP_URL ?? "").replace(/\/$/, "");
+  const webhookUrl = webhookToken && appBase ? `${appBase}/api/webhooks/salesforce/${webhookToken}` : null;
+  const inbound = await inboundActivity();
   // Tests run when asked (?test=…), right after saving, so the page stays fast otherwise.
   const test = one("test");
   const [sfChecks, laChecks] = await Promise.all([
@@ -157,6 +163,52 @@ export default async function Integrations({ searchParams }: PageProps<"/admin/s
             <Link className="btn-link" href="/admin/settings#salesforce">change</Link>).
           </p>
           <ClearForm integration="salesforce" />
+        </section>
+
+        {/* ── Salesforce changes → AIS Connect ── */}
+        <section className="card space-y-3 !p-5" aria-labelledby="sf-webhook">
+          <h2 id="sf-webhook" className="font-semibold">Changes made in Salesforce</h2>
+          <p className="text-sm text-[var(--muted)]">
+            When an Account or Contact is edited in Salesforce, Salesforce tells AIS Connect at this address and AIS Connect reads the record back:
+            the account&apos;s Salesforce values and Account Type, new Contacts under it, each person&apos;s Salesforce email and phone, and the
+            Salesforce lists. Nothing is written back to Salesforce, and Lead Alchemist is only updated when you sync.
+          </p>
+          {webhookUrl ? (
+            <div className="flex flex-wrap items-center gap-2">
+              <code className="break-all rounded bg-[var(--bg)] px-2 py-1 text-xs">{webhookUrl}</code>
+              <CopyButton text={webhookUrl} />
+            </div>
+          ) : (
+            <p className="text-sm text-[var(--danger)]">Set APP_URL and SESSION_SECRET in Vercel to get the address.</p>
+          )}
+          <details className="text-sm">
+            <summary className="cursor-pointer font-medium">Set it up in Salesforce (once, about 10 minutes)</summary>
+            <ol className="mt-2 list-decimal space-y-1 pl-5">
+              <li>Setup → Process Automation → <strong>Outbound Messages</strong> → New. Object <strong>Account</strong>, name &quot;AIS Connect Account changed&quot;, Endpoint URL: the address above, Send as the integration user, fields: <strong>Id</strong> (others optional). Save.</li>
+              <li>Do the same for <strong>Contact</strong> (&quot;AIS Connect Contact changed&quot;, field <strong>Id</strong>).</li>
+              <li>Setup → <strong>Flows</strong> → New → Record-Triggered Flow on Account, &quot;A record is created or updated&quot;, optimize for <strong>Actions and Related Records</strong>. Add an Action: Outbound Message → &quot;AIS Connect Account changed&quot;. Save and Activate.</li>
+              <li>The same Flow for Contact with &quot;AIS Connect Contact changed&quot;.</li>
+              <li>Edit any Account in Salesforce: within a minute it shows below, and on its account page here.</li>
+            </ol>
+            <p className="mt-2 text-xs text-[var(--muted)]">Salesforce resends a message for up to 24 hours if AIS Connect doesn&apos;t answer. Setup → Outbound Messages → View Message Delivery Status shows anything stuck.</p>
+          </details>
+          <div className="text-sm">
+            <p className="mb-1">
+              Received: {inbound.recent.length ? `last ${inbound.recent[0].updatedAt.toLocaleString("en-US", { timeZone: process.env.APP_TIMEZONE ?? "America/Chicago" })}` : "nothing yet"}
+              {inbound.pending > 0 && <> · <span className="badge badge-warning">{inbound.pending} waiting</span></>}
+              {inbound.failed > 0 && <> · <span className="badge badge-danger">{inbound.failed} failed</span></>}
+            </p>
+            {inbound.recent.length > 0 && (
+              <ul className="list-disc pl-5 text-xs text-[var(--muted)]">
+                {inbound.recent.map((j) => (
+                  <li key={j.id}>
+                    {j.targetId.replace(":", " ")}: {j.status}
+                    {j.lastError ? ` (${j.lastError})` : ""}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
         </section>
 
         {/* ── Lead Alchemist ── */}

@@ -16,6 +16,9 @@ export default async function SyncReports({ searchParams }: PageProps<"/admin/sy
   const { rows, total } = await listSyncReports(paging.pageSize, paging.offset);
   return (
     <div>
+      <p className="mb-2 text-sm">
+        <Link className="btn-link" href="/admin/settings#tools">← Settings</Link>
+      </p>
       <h1 className="mb-2 text-2xl font-semibold">Sync reports</h1>
       <p className="mb-4 max-w-3xl text-sm text-[var(--muted)]">
         The result of every bulk sync (the buttons on Contacts, Accounts, Mapping and Salesforce, and their &quot;select all matching&quot; runs):

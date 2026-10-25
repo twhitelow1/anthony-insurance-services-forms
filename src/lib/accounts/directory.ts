@@ -80,7 +80,24 @@ async function salesforceBatch(sf: SalesforceApi, run: AccountImport) {
   const page = await sf.queryPage<Record<string, unknown> & { Id: string; Name: string }>(
     `SELECT ${["Id", "Name", ...visible].join(", ")} FROM Account${where} ORDER BY Id LIMIT ${SF_BATCH}`,
   );
-  const rows = page.records.map((a) => ({
+  const rows = await saveSalesforceAccounts(page.records);
+  run.imported += rows.length;
+  run.cursor = rows.at(-1)?.id ?? run.cursor;
+  return rows.length < SF_BATCH;
+}
+
+/** Refresh AIS Connect's copy of these Salesforce Accounts (a change in Salesforce, by webhook). */
+export async function refreshSalesforceAccountCopy(sf: SalesforceApi, ids: string[]) {
+  if (!ids.length) return [];
+  const visible = await visibleFields(sf, "Account", ["Phone", "Website", "Type"]);
+  const records = await sf.query<Record<string, unknown> & { Id: string; Name: string }>(
+    `SELECT ${["Id", "Name", ...visible].join(", ")} FROM Account WHERE Id IN (${ids.map(soqlString).join(", ")})`,
+  );
+  return saveSalesforceAccounts(records);
+}
+
+async function saveSalesforceAccounts(records: (Record<string, unknown> & { Id: string; Name: string })[]) {
+  const rows = records.map((a) => ({
     id: a.Id,
     name: String(a.Name ?? ""),
     nameKey: nameKey(String(a.Name ?? "")),
@@ -100,9 +117,7 @@ async function salesforceBatch(sf: SalesforceApi, run: AccountImport) {
         set: { name: sql`excluded.name`, nameKey: sql`excluded.name_key`, phone: sql`excluded.phone`, website: sql`excluded.website`, type: sql`excluded.type`, fetchedAt: sql`excluded.fetched_at` },
       });
   }
-  run.imported += rows.length;
-  run.cursor = rows.at(-1)?.id ?? run.cursor;
-  return rows.length < SF_BATCH;
+  return rows;
 }
 
 /** One time-boxed batch of a refresh. The page calls it again until the phase isn't "running". */

@@ -6,6 +6,7 @@ import { SalesforceBadge, SystemLink, LA_COMPANY_HINT } from "@/components/clien
 import { requireStaff } from "@/lib/auth/session";
 import { countPossibleDuplicates, listClients, NO_ACCOUNT_TYPE, type ClientFilter, type ClientSort } from "@/lib/clients/repo";
 import { accountTypesInApp } from "@/lib/mapping/database";
+import { RECORD_SOURCE_LABEL, type RecordSource } from "@/lib/db/schema";
 import { links } from "@/lib/integrations/links";
 import { CLIENT_SEARCH_COOKIE } from "@/lib/clients/search-cookie";
 import { searchClientsAction } from "./actions";
@@ -49,10 +50,11 @@ export default async function Accounts({ searchParams }: PageProps<"/admin/clien
   const sort = SORTS.some((s) => s.value === sp.sort) ? (sp.sort as ClientSort) : "latest";
   const filter = FILTERS.some((f) => f.value === sp.filter) ? (sp.filter as ClientFilter) : "all";
   const type = typeof sp.type === "string" ? sp.type.slice(0, 80) : "";
+  const source = typeof sp.source === "string" && sp.source in RECORD_SOURCE_LABEL ? (sp.source as RecordSource) : "";
   const paging = pageState(sp);
   const { page } = paging;
   const [{ rows, total }, duplicates, types] = await Promise.all([
-    listClients({ q, sort, filter, type: type || null, page, pageSize: paging.pageSize }),
+    listClients({ q, sort, filter, type: type || null, source: source || null, page, pageSize: paging.pageSize }),
     countPossibleDuplicates(),
     accountTypesInApp(),
   ]);
@@ -67,7 +69,7 @@ export default async function Accounts({ searchParams }: PageProps<"/admin/clien
           ? "Lead Alchemist isn't connected yet."
           : null;
   const qs = (over: Record<string, string | number>) => {
-    const p = new URLSearchParams({ sort, filter, ...(type ? { type } : {}), page: String(page), ...Object.fromEntries(Object.entries(over).map(([k, v]) => [k, String(v)])) });
+    const p = new URLSearchParams({ sort, filter, ...(type ? { type } : {}), ...(source ? { source } : {}), page: String(page), ...Object.fromEntries(Object.entries(over).map(([k, v]) => [k, String(v)])) });
     return `?${p}`;
   };
 
@@ -101,7 +103,7 @@ export default async function Accounts({ searchParams }: PageProps<"/admin/clien
       )}
 
       {ghlMessage && <p className="callout mb-4 text-sm" role="status">{ghlMessage}</p>}
-      <form action={searchClientsAction} className="card mb-6 grid gap-3 !p-4 sm:grid-cols-[1fr_auto_auto_auto_auto_auto]" role="search">
+      <form action={searchClientsAction} className="card mb-6 grid gap-3 !p-4 sm:grid-cols-[1fr_auto_auto_auto_auto_auto_auto]" role="search">
         <label className="sr-only" htmlFor="q">Search accounts</label>
         <input id="q" name="q" defaultValue={q} className="input" placeholder="Name, business, email or phone" />
         <label className="sr-only" htmlFor="filter">Show</label>
@@ -117,6 +119,13 @@ export default async function Accounts({ searchParams }: PageProps<"/admin/clien
             <option key={t} value={t}>{t}</option>
           ))}
           <option value={NO_ACCOUNT_TYPE}>No Account Type</option>
+        </select>
+        <label className="sr-only" htmlFor="source">Source</label>
+        <select id="source" name="source" defaultValue={source} className="input" title="Where the account first came into AIS Connect">
+          <option value="">All sources</option>
+          {(Object.keys(RECORD_SOURCE_LABEL) as RecordSource[]).map((k) => (
+            <option key={k} value={k}>{RECORD_SOURCE_LABEL[k]}</option>
+          ))}
         </select>
         <label className="sr-only" htmlFor="sort">Sort</label>
         <select id="sort" name="sort" defaultValue={sort} className="input">
@@ -155,6 +164,7 @@ export default async function Accounts({ searchParams }: PageProps<"/admin/clien
                   {c.isIndividual && <span className="badge badge-neutral ml-1">Individual</span>}
                   {c.sfAccountType && <span className="badge badge-neutral ml-1" title="Salesforce Account Type">{c.sfAccountType}</span>}
                   {c.possibleDuplicateOf && <span className="badge badge-warning ml-1" title="Shares its name with another account">Possible duplicate</span>}
+                  <div className="text-xs text-[var(--muted)]">Source: {RECORD_SOURCE_LABEL[c.source]}</div>
                 </td>
                 <td className="text-sm">
                   {c.contactName && c.contactName !== c.name ? c.contactName : null}
@@ -213,7 +223,7 @@ export default async function Accounts({ searchParams }: PageProps<"/admin/clien
           </tbody>
         </table>
       </div>
-      <Pagination total={total} state={paging} noun="account" href={pageHref("/admin/clients", { sort, filter, type: type || undefined })} />
+      <Pagination total={total} state={paging} noun="account" href={pageHref("/admin/clients", { sort, filter, type: type || undefined, source: source || undefined })} />
     </div>
   );
 }

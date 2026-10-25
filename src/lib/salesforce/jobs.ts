@@ -58,6 +58,7 @@ export async function runJob(id: number, depsOverride?: SyncDeps): Promise<JobRe
   const job = await claim(id);
   if (!job) return { jobId: id, error: "Already running or finished." };
   const db = await getDb();
+  if (job.kind === "salesforce_inbound") return runInboundJob(job);
   const deps = depsOverride ?? (await defaultSyncDeps());
   if ("off" in deps) {
     // Not an error with the application: leave it queued for when the sync is switched on.
@@ -101,6 +102,27 @@ export async function runJob(id: number, depsOverride?: SyncDeps): Promise<JobRe
       }
     }
     return { jobId: id, error: message, final };
+  }
+}
+
+/** A change made in Salesforce, read back into AIS Connect (see ./inbound). Retried like the others. */
+async function runInboundJob(job: SyncJob): Promise<JobResult> {
+  const db = await getDb();
+  const attempts = job.attempts + 1;
+  try {
+    const { processInbound } = await import("./inbound");
+    await processInbound(job);
+    await db.update(schema.syncJobs).set({ status: "done", attempts, lastError: null, updatedAt: new Date() }).where(eq(schema.syncJobs.id, job.id));
+    return { jobId: job.id };
+  } catch (err) {
+    const message = describe(err);
+    const final = attempts >= MAX_ATTEMPTS;
+    console.error(`[salesforce] reading change ${job.targetId} failed (attempt ${attempts}): ${message}`);
+    await db
+      .update(schema.syncJobs)
+      .set({ status: final ? "failed" : "pending", attempts, lastError: message, nextAttemptAt: new Date(Date.now() + (final ? 0 : nextDelay(attempts))), updatedAt: new Date() })
+      .where(eq(schema.syncJobs.id, job.id));
+    return { jobId: job.id, error: message, final };
   }
 }
 
