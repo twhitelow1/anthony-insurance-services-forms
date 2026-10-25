@@ -6,7 +6,7 @@ import { ensureClient, getClient, getContactByEmail } from "@/lib/clients/repo";
 const la = vi.hoisted(() => ({
   scope: true,
   businesses: [] as { id: string; name: string }[],
-  contacts: new Map<string, { id: string; email?: string; phone?: string; firstName?: string; lastName?: string; businessId?: string | null; companyName?: string; customFields?: unknown; tags?: string[] }>(),
+  contacts: new Map<string, { id: string; email?: string; phone?: string; firstName?: string; lastName?: string; businessId?: string | null; companyName?: string; customFields?: unknown; tags?: string[]; type?: string }>(),
   attached: [] as { ids: string[]; businessId: string }[],
 }));
 vi.mock("@/lib/ghl/client", async (orig) => {
@@ -259,6 +259,8 @@ describe("the sync report counts every contact", () => {
     const ann = la.contacts.get(`ann-${tag}`)!;
     expect(ann.customFields).toEqual(expect.arrayContaining([{ id: "f-Account Type", field_value: "Past Client" }, { id: "f-Client Tier", field_value: "Primary" }]));
     expect(ann.tags).toEqual(expect.arrayContaining(["ais-connect", "ais-business"]));
+    expect(ann.type).toBe("Past Client"); // the built-in Contact Type, which lists the Salesforce Types
+    expect(r.notes).toContainEqual(`Count Studio ${tag}: Ann ${tag}: Contact Type set in Lead Alchemist: Past Client`);
     const bea = la.contacts.get((await getContactByEmail(`b.${tag}@gmail.com`))!.ghlContactId!)!;
     expect(bea.customFields).toEqual(expect.arrayContaining([{ id: "f-Client Tier", field_value: "Secondary" }]));
 
@@ -279,5 +281,6 @@ describe("the sync report counts every contact", () => {
     la.contacts.set(`eve-${tag}`, { id: `eve-${tag}`, email: `e.${tag}@gmail.com` });
     await syncAccountsToLeadAlchemist([clientId], ACTOR, { sf: null, links: LINKS });
     expect(JSON.stringify(la.contacts.get(`eve-${tag}`)!.customFields)).not.toContain("f-Account Type");
+    expect(la.contacts.get(`eve-${tag}`)!.type).toBeUndefined();
   });
 });

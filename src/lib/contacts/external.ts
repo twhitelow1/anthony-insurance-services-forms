@@ -238,6 +238,18 @@ export async function updateLeadAlchemistDetails(contactId: string, actor: strin
     });
   for (const c of written?.changed ?? []) notes.push(`${c.field} changed in Lead Alchemist: ${c.from} → ${c.to}`);
   if (written?.missing.length) notes.push(`couldn't create the Lead Alchemist field${written.missing.length === 1 ? "" : "s"} ${written.missing.join(", ")} (the token needs the custom fields scope)`);
+  // The built-in Contact Type is the Salesforce Account Type (Anthony's account has the same
+  // options). Salesforce is the only place it changes; an empty Type never blanks it.
+  const sfType = account?.sfAccountType?.trim();
+  const laType = la.type?.trim() ?? "";
+  if (sfType && laType.toLowerCase() !== sfType.toLowerCase()) {
+    try {
+      await updateLaContact(contact.ghlContactId, { type: sfType });
+      notes.push(laType ? `Contact Type changed in Lead Alchemist: ${laType} → ${sfType}` : `Contact Type set in Lead Alchemist: ${sfType}`);
+    } catch (err) {
+      notes.push(`couldn't set the Lead Alchemist Contact Type to "${sfType}" (${err instanceof Error ? err.message : String(err)}); check that it's one of the Contact Type options there`);
+    }
+  }
   // Tags so marketing can find everyone AIS Connect put in Lead Alchemist (only ever added).
   const wantTags = ["ais-connect", account?.isIndividual ? "ais-personal" : "ais-business"].filter((tag) => !(la.tags ?? []).includes(tag));
   if (wantTags.length) await addLaTags(contact.ghlContactId, wantTags).catch((err: unknown) => notes.push(`couldn't add the tags ${wantTags.join(", ")} (${err instanceof Error ? err.message : String(err)})`));
