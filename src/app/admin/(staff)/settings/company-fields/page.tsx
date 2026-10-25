@@ -63,6 +63,31 @@ export default async function CompanyFieldsPage() {
           </table>
         </div>
       )}
+      {map && map.unmatched.length > 0 && (
+        <section className="card mt-6 max-w-3xl text-sm">
+          <h2 className="mb-2 font-semibold">Fixing &quot;No match&quot;</h2>
+          <p className="mb-2">
+            A Company field is matched to the Salesforce Account field with the same name. If the Salesforce field exists but isn&apos;t in the list
+            below, AIS Connect&apos;s Salesforce user can&apos;t see it. Give it read access in Salesforce:
+          </p>
+          <ol className="mb-3 list-decimal space-y-1 pl-5">
+            <li>Setup → Permission Sets → <strong>Applications App Integration</strong> → Object Settings → Accounts → Edit.</li>
+            <li>Tick <strong>Read Access</strong> for each field (DBA/Trade Name, Current Coverage, the Inland Marine fields, Business Personal Property Value, Business Income &amp; Exp. Limit, Tenant Improvements &amp; Betterments Value, Estimated Annual Income), and Save.</li>
+            <li>Reload this page (AIS Connect re-reads Salesforce&apos;s field list every 10 minutes).</li>
+          </ol>
+          <p className="mb-2">If the field is in the list below under a different name, rename the Lead Alchemist Company field to match it (or tell us which one it is).</p>
+          <details>
+            <summary className="cursor-pointer font-medium">Salesforce Account fields AIS Connect can see that no Company field uses ({map.sfUnused.length})</summary>
+            <ul className="mt-2 columns-2 text-xs">
+              {map.sfUnused.map((f) => (
+                <li key={f.name}>
+                  {f.label} <span className="text-[var(--muted)]">({f.name})</span>
+                </li>
+              ))}
+            </ul>
+          </details>
+        </section>
+      )}
     </div>
   );
 }
