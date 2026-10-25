@@ -6,17 +6,19 @@ const la = (name: string, dataType = "TEXT", extra = {}) => ({ name, fieldKey: `
 describe("matching Company fields to Salesforce Account fields", () => {
   it("matches by label or API name, the owner alias, and DBA / & spellings; leaves standard and unknown fields", () => {
     const { matched, unmatched } = matchCompanyFields(
-      [la("Account Owner Alias"), la("DBA/Trade Name"), la("Business Income & Exp. Limit", "MONETORY"), la("Renewal Status"), la("Inland Marine Policy"), la("Phone", "TEXT", { standard: true }), la("Nothing Like It")],
+      [la("Account Owner Alias"), la("Account Type", "SINGLE_OPTIONS"), la("DBA/Trade Name"), la("Business Income & Exp. Limit", "MONETORY"), la("Renewal Status"), la("Inland Marine Policy"), la("Phone", "TEXT", { standard: true }), la("Nothing Like It")],
       [
         { name: "DBA__c", type: "string", label: "DBA" },
         { name: "Business_Income_Exp_Limit__c", type: "currency", label: "Business Income & Exp. Limit" },
         { name: "Renewal_Status__c", type: "picklist", label: "Renewal Status" },
         { name: "Inland_Marine_Policy__c", type: "string" },
         { name: "Phone", type: "phone", label: "Phone" },
+        { name: "Type", type: "picklist", label: "Account Type" },
       ],
     );
     expect(matched.map((m) => [m.la.name, m.sf])).toEqual([
       ["Account Owner Alias", "Owner.Alias"],
+      ["Account Type", "Type"],
       ["DBA/Trade Name", "DBA__c"],
       ["Business Income & Exp. Limit", "Business_Income_Exp_Limit__c"],
       ["Renewal Status", "Renewal_Status__c"],

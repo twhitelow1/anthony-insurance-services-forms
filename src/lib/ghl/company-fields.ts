@@ -46,6 +46,10 @@ export function matchCompanyFields(laFields: GhlObjectField[], sfFields: FieldDe
       matched.push({ la, sf: OWNER_ALIAS, sfLabel: "Account Owner (Alias)" });
       continue;
     }
+    if (key === "accounttype" && sfFields.some((f) => f.name === "Type")) {
+      matched.push({ la, sf: "Type", sfLabel: "Account Type" });
+      continue;
+    }
     const want = [key, ...(SYNONYMS[key] ?? [])];
     const sf = want.map((w) => custom.find((f) => norm(f.label ?? "") === w || norm(f.name) === w)).find(Boolean);
     if (sf) matched.push({ la, sf: sf.name, sfLabel: sf.label ?? sf.name });
@@ -119,7 +123,11 @@ async function companyFields() {
 /** The current field matches, for the Settings page. */
 export async function companyFieldMap(sf: SalesforceApi) {
   const [laFields, account] = await Promise.all([companyFields(), sf.describe("Account")]);
-  return matchCompanyFields(laFields, account.fields);
+  const map = matchCompanyFields(laFields, account.fields);
+  // Salesforce custom fields AIS Connect can see that no Company field uses (a field it can't see isn't listed at all).
+  const used = new Set(map.matched.map((m) => m.sf));
+  const sfUnused = account.fields.filter((f) => f.name.endsWith("__c") && !used.has(f.name)).map((f) => ({ name: f.name, label: f.label ?? f.name }));
+  return { ...map, sfUnused };
 }
 
 export interface CompanyFieldsResult {
