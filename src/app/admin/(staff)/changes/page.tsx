@@ -3,7 +3,8 @@ import { cookies } from "next/headers";
 import { ListSummary, pageHref, pageState, Pagination } from "@/components/Pagination";
 import { requireStaff } from "@/lib/auth/session";
 import { listContactChanges } from "@/lib/contacts/changes";
-import { CHANGE_SEARCH_COOKIE, searchChangesAction } from "./actions";
+import { CHANGE_SEARCH_COOKIE } from "@/lib/contacts/changes-search";
+import { searchChangesAction } from "./actions";
 
 export const metadata = { title: "Change log | AIS Connect" };
 export const dynamic = "force-dynamic";

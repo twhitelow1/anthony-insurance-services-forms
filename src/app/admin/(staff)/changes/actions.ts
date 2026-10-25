@@ -3,8 +3,7 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { requireStaff } from "@/lib/auth/session";
-
-export const CHANGE_SEARCH_COOKIE = "change_search";
+import { CHANGE_SEARCH_COOKIE } from "@/lib/contacts/changes-search";
 
 /** The search is kept in a cookie, never the address (it may be an email or phone). */
 export async function searchChangesAction(formData: FormData) {
