@@ -89,12 +89,16 @@ export async function listImportSources(): Promise<{ sources: ImportSource[]; im
 
 const PAGE = 100;
 
-/** The work items of an import run: one per page of submissions ("form:<id>:<page>"). */
-export async function importRunIds(): Promise<string[]> {
+/**
+ * The work items of an import run: one per page of submissions ("form:<id>:<page>"), for every
+ * Lead Alchemist form set to import, or only the ones in `only` (ticked on the page).
+ */
+export async function importRunIds(only?: string[]): Promise<string[]> {
   const map = await importSourceMap();
   const ids: string[] = [];
   for (const [key, slug] of Object.entries(map)) {
     if (!slug || !getForm(slug)) continue;
+    if (only && !only.includes(key)) continue;
     const [kind, id] = key.split(":") as [LaSourceKind, string];
     const { total } = await laSubmissionsPage(kind, id, 1, 1);
     for (let p = 1; p <= Math.ceil(total / PAGE); p++) ids.push(`${key}:${p}`);
@@ -231,13 +235,15 @@ export async function importSubmissionPages(items: string[], actor: string): Pro
   const names = await customFieldNames();
   const db = await getDb();
   for (const item of items) {
-    const [kind, id, pageText] = item.split(":") as [LaSourceKind, string, string];
+    // "<kind>:<id>:<page>", or "…:<page>:<subId>.<subId>" for just the submissions ticked on that page.
+    const [kind, id, pageText, picked] = item.split(":") as [LaSourceKind, string, string, string | undefined];
+    const only = picked ? new Set(picked.split(".")) : null;
     const form = getForm(map[`${kind}:${id}`] ?? "");
     if (!form) {
       result.notes.push(`${kind} ${id}: not set to import into any form any more; skipped.`);
       continue;
     }
-    const { submissions } = await laSubmissionsPage(kind, id, Number(pageText), PAGE);
+    const submissions = (await laSubmissionsPage(kind, id, Number(pageText), PAGE)).submissions.filter((sub) => !only || only.has(sub.id));
     const seen = new Set(
       (
         await db
@@ -304,3 +310,36 @@ export async function importSubmissionPages(items: string[], actor: string): Pro
 
 /** The forms you can import into, for the page's dropdowns. */
 export const importTargets = () => Object.values(forms).map((f) => ({ slug: f.slug, title: f.title })).sort((a, b) => a.title.localeCompare(b.title));
+
+export interface SubmissionRow {
+  id: string;
+  date: string | null;
+  name: string;
+  email: string | null;
+  /** The application it became, when already imported. */
+  applicationId: string | null;
+}
+
+/** One page of a Lead Alchemist form's submissions, for picking which to import. */
+export async function listSourceSubmissions(key: string, page: number): Promise<{ rows: SubmissionRow[]; total: number; pages: number }> {
+  const [kind, id] = key.split(":") as [LaSourceKind, string];
+  const { submissions, total } = await laSubmissionsPage(kind, id, page, PAGE);
+  const db = await getDb();
+  const imported = new Map(
+    (
+      await db
+        .select({ sub: schema.applications.laSubmissionId, id: schema.applications.id })
+        .from(schema.applications)
+        .where(inArray(schema.applications.laSubmissionId, submissions.map((s) => s.id).concat("-")))
+    ).map((r) => [r.sub, r.id] as const),
+  );
+  const rows = submissions.map((sub) => {
+    const o = sub.others ?? {};
+    const name = textOf(sub.name) || [textOf(o.first_name), textOf(o.last_name)].filter(Boolean).join(" ") || textOf(o.full_name);
+    return { id: sub.id, date: sub.createdAt ?? null, name, email: textOf(sub.email) || textOf(o.email) || null, applicationId: imported.get(sub.id) ?? null };
+  });
+  return { rows, total, pages: Math.max(1, Math.ceil(total / PAGE)) };
+}
+
+/** The work item for submissions ticked on one page of a source. */
+export const pickedItem = (key: string, page: number, ids: string[]) => `${key}:${page}:${ids.join(".")}`;

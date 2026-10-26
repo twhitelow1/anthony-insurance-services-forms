@@ -91,4 +91,24 @@ describe("importing old Lead Alchemist submissions", () => {
     const again = await importSubmissionPages(ids, ACTOR);
     expect(again.notes.join(" ")).toMatch(/0 imported, 3 already here/);
   });
+
+  it("imports only what's ticked: whole forms, or single submissions on a page", async () => {
+    const { importRunIds, importSubmissionPages, listSourceSubmissions, pickedItem } = await import("./la-import");
+    const tag = uniq();
+    la.submissions = [1, 2, 3].map((n) => sub(tag, n, { id: `pick-${tag}-${n}` }));
+    expect(await importRunIds(["form:SomeOtherForm1"])).toEqual([]); // not ticked → nothing
+    expect(await importRunIds(["survey:Bt8KGBOGa5n7THVJuqsY"])).toEqual(["survey:Bt8KGBOGa5n7THVJuqsY:1"]);
+
+    const key = "survey:Bt8KGBOGa5n7THVJuqsY";
+    const r = await importSubmissionPages([pickedItem(key, 1, [`pick-${tag}-2`])], ACTOR);
+    expect(r.notes.join(" ")).toMatch(/1 imported/);
+    const list = await listSourceSubmissions(key, 1);
+    const mine = list.rows.filter((x) => x.id.startsWith(`pick-${tag}`));
+    expect(mine.map((x) => [x.id, !!x.applicationId])).toEqual([
+      [`pick-${tag}-1`, false],
+      [`pick-${tag}-2`, true],
+      [`pick-${tag}-3`, false],
+    ]);
+    expect(mine[0]).toMatchObject({ name: "Kim Lee1", email: `kim1.${tag}@gmail.com` });
+  });
 });
