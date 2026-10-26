@@ -103,17 +103,20 @@ export default async function Accounts({ searchParams }: PageProps<"/admin/clien
       )}
 
       {ghlMessage && <p className="callout mb-4 text-sm" role="status">{ghlMessage}</p>}
-      <form action={searchClientsAction} className="card mb-6 grid gap-3 !p-4 sm:grid-cols-[1fr_auto_auto_auto_auto_auto_auto]" role="search">
+      <form action={searchClientsAction} className="card mb-6 flex flex-wrap items-center gap-3 !p-4" role="search">
         <label className="sr-only" htmlFor="q">Search accounts</label>
-        <input id="q" name="q" defaultValue={q} className="input" placeholder="Name, business, email or phone" />
+        <div className="flex w-full gap-3">
+          <input id="q" name="q" defaultValue={q} className="input flex-1 !py-3 !text-lg" placeholder="Name, business, email or phone" />
+          <button className="btn-primary">Search</button>
+        </div>
         <label className="sr-only" htmlFor="filter">Show</label>
-        <select id="filter" name="filter" defaultValue={filter} className="input">
+        <select id="filter" name="filter" defaultValue={filter} className="input !w-auto">
           {FILTERS.map((f) => (
             <option key={f.value} value={f.value}>{f.label}</option>
           ))}
         </select>
         <label className="sr-only" htmlFor="type">Account Type</label>
-        <select id="type" name="type" defaultValue={type} className="input" title="The Salesforce Account Type (the same value is Account Type and Contact Type in Lead Alchemist)">
+        <select id="type" name="type" defaultValue={type} className="input !w-auto" title="The Salesforce Account Type (the same value is Account Type and Contact Type in Lead Alchemist)">
           <option value="">All Account Types</option>
           {types.map((t) => (
             <option key={t} value={t}>{t}</option>
@@ -121,19 +124,18 @@ export default async function Accounts({ searchParams }: PageProps<"/admin/clien
           <option value={NO_ACCOUNT_TYPE}>No Account Type</option>
         </select>
         <label className="sr-only" htmlFor="source">Source</label>
-        <select id="source" name="source" defaultValue={source} className="input" title="Where the account first came into AIS Connect">
+        <select id="source" name="source" defaultValue={source} className="input !w-auto" title="Where the account first came into AIS Connect">
           <option value="">All sources</option>
           {(Object.keys(RECORD_SOURCE_LABEL) as RecordSource[]).map((k) => (
             <option key={k} value={k}>{RECORD_SOURCE_LABEL[k]}</option>
           ))}
         </select>
         <label className="sr-only" htmlFor="sort">Sort</label>
-        <select id="sort" name="sort" defaultValue={sort} className="input">
+        <select id="sort" name="sort" defaultValue={sort} className="input !w-auto">
           {SORTS.map((s) => (
             <option key={s.value} value={s.value}>{s.label}</option>
           ))}
         </select>
-        <button className="btn-primary">Search</button>
         {q && (
           <button className="btn-secondary" name="clear" value="1" title="Show every account">
             Clear

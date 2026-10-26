@@ -203,6 +203,7 @@ Today staff can download an Outlook draft to the carrier with the filled PDF att
 - ✅ Refresh from Salesforce on the account page (fixed 2026-10-26).
 - ✅ Contacts search (now also by business name). 🟡 Accounts search: works in testing; waiting on an example of what failed.
 - ⬜ Fewer buttons on the account views (tidy the Accounts list and Across all three).
+- ✅ Bigger search boxes (Todd, 2026-10-26): every admin search box (Applications, Accounts, Across all three, Duplicates, Contacts, Mapping, Salesforce) has its own full-width row with larger text, filters underneath.
 - ✅ Kind-of-application filter on Applications.
 - ✅ Import old Lead Alchemist form submissions.
 - ✅ Sport event and single event forms: same questions, AIS and martial arts branding (each shows its own logo from its link).

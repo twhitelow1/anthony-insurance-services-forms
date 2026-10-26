@@ -38,9 +38,9 @@ export default async function AdminHome({ searchParams }: PageProps<"/admin">) {
       {typeof sp.deleted === "string" && (
         <p className="callout mb-6 text-sm" role="status">Application {sp.deleted} was deleted.</p>
       )}
-      <form className="card mb-6 grid gap-3 !p-4 sm:grid-cols-2 lg:grid-cols-[1fr_200px_200px_170px_170px_auto]" role="search">
+      <form className="card mb-6 grid gap-3 !p-4 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_1fr_1fr_auto]" role="search">
         <label className="sr-only" htmlFor="q">Search applications</label>
-        <input id="q" name="q" defaultValue={q} className="input" placeholder='e.g. "trampoline" Austin, AIS-7K3Q, jane@…' />
+        <input id="q" name="q" defaultValue={q} className="input !py-3 !text-lg sm:col-span-2 lg:col-span-full" placeholder='e.g. "trampoline" Austin, AIS-7K3Q, jane@…' />
         <label className="sr-only" htmlFor="status">Status</label>
         <select id="status" name="status" defaultValue={status ?? ""} className="input">
           <option value="">All statuses</option>
