@@ -202,7 +202,7 @@ Today staff can download an Outlook draft to the carrier with the filled PDF att
 ## From the Oct 26 call with Caitlyn
 - ✅ Refresh from Salesforce on the account page (fixed 2026-10-26).
 - ✅ Contacts search (now also by business name). 🟡 Accounts search: works in testing; waiting on an example of what failed.
-- ⬜ Fewer buttons on the account views (tidy the Accounts list and Across all three).
+- 🟡 Fewer buttons on the account views (Accounts list: Data mapping and Link to Lead Alchemist removed 2026-10-26; Across all three still to tidy).
 - ✅ Bigger search boxes (Todd, 2026-10-26): every admin search box (Applications, Accounts, Across all three, Duplicates, Contacts, Mapping, Salesforce) has its own full-width row with larger text, filters underneath.
 - ✅ Kind-of-application filter on Applications.
 - ✅ Import old Lead Alchemist form and survey submissions, all at once or ticked forms or single ticked submissions.
