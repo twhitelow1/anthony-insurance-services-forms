@@ -14,9 +14,12 @@ export async function visibleFields(sf: SalesforceApi, object: string, wanted: s
   });
 }
 
-/** "a, b, c" of the readable fields, always starting with Id. */
+/** "a, b, c" of the readable fields, each once, always starting with Id. */
 export async function selectList(sf: SalesforceApi, object: string, wanted: string[]): Promise<string> {
-  const fields = await visibleFields(sf, object, wanted.filter((f) => f !== "Id"));
+  // Salesforce rejects a field named twice ("duplicate field selected"), so each goes in once.
+  const seen = new Set<string>();
+  const unique = wanted.filter((f) => f.toLowerCase() !== "id" && !seen.has(f.toLowerCase()) && seen.add(f.toLowerCase()));
+  const fields = await visibleFields(sf, object, unique);
   return ["Id", ...fields].join(", ");
 }
 

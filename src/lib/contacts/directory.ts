@@ -360,7 +360,12 @@ function presenceSql(presence: Presence = {}) {
 function searchSql(q?: string) {
   const term = q?.trim() ? `%${q.trim().toLowerCase().replace(/[\\%_]/g, (c) => `\\${c}`)}%` : null;
   const digits = q ? phoneDigits(q) : "";
-  return term ? sql`and (lower(p.name) like ${term} or p.email like ${term}${digits.length >= 4 ? sql` or p.phone like ${`%${digits}%`}` : sql``})` : sql``;
+  // Name, email, phone, or the business: their AIS Connect account, Salesforce Account or Lead Alchemist Company.
+  return term
+    ? sql`and (lower(p.name) like ${term} or p.email like ${term}${digits.length >= 4 ? sql` or p.phone like ${`%${digits}%`}` : sql``}
+        or lower(coalesce(p.sf_company, '')) like ${term} or lower(coalesce(p.la_company, '')) like ${term}
+        or exists (select 1 from clients cl where cl.id::text = p.client_id and lower(cl.name) like ${term}))`
+    : sql``;
 }
 
 /**

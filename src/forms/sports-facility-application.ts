@@ -104,8 +104,8 @@ const sportsFacilityForm = ({ tag, gymnastics = false, ...meta }: Variant): Form
           body: [
             "Complete all sections. If you need more room, email additional pages to your agent.",
             "All questions must be answered. If not applicable, enter N/A.",
-            "AIS Connectlication must be signed and dated by an authorized representative.",
-            "Completion of AIS Connectlication does not bind coverage.",
+            "This application must be signed and dated by an authorized representative.",
+            "Completion of this application does not bind coverage.",
           ],
         },
         { type: "date", id: "requested_effective_date", label: "Requested Effective Date", required: true, width: "half" },
@@ -189,7 +189,7 @@ const sportsFacilityForm = ({ tag, gymnastics = false, ...meta }: Variant): Form
       title: "General Questions",
       fields: [
         yesNo("experience_5yrs", "Does insured have at least 5 years of experience in another business in the same industry?"),
-        yesNo("waiver_forms", "Does AIS Connectlicant require waiver/release forms from all participants or parent/legal guardian?"),
+        yesNo("waiver_forms", "Does this applicant require waiver/release forms from all participants or parent/legal guardian?"),
         yesNo("prohibited_conduct_defined", "Applicant has prohibited conduct clearly defined in any and all codes of conduct?"),
         yesNo("bankruptcy", "Has applicant ever filed for bankruptcy?"),
         yesNo("non_renewed", "Has applicant ever been non-renewed?"),
@@ -392,7 +392,7 @@ const sportsFacilityForm = ({ tag, gymnastics = false, ...meta }: Variant): Form
           options: opts("$25K", "$50K", "$100K"),
           required: true,
           tooltip:
-            "Accident Medical Expense helps pay eligible medical costs resulting from a covered accident, up to the selected limit and after the selected deductible. Coverage offered through AIS Connectlication is excess, so other valid health insurance generally pays first.",
+            "Accident Medical Expense helps pay eligible medical costs resulting from a covered accident, up to the selected limit and after the selected deductible. Coverage offered through this application is excess, so other valid health insurance generally pays first.",
         },
         {
           type: "select",
@@ -407,7 +407,7 @@ const sportsFacilityForm = ({ tag, gymnastics = false, ...meta }: Variant): Form
           id: "ah_terms",
           variant: "info",
           body: [
-            "All Accident Medical coverage offered through AIS Connectlication is on an excess basis.",
+            "All Accident Medical coverage offered through this application is on an excess basis.",
             "Coinsurance: 100% · AD&D Benefit: $10,000 · Benefit Period: 52 Weeks · Inpatient ICU/CCU, Ambulatory Surgical, Office Visits: Unlimited",
           ],
         },
@@ -611,12 +611,12 @@ const sportsFacilityForm = ({ tag, gymnastics = false, ...meta }: Variant): Form
           type: "content",
           id: "representations",
           variant: "notice",
-          title: "The undersigned declares that the statements in AIS Connectlication are true, complete, and accurate. The undersigned understands that:",
+          title: "The undersigned declares that the statements in this application are true, complete, and accurate. The undersigned understands that:",
           body: [
-            "AIS Connectlication shall be the basis of any policy issued.",
+            "This application shall be the basis of any policy issued.",
             "The insurer may rely on the completeness and accuracy of information provided.",
             "Any material misrepresentation may void coverage.",
-            "Signing AIS Connectlication does not bind coverage.",
+            "Signing this application does not bind coverage.",
             "The applicant agrees to notify the insurer of material changes prior to inception.",
             "NOTICE: Any person who knowingly files a materially false statement may be guilty of insurance fraud and subject to criminal and civil penalties.",
           ],
