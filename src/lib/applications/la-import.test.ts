@@ -111,4 +111,27 @@ describe("importing old Lead Alchemist submissions", () => {
     ]);
     expect(mine[0]).toMatchObject({ name: "Kim Lee1", email: `kim1.${tag}@gmail.com` });
   });
+
+  it("lists what a form brought in, counts it per form, and can undo it", async () => {
+    const { importSubmissionPages, importedBySource, listImportedFromSource, undoImport } = await import("./la-import");
+    const tag = uniq();
+    const key = "survey:Bt8KGBOGa5n7THVJuqsY";
+    la.submissions = [1, 2].map((n) => sub(tag, n, { id: `undo-${tag}-${n}` }));
+    await importSubmissionPages([`${key}:1`], ACTOR);
+
+    const listed = await listImportedFromSource(key);
+    const mine = listed.rows.filter((r) => r.applicantEmail.endsWith(`.${tag}@gmail.com`));
+    expect(mine).toHaveLength(2);
+    expect(mine[0]).toMatchObject({ formSlug: "martial-arts-event-application", accountName: expect.stringContaining(`Tiger Dojo ${tag}`) });
+    expect(mine[0].clientId).toBeTruthy();
+    const before = (await importedBySource())[key];
+    expect(before).toBeGreaterThanOrEqual(2);
+
+    const removed = await undoImport(key);
+    expect(removed).toBe(before);
+    expect((await listImportedFromSource(key)).total).toBe(0);
+    expect((await importedBySource())[key]).toBeUndefined();
+    // The accounts stay.
+    expect(await getClient(mine[0].clientId!)).toBeTruthy();
+  });
 });

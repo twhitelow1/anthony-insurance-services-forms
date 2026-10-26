@@ -1,5 +1,5 @@
 import "server-only";
-import { and, count, eq, inArray } from "drizzle-orm";
+import { and, count, eq, inArray, sql } from "drizzle-orm";
 import { forms, getForm } from "@/forms";
 import { getDb, schema } from "@/lib/db";
 import { assignApplicationClient, ensureContact, getContactByEmail, isIndividualForm } from "@/lib/clients/repo";
@@ -343,3 +343,70 @@ export async function listSourceSubmissions(key: string, page: number): Promise<
 
 /** The work item for submissions ticked on one page of a source. */
 export const pickedItem = (key: string, page: number, ids: string[]) => `${key}:${page}:${ids.join(".")}`;
+
+/** The imported applications that came from one Lead Alchemist form or survey (from their "imported" event). */
+function fromSource(key: string) {
+  return sql`${schema.applications.importedFrom} = 'lead_alchemist' and ${schema.applications.id} in (select e.application_id from ${schema.applicationEvents} e where e.type = 'imported' and e.data->>'source' = ${key})`;
+}
+
+/** How many applications each Lead Alchemist form or survey has brought in. */
+export async function importedBySource(): Promise<Record<string, number>> {
+  const db = await getDb();
+  const rows = await db
+    .select({ key: sql<string>`e.data->>'source'`, n: count() })
+    .from(sql`${schema.applicationEvents} e`)
+    .where(sql`e.type = 'imported'`)
+    .groupBy(sql`e.data->>'source'`);
+  return Object.fromEntries(rows.map((r) => [r.key, Number(r.n)]));
+}
+
+/**
+ * Undo an import: remove from AIS Connect the applications imported from one Lead Alchemist form
+ * or survey (only imported ones; nothing in Lead Alchemist or Salesforce is touched). Accounts and
+ * contacts stay. Returns how many were removed.
+ */
+export async function undoImport(key: string): Promise<number> {
+  const db = await getDb();
+  const removed = await db.delete(schema.applications).where(fromSource(key)).returning({ id: schema.applications.id });
+  return removed.length;
+}
+
+export interface ImportedRow {
+  id: string;
+  reference: string;
+  submittedAt: Date;
+  applicantName: string;
+  applicantEmail: string;
+  businessName: string | null;
+  clientId: string | null;
+  accountName: string | null;
+  formSlug: string;
+}
+
+/** The applications one Lead Alchemist form or survey brought in, newest first (100 a page). */
+export async function listImportedFromSource(key: string, page = 1): Promise<{ rows: ImportedRow[]; total: number }> {
+  const db = await getDb();
+  const a = schema.applications;
+  const [rows, [{ total }]] = await Promise.all([
+    db
+      .select({
+        id: a.id,
+        reference: a.reference,
+        submittedAt: a.createdAt,
+        applicantName: a.applicantName,
+        applicantEmail: a.applicantEmail,
+        businessName: a.businessName,
+        clientId: a.clientId,
+        accountName: schema.clients.name,
+        formSlug: a.formSlug,
+      })
+      .from(a)
+      .leftJoin(schema.clients, eq(schema.clients.id, a.clientId))
+      .where(fromSource(key))
+      .orderBy(sql`${a.createdAt} desc`)
+      .limit(PAGE)
+      .offset((Math.max(1, page) - 1) * PAGE),
+    db.select({ total: count() }).from(a).where(fromSource(key)),
+  ]);
+  return { rows, total: Number(total) };
+}
