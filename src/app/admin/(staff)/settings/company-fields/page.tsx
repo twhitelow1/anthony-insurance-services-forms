@@ -71,7 +71,7 @@ export default async function CompanyFieldsPage() {
             below, AIS Connect&apos;s Salesforce user can&apos;t see it. Give it read access in Salesforce:
           </p>
           <ol className="mb-3 list-decimal space-y-1 pl-5">
-            <li>Setup → Permission Sets → <strong>Applications App Integration</strong> → Object Settings → Accounts → Edit.</li>
+            <li>Setup → Permission Sets → <strong>DubLow Integration Access</strong> (the set assigned to AIS Connect&apos;s Salesforce user) → Object Settings → Accounts → Edit.</li>
             <li>Tick <strong>Read Access</strong> for each field (DBA/Trade Name, Current Coverage, the Inland Marine fields, Business Personal Property Value, Business Income &amp; Exp. Limit, Tenant Improvements &amp; Betterments Value, Estimated Annual Income), and Save.</li>
             <li>Reload this page (AIS Connect re-reads Salesforce&apos;s field list every 10 minutes).</li>
           </ol>
