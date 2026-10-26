@@ -110,10 +110,10 @@ export async function AcrossView({ sp, q, flash }: { sp: Record<string, string |
       </div>
 
       <div className="card mb-4 flex flex-wrap items-end gap-3 !p-4">
-        <form action={searchAcrossAction} className="flex flex-1 flex-wrap gap-3" role="search">
+        <form action={searchAcrossAction} className="flex w-full flex-wrap gap-3" role="search">
           <input type="hidden" name="back" value={back} />
           <label className="sr-only" htmlFor="across-q">Search accounts</label>
-          <input id="across-q" name="q" defaultValue={q} className="input min-w-[12rem] flex-1" placeholder="Account name" />
+          <input id="across-q" name="q" defaultValue={q} className="input min-w-[16rem] flex-1 !py-3 !text-lg" placeholder="Account name" />
           <button className="btn-primary">Search</button>
           {q && (
             <button name="clear" value="1" className="btn-secondary">Clear</button>

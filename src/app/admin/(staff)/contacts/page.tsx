@@ -201,10 +201,10 @@ export default async function Contacts({ searchParams }: PageProps<"/admin/conta
       </div>
 
       <div className="card mb-4 flex flex-wrap items-end gap-3 !p-4">
-        <form action={searchContactsAction} className="flex flex-1 flex-wrap gap-3" role="search">
+        <form action={searchContactsAction} className="flex w-full flex-wrap gap-3" role="search">
           <input type="hidden" name="back" value={back} />
           <label className="sr-only" htmlFor="q">Search contacts</label>
-          <input id="q" name="q" defaultValue={q} className="input min-w-[12rem] flex-1" placeholder="Name, email, phone or business" />
+          <input id="q" name="q" defaultValue={q} className="input min-w-[16rem] flex-1 !py-3 !text-lg" placeholder="Name, email, phone or business" />
           <button className="btn-primary">Search</button>
           {q && (
             <button name="clear" value="1" className="btn-secondary">Clear</button>
