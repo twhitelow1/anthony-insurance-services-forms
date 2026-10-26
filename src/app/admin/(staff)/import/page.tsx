@@ -3,12 +3,12 @@ import { SelectAll } from "@/components/SelectAll";
 import { SelectionRunPanel } from "@/components/SelectionRunPanel";
 import { ShiftClickRange } from "@/components/ShiftClickRange";
 import { requireStaff } from "@/lib/auth/session";
-import { importedBySource, importTargets, listImportedFromSource, listImportSources, listSourceSubmissions } from "@/lib/applications/la-import";
+import { importedBySource, importTargets, listImportedFromSource, listImportRuns, listImportSources, listSourceSubmissions } from "@/lib/applications/la-import";
 import { getSelectionRun, showSelectionRun } from "@/lib/bulk/selection-run";
 import { readFlash } from "@/lib/flash";
 import { ghlConfig } from "@/lib/ghl/client";
 import { FlashMessage } from "../salesforce/ui";
-import { importPickedAction, importSelectedAction, saveImportMapAction, startImportAction, stepImportRunAction, stopImportRunAction, undoImportAction } from "./actions";
+import { importPickedAction, importSelectedAction, reverseImportRunAction, saveImportMapAction, startImportAction, stepImportRunAction, stopImportRunAction, undoImportAction } from "./actions";
 
 export const metadata = { title: "Import old applications | AIS Connect" };
 export const dynamic = "force-dynamic";
@@ -213,6 +213,60 @@ export default async function ImportPage({ searchParams }: PageProps<"/admin/imp
     );
   }
 
+  const runs = await listImportRuns();
+  const sourceName = (key: string) => data?.sources.find((x) => x.key === key)?.name ?? key;
+  const history = (
+    <section className="mt-8" aria-labelledby="import-history">
+      <h2 id="import-history" className="mb-1 text-lg font-semibold">Import history</h2>
+      <p className="mb-3 max-w-3xl text-sm text-[var(--muted)]">
+        Every import that still has applications in AIS Connect, newest first. Reverse removes just that import&apos;s applications from AIS Connect;
+        nothing changes in Lead Alchemist or Salesforce, and accounts and contacts stay.
+      </p>
+      <div className="card overflow-x-auto !p-0">
+        <table className="data-table">
+          <thead>
+            <tr>
+              <th>When</th>
+              <th>By</th>
+              <th>Applications</th>
+              <th>From</th>
+              <th>Reverse</th>
+            </tr>
+          </thead>
+          <tbody>
+            {runs.map((r) => (
+              <tr key={r.key}>
+                <td className="whitespace-nowrap text-sm">{r.startedAt.toLocaleString("en-US", { timeZone: tz, dateStyle: "medium", timeStyle: "short" })}</td>
+                <td className="text-sm">{r.actor.replace(/^staff:/, "")}</td>
+                <td>{fmt(r.applications)}</td>
+                <td className="text-sm">
+                  {r.sources.map((k, i) => (
+                    <span key={k}>
+                      {i ? ", " : ""}
+                      <Link className="btn-link" href={`/admin/import?source=${encodeURIComponent(k)}&view=imported`}>{sourceName(k)}</Link>
+                    </span>
+                  ))}
+                </td>
+                <td>
+                  <form action={reverseImportRunAction} className="flex items-center gap-2 text-sm">
+                    <input type="hidden" name="run" value={r.key} />
+                    <label className="flex items-center gap-1">
+                      <input type="checkbox" name="confirm" value="yes" required aria-label="Confirm reversing this import" /> Sure
+                    </label>
+                    <button className="btn-secondary !py-1" disabled={running}>Reverse</button>
+                  </form>
+                </td>
+              </tr>
+            ))}
+            {!runs.length && (
+              <tr><td colSpan={5} className="text-sm text-[var(--muted)]">Nothing imported yet.</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+
   const toImport = data?.sources.filter((s) => s.slug) ?? [];
   const totalWaiting = toImport.reduce((n, s) => n + (s.submissions ?? 0), 0);
   return (
@@ -285,6 +339,7 @@ export default async function ImportPage({ searchParams }: PageProps<"/admin/imp
           </form>
         </>
       )}
+      {history}
     </div>
   );
 }

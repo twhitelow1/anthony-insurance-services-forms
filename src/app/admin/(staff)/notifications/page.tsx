@@ -6,7 +6,7 @@ import { readFlash } from "@/lib/flash";
 import { countByStatus, countNotificationLog, countNotifications, KIND_LABELS, listNotifications, recentNotificationLog, STATUSES } from "@/lib/notifications/repo";
 import { ListSummary, pageHref, pageState, Pagination } from "@/components/Pagination";
 import { FlashMessage } from "../salesforce/ui";
-import { setNotificationStatusAction } from "./actions";
+import { dismissAllAction, setNotificationStatusAction } from "./actions";
 
 export const metadata = { title: "Notifications | AIS Connect" };
 export const dynamic = "force-dynamic";
@@ -102,6 +102,16 @@ export default async function Notifications({ searchParams }: PageProps<"/admin/
                 <h2 id={`col-${s.value}`} className="mb-3 flex items-center justify-between text-sm font-semibold">
                   {s.label} <span className={`badge ${TONE[s.value]}`}>{columnTotal.toLocaleString("en-US")}</span>
                 </h2>
+                {s.value !== "dismissed" && columnTotal > 0 && (
+                  <form action={dismissAllAction} className="mb-3">
+                    <input type="hidden" name="from" value={s.value} />
+                    {kind && <input type="hidden" name="kind" value={kind} />}
+                    <input type="hidden" name="back" value={back} />
+                    <button className="btn-link text-xs" title="Moves them all to Dismissed; each can be reopened">
+                      Clear: dismiss all {columnTotal.toLocaleString("en-US")}{kind ? ` ${KIND_LABELS[kind]}` : ""}
+                    </button>
+                  </form>
+                )}
                 <div className="space-y-3">
                   {!cards.length && <p className="text-xs text-[var(--muted)]">Nothing here.</p>}
                   {columnTotal > cards.length && (

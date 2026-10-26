@@ -134,4 +134,28 @@ describe("importing old Lead Alchemist submissions", () => {
     // The accounts stay.
     expect(await getClient(mine[0].clientId!)).toBeTruthy();
   });
+
+  it("keeps a history of import runs, and reverses one run without touching the others", async () => {
+    const { importSubmissionPages, listImportRuns, reverseImportRun } = await import("./la-import");
+    const tag = uniq();
+    const key = "survey:Bt8KGBOGa5n7THVJuqsY";
+    la.submissions = [sub(tag, 1, { id: `runA-${tag}` })];
+    await importSubmissionPages([`${key}:1`], ACTOR, `run-a-${tag}`);
+    la.submissions = [sub(tag, 2, { id: `runB-${tag}` })];
+    await importSubmissionPages([`${key}:1`], ACTOR, `run-b-${tag}`);
+    la.submissions = [sub(tag, 3, { id: `legacy-${tag}` })];
+    await importSubmissionPages([`${key}:1`], `staff:legacy.${tag}@x.com`); // before runs were recorded
+
+    const runs = await listImportRuns();
+    const a = runs.find((r) => r.key === `run-a-${tag}`)!;
+    expect(a).toMatchObject({ applications: 1, actor: ACTOR, sources: [key] });
+    const legacy = runs.find((r) => r.key.startsWith(`legacy:staff:legacy.${tag}@x.com:`))!;
+    expect(legacy.applications).toBe(1);
+
+    expect(await reverseImportRun(`run-a-${tag}`)).toBe(1);
+    expect(await reverseImportRun(legacy.key)).toBe(1);
+    const after = await listImportRuns();
+    expect(after.some((r) => r.key === `run-a-${tag}`)).toBe(false);
+    expect(after.find((r) => r.key === `run-b-${tag}`)?.applications).toBe(1); // the other run stays
+  });
 });

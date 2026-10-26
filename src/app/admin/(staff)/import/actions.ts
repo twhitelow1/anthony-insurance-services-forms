@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireStaff } from "@/lib/auth/session";
-import { importRunIds, pickedItem, saveImportSourceMap, undoImport } from "@/lib/applications/la-import";
+import { importRunIds, pickedItem, reverseImportRun, saveImportSourceMap, undoImport } from "@/lib/applications/la-import";
 import { startBackgroundRun, triggerSelectionRun } from "@/lib/bulk/background";
 import { stopSelectionRun } from "@/lib/bulk/selection-run";
 import { setFlash } from "@/lib/flash";
@@ -97,4 +97,15 @@ export async function undoImportAction(formData: FormData) {
   const n = await undoImport(key);
   console.info(`[import] ${staff.email} removed ${n} imported application(s) from ${key}`);
   return finish("ok", `Removed ${n} imported application${n === 1 ? "" : "s"} from AIS Connect. Nothing changed in Lead Alchemist; accounts and contacts stay.`, back);
+}
+
+/** Reverse one past import run (from the Import history): remove the applications it brought in. */
+export async function reverseImportRunAction(formData: FormData) {
+  const staff = await requireStaff();
+  const key = String(formData.get("run") ?? "").slice(0, 300);
+  if (!key) return finish("error", "Unknown import.");
+  if (formData.get("confirm") !== "yes") return finish("warn", "Tick the box next to Reverse to confirm first.");
+  const n = await reverseImportRun(key);
+  console.info(`[import] ${staff.email} reversed import ${key}: ${n} application(s) removed`);
+  return finish("ok", `Reversed: removed ${n} imported application${n === 1 ? "" : "s"} from AIS Connect. Nothing changed in Lead Alchemist; accounts and contacts stay.`);
 }

@@ -41,6 +41,8 @@ export interface SelectionRun {
   updatedAt: string;
   /** While a background request is working on it: until when (so two never work on it at once). */
   leaseUntil?: string | null;
+  /** Staff cleared its progress bar after it finished. */
+  cleared?: boolean;
 }
 
 export interface BatchResult {
@@ -210,7 +212,7 @@ export async function stopSelectionRun(scope: SelectionScope, actor: string) {
 
 /** Shown on the list while it runs, and for a while after. */
 export function showSelectionRun(run: SelectionRun | null): run is SelectionRun {
-  return !!run && (run.phase === "running" || Date.now() - new Date(run.updatedAt).getTime() < 30 * 60_000);
+  return !!run && (run.phase === "running" || (!run.cleared && Date.now() - new Date(run.updatedAt).getTime() < 30 * 60_000));
 }
 
 /** Running, but nothing has worked on it or moved it for a few minutes (a background request was cut off). */
@@ -218,4 +220,11 @@ export function runStalled(run: SelectionRun, now = Date.now()): boolean {
   if (run.phase !== "running") return false;
   const held = !!run.leaseUntil && new Date(run.leaseUntil).getTime() > now;
   return !held && now - new Date(run.updatedAt).getTime() > 3 * 60_000;
+}
+
+/** Clear a finished or stopped run's progress bar (its sync report stays under Sync reports). */
+export async function clearSelectionRun(scope: SelectionScope) {
+  const run = await getSelectionRun(scope);
+  if (!run || run.phase === "running") return run;
+  return save({ ...run, cleared: true });
 }

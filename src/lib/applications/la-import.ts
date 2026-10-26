@@ -229,7 +229,7 @@ async function customFieldNames(): Promise<Map<string, string>> {
 }
 
 /** Import one page of submissions per work item ("form:<id>:<page>"). */
-export async function importSubmissionPages(items: string[], actor: string): Promise<BatchResult> {
+export async function importSubmissionPages(items: string[], actor: string, runId?: string): Promise<BatchResult> {
   const result: BatchResult = { done: 0, notes: [] };
   const map = await importSourceMap();
   const names = await customFieldNames();
@@ -295,7 +295,7 @@ export async function importSubmissionPages(items: string[], actor: string): Pro
         }
         await addEvent(app.id, "imported", actor, {
           message: `Imported from Lead Alchemist (${kind} submission of ${sub.createdAt?.slice(0, 10) ?? "unknown date"})${m.other.length ? `; ${m.other.length} answer(s) didn't match a question and are listed under "Other answers"` : ""}`,
-          data: { laSubmissionId: sub.id, source: `${kind}:${id}` },
+          data: { laSubmissionId: sub.id, source: `${kind}:${id}`, ...(runId ? { runId } : {}) },
         });
         made++;
       } catch (err) {
@@ -409,4 +409,61 @@ export async function listImportedFromSource(key: string, page = 1): Promise<{ r
     db.select({ total: count() }).from(a).where(fromSource(key)),
   ]);
   return { rows, total: Number(total) };
+}
+
+export interface ImportRunSummary {
+  /** The run's ID, or "legacy:<actor>:<day>" for imports made before runs were recorded. */
+  key: string;
+  startedAt: Date;
+  endedAt: Date;
+  actor: string;
+  applications: number;
+  sources: string[];
+}
+
+/** Where an import run's applications are, by its key (see ImportRunSummary). */
+function fromRun(key: string) {
+  if (key.startsWith("legacy:")) {
+    const [, actor, day] = key.match(/^legacy:(.*):(\d{4}-\d{2}-\d{2})$/) ?? [];
+    return sql`${schema.applications.importedFrom} = 'lead_alchemist' and ${schema.applications.id} in (select e.application_id from ${schema.applicationEvents} e where e.type = 'imported' and e.data->>'runId' is null and e.actor = ${actor ?? ""} and to_char(e.created_at at time zone 'UTC', 'YYYY-MM-DD') = ${day ?? ""})`;
+  }
+  return sql`${schema.applications.importedFrom} = 'lead_alchemist' and ${schema.applications.id} in (select e.application_id from ${schema.applicationEvents} e where e.type = 'imported' and e.data->>'runId' = ${key})`;
+}
+
+/** Every import run that still has applications in AIS Connect, newest first. */
+export async function listImportRuns(): Promise<ImportRunSummary[]> {
+  const db = await getDb();
+  const rows = await db.execute(sql`
+    select coalesce(e.data->>'runId', 'legacy:' || e.actor || ':' || to_char(e.created_at at time zone 'UTC', 'YYYY-MM-DD')) as key,
+      min(e.created_at) as started, max(e.created_at) as ended, min(e.actor) as actor, count(*) as n,
+      array_agg(distinct e.data->>'source') as sources
+    from ${schema.applicationEvents} e
+    join ${schema.applications} a on a.id = e.application_id and a.imported_from = 'lead_alchemist'
+    where e.type = 'imported'
+    group by 1
+    order by min(e.created_at) desc
+    limit 100`);
+  const list = (Array.isArray(rows) ? rows : (rows as { rows: unknown[] }).rows) as {
+    key: string;
+    started: string | Date;
+    ended: string | Date;
+    actor: string;
+    n: number | string;
+    sources: string[] | string | null;
+  }[];
+  return list.map((r) => ({
+    key: r.key,
+    startedAt: new Date(r.started),
+    endedAt: new Date(r.ended),
+    actor: r.actor,
+    applications: Number(r.n),
+    sources: Array.isArray(r.sources) ? r.sources.filter(Boolean) : typeof r.sources === "string" ? r.sources.replace(/[{}"]/g, "").split(",").filter(Boolean) : [],
+  }));
+}
+
+/** Reverse one import run: remove the applications it brought into AIS Connect (nothing else changes). */
+export async function reverseImportRun(key: string): Promise<number> {
+  const db = await getDb();
+  const removed = await db.delete(schema.applications).where(fromRun(key)).returning({ id: schema.applications.id });
+  return removed.length;
 }
