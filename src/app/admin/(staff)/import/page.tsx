@@ -3,12 +3,12 @@ import { SelectAll } from "@/components/SelectAll";
 import { SelectionRunPanel } from "@/components/SelectionRunPanel";
 import { ShiftClickRange } from "@/components/ShiftClickRange";
 import { requireStaff } from "@/lib/auth/session";
-import { importTargets, listImportSources, listSourceSubmissions } from "@/lib/applications/la-import";
+import { importedBySource, importTargets, listImportedFromSource, listImportRuns, listImportSources, listSourceSubmissions } from "@/lib/applications/la-import";
 import { getSelectionRun, showSelectionRun } from "@/lib/bulk/selection-run";
 import { readFlash } from "@/lib/flash";
 import { ghlConfig } from "@/lib/ghl/client";
 import { FlashMessage } from "../salesforce/ui";
-import { importPickedAction, importSelectedAction, saveImportMapAction, startImportAction, stepImportRunAction, stopImportRunAction } from "./actions";
+import { importPickedAction, importSelectedAction, reverseImportRunAction, saveImportMapAction, startImportAction, stepImportRunAction, stopImportRunAction, undoImportAction } from "./actions";
 
 export const metadata = { title: "Import old applications | AIS Connect" };
 export const dynamic = "force-dynamic";
@@ -28,7 +28,7 @@ export default async function ImportPage({ searchParams }: PageProps<"/admin/imp
   const source = typeof sp.source === "string" && SOURCE.test(sp.source) ? sp.source : null;
   const page = Math.max(1, Number(sp.page) || 1);
   const back = source ? `/admin/import?source=${encodeURIComponent(source)}&page=${page}` : "/admin/import";
-  const [flash, run, connected] = await Promise.all([readFlash(sp.f), getSelectionRun("la_import"), ghlConfig()]);
+  const [flash, run, connected, bySource] = await Promise.all([readFlash(sp.f), getSelectionRun("la_import"), ghlConfig(), importedBySource()]);
   const sources = connected ? await attempt(listImportSources()) : { value: null, error: "Lead Alchemist isn't connected yet (Settings → Integrations)." };
   const data = sources.value;
   const submissions = source && data ? await attempt(listSourceSubmissions(source, page)) : { value: null, error: null };
@@ -58,6 +58,70 @@ export default async function ImportPage({ searchParams }: PageProps<"/admin/imp
     </>
   );
 
+  // What one Lead Alchemist form or survey has brought in so far (works without the Lead Alchemist connection).
+  if (source && sp.view === "imported") {
+    const s = data?.sources.find((x) => x.key === source);
+    const imported = await listImportedFromSource(source, page);
+    const pages = Math.max(1, Math.ceil(imported.total / 100));
+    const pageLink = (p: number) => `/admin/import?source=${encodeURIComponent(source)}&view=imported&page=${p}`;
+    return (
+      <div>
+        {header}
+        <h2 className="mb-1 text-lg font-semibold">
+          Imported from {s?.name ?? source} <span className="text-sm font-normal text-[var(--muted)]">({s?.kind ?? source.split(":")[0]})</span>
+        </h2>
+        <p className="mb-4 text-sm text-[var(--muted)]">
+          {fmt(imported.total)} application{imported.total === 1 ? "" : "s"} brought into AIS Connect, newest first.{" "}
+          <Link className="btn-link" href={`/admin/import?source=${encodeURIComponent(source)}`}>See all its submissions</Link>
+        </p>
+        <div className="card overflow-x-auto !p-0">
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>Submitted</th>
+                <th>Application</th>
+                <th>Applicant</th>
+                <th>Account</th>
+                <th>Imported into</th>
+              </tr>
+            </thead>
+            <tbody>
+              {imported.rows.map((r) => (
+                <tr key={r.id}>
+                  <td className="whitespace-nowrap text-sm">{r.submittedAt.toLocaleDateString("en-US", { timeZone: tz })}</td>
+                  <td>
+                    <Link className="row-link font-medium" href={`/admin/applications/${r.id}`}>{r.reference}</Link>
+                  </td>
+                  <td>
+                    {r.applicantName}
+                    <div className="text-xs text-[var(--muted)]">{r.applicantEmail}</div>
+                  </td>
+                  <td>
+                    {r.clientId ? (
+                      <Link className="btn-link" href={`/admin/clients/${r.clientId}`}>{r.accountName ?? r.businessName ?? "Account"}</Link>
+                    ) : (
+                      <span className="text-[var(--muted)]">{r.businessName ?? "—"}</span>
+                    )}
+                  </td>
+                  <td className="text-sm">{title(r.formSlug)}</td>
+                </tr>
+              ))}
+              {!imported.rows.length && (
+                <tr><td colSpan={5} className="text-sm text-[var(--muted)]">Nothing imported from this one yet.</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+        {pages > 1 && (
+          <nav className="mt-3 flex gap-3 text-sm" aria-label="Pages">
+            {page > 1 && <Link className="btn-link" href={pageLink(page - 1)}>← Previous 100</Link>}
+            {page < pages && <Link className="btn-link" href={pageLink(page + 1)}>Next 100 →</Link>}
+          </nav>
+        )}
+      </div>
+    );
+  }
+
   // One Lead Alchemist form's submissions, to tick which to import.
   if (source && data) {
     const s = data.sources.find((x) => x.key === source);
@@ -70,7 +134,12 @@ export default async function ImportPage({ searchParams }: PageProps<"/admin/imp
         </h2>
         <p className="mb-4 text-sm text-[var(--muted)]">
           {s?.slug ? <>Imports into <strong>{title(s.slug)}</strong>.</> : <>Not set to import into any form yet: pick one on the list of forms and Save first.</>}{" "}
-          Tick the submissions to bring in (shift-click to tick a range). Ones already imported are linked to their application.
+          Tick the submissions to bring in (shift-click to tick a range). Ones already imported are linked to their application.{" "}
+          {(bySource[source] ?? 0) > 0 && (
+            <Link className="btn-link" href={`/admin/import?source=${encodeURIComponent(source)}&view=imported`}>
+              See the {fmt(bySource[source] ?? 0)} imported
+            </Link>
+          )}
         </p>
         {list && (
           <>
@@ -124,11 +193,79 @@ export default async function ImportPage({ searchParams }: PageProps<"/admin/imp
                 {page < list.pages && <Link className="btn-link" href={pageLink(page + 1)}>Next 100 →</Link>}
               </nav>
             )}
+            {(bySource[source] ?? 0) > 0 && (
+              <form action={undoImportAction} className="card mt-6 max-w-3xl space-y-2 !p-4 text-sm">
+                <input type="hidden" name="source" value={source} />
+                <h3 className="font-semibold">Undo this import</h3>
+                <p>
+                  Removes the <strong>{fmt(bySource[source] ?? 0)}</strong> application{bySource[source] === 1 ? "" : "s"} imported from this Lead Alchemist{" "}
+                  {s?.kind ?? "form"} from AIS Connect. Nothing changes in Lead Alchemist or Salesforce; accounts and contacts stay. You can import them again later.
+                </p>
+                <label className="flex items-center gap-2">
+                  <input type="checkbox" name="confirm" value="yes" required /> Yes, remove them from AIS Connect
+                </label>
+                <button className="btn-secondary" disabled={running}>Remove imported applications</button>
+              </form>
+            )}
           </>
         )}
       </div>
     );
   }
+
+  const runs = await listImportRuns();
+  const sourceName = (key: string) => data?.sources.find((x) => x.key === key)?.name ?? key;
+  const history = (
+    <section className="mt-8" aria-labelledby="import-history">
+      <h2 id="import-history" className="mb-1 text-lg font-semibold">Import history</h2>
+      <p className="mb-3 max-w-3xl text-sm text-[var(--muted)]">
+        Every import that still has applications in AIS Connect, newest first. Reverse removes just that import&apos;s applications from AIS Connect;
+        nothing changes in Lead Alchemist or Salesforce, and accounts and contacts stay.
+      </p>
+      <div className="card overflow-x-auto !p-0">
+        <table className="data-table">
+          <thead>
+            <tr>
+              <th>When</th>
+              <th>By</th>
+              <th>Applications</th>
+              <th>From</th>
+              <th>Reverse</th>
+            </tr>
+          </thead>
+          <tbody>
+            {runs.map((r) => (
+              <tr key={r.key}>
+                <td className="whitespace-nowrap text-sm">{r.startedAt.toLocaleString("en-US", { timeZone: tz, dateStyle: "medium", timeStyle: "short" })}</td>
+                <td className="text-sm">{r.actor.replace(/^staff:/, "")}</td>
+                <td>{fmt(r.applications)}</td>
+                <td className="text-sm">
+                  {r.sources.map((k, i) => (
+                    <span key={k}>
+                      {i ? ", " : ""}
+                      <Link className="btn-link" href={`/admin/import?source=${encodeURIComponent(k)}&view=imported`}>{sourceName(k)}</Link>
+                    </span>
+                  ))}
+                </td>
+                <td>
+                  <form action={reverseImportRunAction} className="flex items-center gap-2 text-sm">
+                    <input type="hidden" name="run" value={r.key} />
+                    <label className="flex items-center gap-1">
+                      <input type="checkbox" name="confirm" value="yes" required aria-label="Confirm reversing this import" /> Sure
+                    </label>
+                    <button className="btn-secondary !py-1" disabled={running}>Reverse</button>
+                  </form>
+                </td>
+              </tr>
+            ))}
+            {!runs.length && (
+              <tr><td colSpan={5} className="text-sm text-[var(--muted)]">Nothing imported yet.</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
 
   const toImport = data?.sources.filter((s) => s.slug) ?? [];
   const totalWaiting = toImport.reduce((n, s) => n + (s.submissions ?? 0), 0);
@@ -144,24 +281,21 @@ export default async function ImportPage({ searchParams }: PageProps<"/admin/imp
       </p>
       {data && (
         <>
-          <div className="card mb-4 flex flex-wrap items-center gap-3 !p-4 text-sm">
-            <form id="import-selected" action={importSelectedAction}>
-              <button className="btn-primary" disabled={running}>Import ticked forms</button>
-            </form>
-            <form action={startImportAction}>
-              <button className="btn-secondary" disabled={running || !toImport.length}>Import all</button>
-            </form>
-            <span className="text-[var(--muted)]">
-              <strong>{fmt(totalWaiting)}</strong> submissions in {toImport.length} form{toImport.length === 1 ? "" : "s"} set to import ·{" "}
-              <strong>{fmt(Object.values(data.imported).reduce((a, b) => a + b, 0))}</strong> already imported. Open a form to tick single submissions.
-            </span>
-          </div>
           <ShiftClickRange />
-          <form action={saveImportMapAction} className="card overflow-x-auto !p-0">
+          <form id="import-map" action={saveImportMapAction} className="card overflow-x-auto !p-0">
+            <div className="flex flex-wrap items-center gap-3 border-b border-[var(--border)] p-4 text-sm">
+              <button className="btn-primary" formAction={importSelectedAction} disabled={running}>Import ticked forms</button>
+              <button className="btn-secondary" formAction={startImportAction} disabled={running}>Import all</button>
+              <span className="text-[var(--muted)]">
+                <strong>{fmt(totalWaiting)}</strong> submissions in {toImport.length} form{toImport.length === 1 ? "" : "s"} set to import ·{" "}
+                <strong>{fmt(Object.values(bySource).reduce((a, b) => a + b, 0))}</strong> already imported. Both buttons use the &quot;Imports into&quot; choices
+                as shown (forms set to &quot;Don&apos;t import&quot; are skipped). Open a form to tick single submissions or undo its import.
+              </span>
+            </div>
             <table className="data-table">
               <thead>
                 <tr>
-                  <th className="w-8"><SelectAll form="import-selected" label="Tick every form and survey" /></th>
+                  <th className="w-8"><SelectAll form="import-map" label="Tick every form and survey" /></th>
                   <th>Lead Alchemist form or survey</th>
                   <th>Submissions</th>
                   <th>Imports into</th>
@@ -172,7 +306,7 @@ export default async function ImportPage({ searchParams }: PageProps<"/admin/imp
                 {data.sources.map((s) => (
                   <tr key={s.key}>
                     <td>
-                      <input type="checkbox" name="ids" value={s.key} form="import-selected" aria-label={`Import ${s.name}`} />
+                      <input type="checkbox" name="ids" value={s.key} form="import-map" aria-label={`Import ${s.name}`} />
                     </td>
                     <td>
                       <Link className="row-link font-medium" href={`/admin/import?source=${encodeURIComponent(s.key)}`}>{s.name}</Link>{" "}
@@ -188,8 +322,11 @@ export default async function ImportPage({ searchParams }: PageProps<"/admin/imp
                       </select>
                     </td>
                     <td>
-                      {s.slug ? fmt(data.imported[s.slug] ?? 0) : ""}
-                      {s.slug && <span className="text-xs text-[var(--muted)]"> in {title(s.slug)}</span>}
+                      {bySource[s.key] ? (
+                        <Link className="btn-link" href={`/admin/import?source=${encodeURIComponent(s.key)}&view=imported`}>{fmt(bySource[s.key])} imported</Link>
+                      ) : (
+                        <span className="text-[var(--muted)]">0</span>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -197,11 +334,12 @@ export default async function ImportPage({ searchParams }: PageProps<"/admin/imp
             </table>
             <div className="flex items-center gap-3 p-4">
               <button className="btn-secondary">Save</button>
-              <span className="text-sm text-[var(--muted)]">Pick a form for any Lead Alchemist form or survey that held applications, then Save.</span>
+              <span className="text-sm text-[var(--muted)]">Pick a form for any Lead Alchemist form or survey that held applications, or &quot;Don&apos;t import&quot; to skip it.</span>
             </div>
           </form>
         </>
       )}
+      {history}
     </div>
   );
 }

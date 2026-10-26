@@ -1,5 +1,6 @@
 import { AutoRefresh } from "@/components/AutoRefresh";
 import { runStalled, type SelectionRun } from "@/lib/bulk/selection-run";
+import { clearRunAction } from "@/app/admin/(staff)/run-actions";
 
 const fmt = (n: number) => n.toLocaleString("en-US");
 
@@ -21,9 +22,18 @@ export function SelectionRunPanel({
   const stalled = runStalled(run);
   return (
     <section className="mb-4 rounded-lg border border-[var(--notice-border)] bg-[var(--notice-bg)] p-3 text-sm" role="status" aria-label="Run on all matching">
+      <div className="flex items-start justify-between gap-2">
       <p className="font-semibold">
         {run.phase === "running" ? "Running" : run.phase === "done" ? "Finished" : "Stopped"}: {run.label} on all {fmt(total)} matching
       </p>
+        {run.phase !== "running" && (
+          <form action={clearRunAction}>
+            <input type="hidden" name="scope" value={run.scope} />
+            <input type="hidden" name="back" value={back} />
+            <button className="btn-link text-xs" title="Hide this bar (the sync report stays under Settings → Sync reports)">Clear ✕</button>
+          </form>
+        )}
+      </div>
       <p className="mt-1">
         <strong>{fmt(run.position)}</strong> of <strong>{fmt(total)}</strong> worked through ({pct}%), <strong>{fmt(run.done)}</strong> done.
       </p>

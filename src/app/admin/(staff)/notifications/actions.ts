@@ -5,7 +5,8 @@ import { redirect } from "next/navigation";
 import { requireStaff } from "@/lib/auth/session";
 import type { NotificationStatus } from "@/lib/db/schema";
 import { setFlash } from "@/lib/flash";
-import { addNotificationNote, assignNotification, setNotificationStatus } from "@/lib/notifications/repo";
+import { addNotificationNote, assignNotification, dismissAll, KIND_LABELS, setNotificationStatus } from "@/lib/notifications/repo";
+import type { NotificationKind } from "@/lib/db/schema";
 
 // Every action re-checks the staff session: server actions are reachable by direct POST.
 
@@ -53,4 +54,15 @@ export async function assignToMeAction(formData: FormData) {
   const mine = formData.get("unassign") ? null : staff.email;
   await assignNotification(id, mine, `staff:${staff.email}`);
   return finish(formData, "ok", mine ? "Assigned to you." : "Unassigned.");
+}
+
+/** Dismiss a whole board column (in the kind shown). Nothing is deleted: each card can be reopened. */
+export async function dismissAllAction(formData: FormData) {
+  const staff = await requireStaff();
+  const from = String(formData.get("from") ?? "") as NotificationStatus;
+  const kindRaw = String(formData.get("kind") ?? "");
+  const kind = kindRaw in KIND_LABELS ? (kindRaw as NotificationKind) : undefined;
+  if (!STATUS.has(from) || from === "dismissed") return finish(formData, "error", "Unknown column.");
+  const n = await dismissAll(from, `staff:${staff.email}`, kind);
+  return finish(formData, "ok", n ? `Dismissed ${n.toLocaleString("en-US")}. Find them under Dismissed if you need one back.` : "Nothing to dismiss.");
 }

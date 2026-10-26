@@ -9,11 +9,12 @@ const WORK: Record<SelectionScope, Record<string, { work: (ids: string[], actor:
   contacts: CONTACTS_WORK,
   mapping: MAPPING_WORK,
   accounts: ACCOUNTS_WORK,
-  la_import: { importAll: { work: (ids, actor) => importSubmissionPages(ids, actor) } },
+  la_import: { importAll: { work: (ids, actor, o) => importSubmissionPages(ids, actor, o.runId) } },
 };
 
 /** The work a run's button does, for stepSelectionRun (null when the action no longer exists). */
 export const selectionWork = (scope: SelectionScope) => (run: SelectionRun) => {
   const w = WORK[scope][run.action];
-  return w ? (ids: string[], actor: string) => w.work(ids, actor, run.options) : null;
+  // The run's ID goes along so the work can tag what it made (e.g. imports, to reverse one run).
+  return w ? (ids: string[], actor: string) => w.work(ids, actor, { ...run.options, runId: run.runId }) : null;
 };

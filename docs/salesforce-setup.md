@@ -59,7 +59,7 @@ last name, email, phone and mailing address.
 Create a dedicated user the app signs in as, so its changes are easy to spot in history:
 
 1. Setup → Users → New User. License **Salesforce Integration** (API-only). Name it, for example, "Applications App".
-2. Create a permission set **Applications App Integration**:
+2. Create a permission set **DubLow Integration Access** (named "Applications App Integration" in earlier drafts of this guide):
    - Permission set license: **Salesforce API Integration**.
    - System permission: **API Enabled**.
    - Object permissions: **Account**, **Contact** and **Opportunity**: Read, Create, Edit (no Delete). Opportunity

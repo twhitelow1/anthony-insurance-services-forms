@@ -95,6 +95,24 @@ export async function setNotificationStatus(id: string, status: NotificationStat
   return updated;
 }
 
+/** Dismiss every notification in one status (optionally one kind) at once, logging each. Returns how many. */
+export async function dismissAll(from: NotificationStatus, actor: string, kind?: NotificationKind) {
+  if (from === "dismissed") return 0;
+  const db = await getDb();
+  const where = and(eq(schema.notifications.status, from), kind ? eq(schema.notifications.kind, kind) : undefined);
+  const rows = await db
+    .update(schema.notifications)
+    .set({ status: "dismissed", updatedAt: new Date(), updatedBy: actor })
+    .where(where)
+    .returning({ id: schema.notifications.id });
+  if (rows.length) {
+    await db
+      .insert(schema.notificationLog)
+      .values(rows.map((r) => ({ notificationId: r.id, actor, action: "status" as const, fromStatus: from, toStatus: "dismissed" as const, note: "Dismissed with Dismiss all" })));
+  }
+  return rows.length;
+}
+
 export async function addNotificationNote(id: string, actor: string, note: string, action: "note" | "pushed" = "note") {
   const text = note.trim().slice(0, 2000);
   if (!text) return;

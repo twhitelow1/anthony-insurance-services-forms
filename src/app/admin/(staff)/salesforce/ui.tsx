@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import type { AppState } from "@/lib/salesforce/manager";
 import type { Flash } from "@/lib/flash";
+import { Dismissible } from "@/components/Dismissible";
 
 const STATE: Record<AppState, { label: string; tone: string; title: string }> = {
   not_in_app: { label: "Not in AIS Connect", tone: "badge-neutral", title: "Only in Salesforce. Sync to bring it in." },
@@ -29,23 +30,23 @@ export function FlashMessage({ flash }: { flash: Flash | null }) {
   ) : null;
   if (flash.tone === "ok")
     return (
-      <p className="callout mb-4 text-sm" role="status">
+      <Dismissible className="callout mb-4 text-sm" role="status">
         {flash.text}
         {more}
-      </p>
+      </Dismissible>
     );
   if (flash.tone === "warn")
     return (
-      <p className="mb-4 rounded-lg border border-[var(--notice-border)] bg-[var(--notice-bg)] p-3 text-sm" role="status">
+      <Dismissible className="mb-4 rounded-lg border border-[var(--notice-border)] bg-[var(--notice-bg)] p-3 text-sm" role="status">
         <strong>Needs attention.</strong> {flash.text}
         {more}
-      </p>
+      </Dismissible>
     );
   return (
-    <p className="mb-4 rounded-lg bg-[var(--danger-bg)] p-3 text-sm text-[var(--danger)]" role="alert">
+    <Dismissible className="mb-4 rounded-lg bg-[var(--danger-bg)] p-3 text-sm text-[var(--danger)]" role="alert">
       {flash.text}
       {more}
-    </p>
+    </Dismissible>
   );
 }
 
