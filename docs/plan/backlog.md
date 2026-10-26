@@ -205,7 +205,7 @@ Today staff can download an Outlook draft to the carrier with the filled PDF att
 - ⬜ Fewer buttons on the account views (tidy the Accounts list and Across all three).
 - ✅ Bigger search boxes (Todd, 2026-10-26): every admin search box (Applications, Accounts, Across all three, Duplicates, Contacts, Mapping, Salesforce) has its own full-width row with larger text, filters underneath.
 - ✅ Kind-of-application filter on Applications.
-- ✅ Import old Lead Alchemist form submissions.
+- ✅ Import old Lead Alchemist form and survey submissions, all at once or ticked forms or single ticked submissions.
 - ✅ Sport event and single event forms: same questions, AIS and martial arts branding (each shows its own logo from its link).
 - ✅ Test submissions don't email the applicant.
 - ⬜ Duplicate accounts found in the call: staff merge them with Compare & merge and set the current owner as primary contact.
