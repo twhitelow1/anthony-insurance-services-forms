@@ -88,6 +88,7 @@ export default async function SettingsPage({ searchParams }: PageProps<"/admin/s
             { href: "/admin/settings/mapping", title: "Data mapping", text: "Bring Salesforce Accounts in, link accounts to Lead Alchemist Companies, send past applications to Salesforce." },
             { href: "/admin/salesforce", title: "Salesforce Accounts", text: "Every Salesforce Account and Contact: sync into AIS Connect, unsync, deactivate, match people to Lead Alchemist." },
             { href: "/admin/lead-alchemist", title: "Lead Alchemist setup", text: "The connection, and every Lead Alchemist pipeline and stage." },
+            { href: "/admin/import", title: "Import old applications", text: "Bring past Lead Alchemist form and survey submissions into AIS Connect as applications." },
             { href: "/admin/settings/company-fields", title: "Company fields", text: "Which Salesforce Account field fills in each Lead Alchemist Company field on every sync." },
             { href: "/admin/changes", title: "Change log", text: "Every change a sync made or saw on each person, field by field, with when and who." },
             { href: "/admin/sync-reports", title: "Sync reports", text: "The result of every bulk sync: what was done, skipped, in conflict or failed." },

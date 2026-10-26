@@ -13,7 +13,7 @@ import { addTally, type ContactTally } from "./tally";
  * minutes, saving progress after every batch, then hands on to the next), so the page can be
  * closed. It can be stopped. One run per list at a time.
  */
-export type SelectionScope = "contacts" | "mapping" | "accounts";
+export type SelectionScope = "contacts" | "mapping" | "accounts" | "la_import";
 
 export interface SelectionRun {
   runId: string;
@@ -69,6 +69,8 @@ export const INLINE_LIMIT = 5;
 /** The most rows one run takes. */
 export const MAX_SELECTION = 20_000;
 const CHUNK = 10;
+/** Lists whose rows are big: an import row is a whole page of 100 submissions. */
+const CHUNK_SIZE: Partial<Record<SelectionScope, number>> = { la_import: 1 };
 const key = (scope: SelectionScope) => `selection_run:${scope}`;
 
 export async function getSelectionRun(scope: SelectionScope): Promise<SelectionRun | null> {
@@ -156,7 +158,7 @@ export async function stepSelectionRun(
   const from = run.position;
   // At least one batch per step, so it always moves forward.
   while (run.position < run.ids.length && (run.position === from || Date.now() - started < timeBudgetMs)) {
-    const chunk = run.ids.slice(run.position, run.position + CHUNK);
+    const chunk = run.ids.slice(run.position, run.position + (CHUNK_SIZE[run.scope] ?? CHUNK));
     try {
       const r = await fn(chunk, run.startedBy);
       run.done += r.done;
@@ -184,7 +186,7 @@ export async function stepSelectionRun(
   return save(run.phase === "done" ? await withReport({ ...run, leaseUntil: null }) : { ...run, leaseUntil: null });
 }
 
-const PAGE: Record<SelectionScope, string> = { contacts: "/admin/contacts", mapping: "/admin/mapping", accounts: "/admin/clients?view=all" };
+const PAGE: Record<SelectionScope, string> = { contacts: "/admin/contacts", mapping: "/admin/mapping", accounts: "/admin/clients?view=all", la_import: "/admin/import" };
 
 /** A finished or stopped run's report: rows not reached count as not done, and why it stopped is an error. */
 async function withReport(run: SelectionRun): Promise<SelectionRun> {

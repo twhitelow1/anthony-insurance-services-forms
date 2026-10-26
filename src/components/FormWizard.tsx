@@ -417,7 +417,7 @@ export function FormWizard({ slug, edit, canTest = false }: { slug: string; edit
           </label>
           <span className="text-[var(--muted)]">
             {testing
-              ? "Required fields are still marked * — untick to check them again. An email is still needed. The submission is labeled TEST."
+              ? "Required fields are still marked * — untick to check them again. An email is still needed, but no confirmation email is sent to it. The submission is labeled TEST."
               : "You're signed in as staff."}
           </span>
         </div>

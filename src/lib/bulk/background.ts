@@ -10,7 +10,7 @@ import { selectionWork } from "./work";
  * every batch, then asks for the next request, until the run is done or stopped. If a request is
  * cut off, its hold on the run expires and the next admin page load (or the daily cron) picks it up.
  */
-export const SCOPES: SelectionScope[] = ["contacts", "mapping", "accounts"];
+export const SCOPES: SelectionScope[] = ["contacts", "mapping", "accounts", "la_import"];
 
 /** How long one request works before handing on (the route's limit is longer). */
 export const STEP_BUDGET_MS = 200_000;

@@ -551,6 +551,10 @@ export const applications = pgTable(
     ghlLinksNotedAt: timestamp("ghl_links_noted_at", { withTimezone: true }),
     /** Submitted by staff in testing mode (required fields skipped). Labeled TEST; tagged `test` in Lead Alchemist. */
     isTest: boolean("is_test").notNull().default(false),
+    /** Brought in from an earlier system ("lead_alchemist": an old Lead Alchemist form or survey submission); null for applications made here. */
+    importedFrom: text("imported_from").$type<"lead_alchemist">(),
+    /** The Lead Alchemist submission it was imported from, so it's never imported twice. */
+    laSubmissionId: text("la_submission_id"),
     submittedIp: text("submitted_ip"),
     submittedUserAgent: text("submitted_user_agent"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -562,6 +566,7 @@ export const applications = pgTable(
     index("applications_contact_idx").on(t.contactId),
     index("applications_status_idx").on(t.status),
     index("applications_created_idx").on(t.createdAt),
+    uniqueIndex("applications_la_submission_idx").on(t.laSubmissionId),
     index("applications_search_idx").using("gin", sql`to_tsvector('english', ${t.searchText})`),
   ],
 );
@@ -583,7 +588,8 @@ export type EventType =
   | "sf_synced"
   | "sf_sync_failed"
   | "sf_needs_review"
-  | "sf_dry_run";
+  | "sf_dry_run"
+  | "imported";
 
 export type ApplicationSfStatus = "not_synced" | "pending" | "synced" | "needs_review" | "error" | "skipped";
 

@@ -248,6 +248,11 @@ async function notifyStaff(form: FormDefinition, app: Application, changeLines: 
 }
 
 async function sendConfirmation(form: FormDefinition, app: Application) {
+  // Staff test with real people's details, so a test never emails the address on it.
+  if (app.isTest) {
+    await addEvent(app.id, "email_sent", "system", { message: "Test submission: no confirmation email was sent to the applicant." }).catch(() => {});
+    return;
+  }
   try {
     // Documents assigned to this form in Admin → Documents (sample waiver etc.).
     const docs = await libraryForForm(form.slug).catch(() => []);
