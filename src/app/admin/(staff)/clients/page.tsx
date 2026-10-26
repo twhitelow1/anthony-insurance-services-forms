@@ -10,8 +10,6 @@ import { RECORD_SOURCE_LABEL, type RecordSource } from "@/lib/db/schema";
 import { links } from "@/lib/integrations/links";
 import { CLIENT_SEARCH_COOKIE } from "@/lib/clients/search-cookie";
 import { searchClientsAction } from "./actions";
-import { linkAllGhlAction } from "@/app/admin/actions";
-import { ghlConfig } from "@/lib/ghl/client";
 import { readFlash } from "@/lib/flash";
 import { FlashMessage } from "../salesforce/ui";
 import { AcrossView } from "./AcrossView";
@@ -81,14 +79,6 @@ export default async function Accounts({ searchParams }: PageProps<"/admin/clien
           <a className="btn-secondary" href={`/admin/clients/export${qs({ page: 1 })}`} download>
             Export CSV
           </a>
-          <Link className="btn-secondary" href="/admin/settings/mapping">Data mapping (Salesforce, Lead Alchemist)</Link>
-          {(await ghlConfig()) && (
-            <form action={linkAllGhlAction}>
-              <button className="btn-secondary" title="Find the Lead Alchemist contact for every person that isn't linked yet (50 per click)">
-                Link to Lead Alchemist
-              </button>
-            </form>
-          )}
         </div>
       </div>
       <Tabs view="app" />
