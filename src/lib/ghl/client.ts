@@ -57,6 +57,8 @@ export function leadAlchemistErrorMessage(method: string, path: string, status: 
     return `Lead Alchemist won't let AIS Connect use Companies (${status}): the token is missing the Companies scopes. In Lead Alchemist, open Settings → Private Integrations, edit AIS Connect's integration, add the two Companies scopes (listed as businesses.readonly and businesses.write), and save. If it shows a new token, paste it in Admin → Settings → Integrations.`;
   if ((status === 401 || status === 403) && /^\/objects\//.test(path))
     return `Lead Alchemist won't let AIS Connect fill in Company fields (${status}): the token is missing the Objects scopes. In Lead Alchemist, open Settings → Private Integrations, edit AIS Connect's integration, add objects/schema.readonly, objects/record.readonly and objects/record.write, and save. If it shows a new token, paste it in Admin → Settings → Integrations.`;
+  if ((status === 401 || status === 403) && /^\/(forms|surveys)\//.test(path))
+    return `Lead Alchemist won't let AIS Connect read old form submissions (${status}): the token is missing the Forms and Surveys scopes. In Lead Alchemist, open Settings → Private Integrations, edit AIS Connect's integration, add forms.readonly and surveys.readonly, and save. If it shows a new token, paste it in Admin → Settings → Integrations.`;
   if (status === 401 || status === 403)
     return `Lead Alchemist refused ${method} ${where} (${status}): the token is invalid or missing a scope. Check it in Admin → Settings → Integrations (Test connection).`;
   return `Lead Alchemist ${method} ${where} failed: ${status}`;
@@ -431,4 +433,53 @@ export async function updateBusinessProperties(id: string, properties: Record<st
     body: JSON.stringify({ properties }),
     cache: "no-store",
   });
+}
+
+// ── Old form and survey submissions (for importing past applications) ─────
+// Scopes: forms.readonly, surveys.readonly.
+
+export type LaSourceKind = "form" | "survey";
+
+export interface LaSubmission {
+  id: string;
+  contactId?: string | null;
+  createdAt?: string | null;
+  formId?: string;
+  surveyId?: string;
+  name?: string | null;
+  email?: string | null;
+  /** The answers: built-in fields by name (first_name, phone, …), custom fields by their ID, plus metadata. */
+  others?: Record<string, unknown>;
+}
+
+/** The location's forms or surveys (id and name). */
+export async function listLaSources(kind: LaSourceKind): Promise<{ id: string; name: string }[]> {
+  const { locationId } = (await ghlConfig())!;
+  const out: { id: string; name: string }[] = [];
+  for (let skip = 0; skip < 2000; skip += 50) {
+    const data = await ghlFetch<{ forms?: { id: string; name: string }[]; surveys?: { id: string; name: string }[]; total?: number }>(
+      `/${kind}s/?locationId=${encodeURIComponent(locationId)}&skip=${skip}&limit=50`,
+      { cache: "no-store" },
+    );
+    const page = (kind === "form" ? data.forms : data.surveys) ?? [];
+    out.push(...page.map((x) => ({ id: x.id, name: x.name })));
+    if (page.length < 50) break;
+  }
+  return out;
+}
+
+/** One page (up to 100) of a form's or survey's submissions, all time, oldest first, and the total. */
+export async function laSubmissionsPage(kind: LaSourceKind, id: string, page: number, limit = 100): Promise<{ submissions: LaSubmission[]; total: number }> {
+  const { locationId } = (await ghlConfig())!;
+  const q = new URLSearchParams({
+    locationId,
+    [kind === "form" ? "formId" : "surveyId"]: id,
+    page: String(page),
+    limit: String(limit),
+    // Without these Lead Alchemist only returns the last month.
+    startAt: "2015-01-01",
+    endAt: new Date(Date.now() + 86_400_000).toISOString().slice(0, 10),
+  });
+  const data = await ghlFetch<{ submissions?: LaSubmission[]; meta?: { total?: number } }>(`/${kind}s/submissions?${q}`, { cache: "no-store" });
+  return { submissions: data.submissions ?? [], total: Number(data.meta?.total ?? data.submissions?.length ?? 0) };
 }

@@ -1,9 +1,9 @@
-import { AutoSubmit } from "@/components/AutoSubmit";
-import type { SelectionRun } from "@/lib/bulk/selection-run";
+import { AutoRefresh } from "@/components/AutoRefresh";
+import { runStalled, type SelectionRun } from "@/lib/bulk/selection-run";
 
 const fmt = (n: number) => n.toLocaleString("en-US");
 
-/** Progress of a "select all matching" run on a list; continues on its own while the page is open. */
+/** Progress of a bulk run on a list. It runs in the background on the server; this only shows how far it got. */
 export function SelectionRunPanel({
   run,
   back,
@@ -18,6 +18,7 @@ export function SelectionRunPanel({
   const total = run.ids.length;
   const pct = total ? Math.round((run.position / total) * 100) : 100;
   const by = run.startedBy.replace(/^staff:/, "");
+  const stalled = runStalled(run);
   return (
     <section className="mb-4 rounded-lg border border-[var(--notice-border)] bg-[var(--notice-bg)] p-3 text-sm" role="status" aria-label="Run on all matching">
       <p className="font-semibold">
@@ -42,15 +43,18 @@ export function SelectionRunPanel({
       </div>
       {run.phase === "running" && (
         <div className="mt-2 flex flex-wrap items-center gap-2">
-          <form action={stepAction}>
-            <input type="hidden" name="back" value={back} />
-            <AutoSubmit label="Continue" />
-          </form>
+          <AutoRefresh />
           <form action={stopAction}>
             <input type="hidden" name="back" value={back} />
             <button className="btn-secondary">Stop</button>
           </form>
-          <span className="text-[var(--muted)]">Continues on its own while this page is open.</span>
+          {stalled ? (
+            <form action={stepAction}>
+              <input type="hidden" name="back" value={back} />
+              <button className="btn-secondary" title="It hasn't moved for a few minutes">Continue</button>
+            </form>
+          ) : null}
+          <span className="text-[var(--muted)]">Runs in the background: you can leave this page or close the browser. The sync report appears here and under Settings → Sync reports when it&apos;s done.</span>
         </div>
       )}
       {!run.report && run.notes.length > 0 && (

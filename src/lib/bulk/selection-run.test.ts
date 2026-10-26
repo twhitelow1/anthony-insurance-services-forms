@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getSelectionRun, MAX_SELECTION, showSelectionRun, startSelectionRun, stepSelectionRun, stopSelectionRun } from "./selection-run";
+import { claimSelectionRun, getSelectionRun, MAX_SELECTION, runStalled, showSelectionRun, startSelectionRun, stepSelectionRun, stopSelectionRun } from "./selection-run";
 
 const ACTOR = "staff:amy@anthonyinsuranceservices.com";
 
@@ -44,5 +44,37 @@ describe("select all matching runs", () => {
     // An action that no longer exists stops the run.
     await startSelectionRun("contacts", { action: "gone", label: "Gone", ids: ["a"], scopeText: "" }, ACTOR);
     expect((await stepSelectionRun("contacts", () => null))!.phase).toBe("stopped");
+  });
+
+  it("runs in the background: one worker at a time, progress saved each batch, Stop takes effect mid-run", async () => {
+    const ids = Array.from({ length: 30 }, (_, i) => `bg-${i}`);
+    await startSelectionRun("accounts", { action: "toLeadAlchemist", label: "Synced", ids, scopeText: "" }, ACTOR);
+    const claimed = await claimSelectionRun("accounts", 60_000);
+    expect(claimed?.leaseUntil).toBeTruthy();
+    expect(await claimSelectionRun("accounts", 60_000)).toBeNull(); // someone is already on it
+
+    // Staff press Stop while the second batch is being worked on: the run stops there.
+    let batches = 0;
+    const r = await stepSelectionRun(
+      "accounts",
+      () => async (batch) => {
+        if (++batches === 2) await stopSelectionRun("accounts", ACTOR);
+        return { done: batch.length, notes: [] };
+      },
+      60_000,
+      claimed!,
+    );
+    expect(r).toMatchObject({ phase: "stopped", position: 10 });
+    expect(batches).toBe(2);
+    expect((await getSelectionRun("accounts"))!.error).toMatch(/Stopped by/);
+
+    // A run nobody is working on and that hasn't moved for a while counts as stalled.
+    const fresh = await startSelectionRun("accounts", { action: "toLeadAlchemist", label: "Synced", ids: ["x"], scopeText: "" }, ACTOR);
+    expect(runStalled(fresh)).toBe(false);
+    expect(runStalled(fresh, Date.now() + 4 * 60_000)).toBe(true);
+    const held = await claimSelectionRun("accounts", 10 * 60_000);
+    expect(runStalled(held!, Date.now() + 4 * 60_000)).toBe(false);
+    const done = await stepSelectionRun("accounts", () => async (b) => ({ done: b.length, notes: [] }), 60_000, held!);
+    expect(done).toMatchObject({ phase: "done", leaseUntil: null });
   });
 });

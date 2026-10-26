@@ -513,6 +513,7 @@ export default async function AccountPage({ params, searchParams }: PageProps<"/
                   <td>
                     <Link className="row-link font-mono" href={`/admin/applications/${a.id}`}>{a.reference}</Link>
                     {a.isTest && <span className="badge badge-danger ml-1" title="Submitted in staff testing mode">TEST</span>}
+                    {a.importedFrom && <span className="badge badge-neutral ml-1" title="Brought in from an old Lead Alchemist form submission">Imported</span>}
                   </td>
                   <td className="text-sm">{form?.title ?? a.formSlug}</td>
                   <td className="text-sm">

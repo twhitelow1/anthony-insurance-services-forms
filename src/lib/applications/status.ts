@@ -37,7 +37,7 @@ export const STATUSES = {
   },
   withdrawn: {
     label: "Withdrawn",
-    description: "AIS Connectlication was withdrawn.",
+    description: "This application was withdrawn.",
     tone: "neutral",
   },
 } as const;

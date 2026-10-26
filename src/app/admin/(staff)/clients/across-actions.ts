@@ -6,24 +6,20 @@ import { redirect } from "next/navigation";
 import { requireStaff } from "@/lib/auth/session";
 import {
   accountDirectoryKeys,
-  accountsToLeadAlchemist,
-  accountsToSalesforce,
-  addAccountsToApp,
-  linkSuggestedMatches,
   NO_ACCOUNT_TYPE,
   startAccountImport,
   stepAccountImport,
   type AccountMatchFilter,
   type AccountPresence,
   type AccountSource,
-  type AccountSyncOptions,
 } from "@/lib/accounts/directory";
 import { saveSyncReport } from "@/lib/bulk/report";
-import { INLINE_LIMIT, startSelectionRun, stepSelectionRun, stopSelectionRun, type BatchResult } from "@/lib/bulk/selection-run";
+import { startBackgroundRun, triggerSelectionRun } from "@/lib/bulk/background";
+import { INLINE_LIMIT, stopSelectionRun, type BatchResult } from "@/lib/bulk/selection-run";
 import { CLIENT_SEARCH_COOKIE } from "@/lib/clients/search-cookie";
 import { setFlash } from "@/lib/flash";
-import { links } from "@/lib/integrations/links";
 import { salesforceClient } from "@/lib/salesforce/client";
+import { ACCOUNTS_WORK } from "@/lib/bulk/work/accounts";
 
 // Accounts → "Across all three". Every action re-checks the staff session: server actions are
 // reachable by direct POST. Nothing here deletes anything in Salesforce or Lead Alchemist.
@@ -65,22 +61,7 @@ export async function importAccountsAction(formData: FormData) {
   return finish(back, "ok", `Read ${run?.imported.toLocaleString("en-US") ?? 0} ${label}.`);
 }
 
-type Work = (keys: string[], actor: string, options: Record<string, string>) => Promise<BatchResult>;
-
-const syncOptions = (o: Record<string, string>): AccountSyncOptions => ({ useSuggested: o.useSuggested === "yes", createMissing: o.createMissing === "yes" });
-const deps = async () => ({ sf: await salesforceClient(), links: await links() });
-
-/** The bulk buttons, by key, so a "select all matching" run can call the same work later. */
-const WORK: Record<string, { verb: string; options: string[]; work: Work }> = {
-  addToApp: { verb: "Added to AIS Connect", options: ["useSuggested"], work: async (k, a, o) => addAccountsToApp(k, a, await deps(), syncOptions(o)) },
-  toLeadAlchemist: {
-    verb: "Synced to Lead Alchemist",
-    options: ["useSuggested", "createMissing"],
-    work: async (k, a, o) => accountsToLeadAlchemist(k, a, await deps(), syncOptions(o)),
-  },
-  toSalesforce: { verb: "Linked or created in Salesforce", options: ["useSuggested"], work: async (k, a, o) => accountsToSalesforce(k, a, await deps(), syncOptions(o)) },
-  linkSuggested: { verb: "Linked to suggested matches", options: [], work: async (k, a) => linkSuggestedMatches(k, a, await deps()) },
-};
+const WORK = ACCOUNTS_WORK;
 
 const KEY_RE = /^[asl]:[A-Za-z0-9-]{3,64}$/;
 const yesNo = (v: string | null): "yes" | "no" | undefined => (v === "yes" || v === "no" ? v : undefined);
@@ -112,7 +93,7 @@ async function bulk(formData: FormData, key: keyof typeof WORK): Promise<never> 
     let started: number;
     try {
       const f = await listFilters(formData);
-      started = (await startSelectionRun("accounts", { action: key, label: verb, options, ids: await accountDirectoryKeys(f), scopeText: f.text }, actor)).ids.length;
+      started = (await startBackgroundRun("accounts", { action: key, label: verb, options, ids: await accountDirectoryKeys(f), scopeText: f.text }, actor)).ids.length;
     } catch (err) {
       return finish(backTo(formData), "error", err instanceof Error ? err.message : String(err));
     }
@@ -123,7 +104,7 @@ async function bulk(formData: FormData, key: keyof typeof WORK): Promise<never> 
   // More than a few: run in batches that continue on their own, with one report at the end.
   const asRun = async (ids: string[], scopeText: string, prefix = "") => {
     try {
-      await startSelectionRun("accounts", { action: key, label: verb, options, ids, scopeText }, actor);
+      await startBackgroundRun("accounts", { action: key, label: verb, options, ids, scopeText }, actor);
     } catch (err) {
       return finish(backTo(formData), "error", err instanceof Error ? err.message : String(err));
     }
@@ -159,14 +140,10 @@ export async function linkSuggestedAction(formData: FormData) {
   return bulk(formData, "linkSuggested");
 }
 
-/** One batch of a "select all matching" run; the progress panel submits this again until it's done. */
+/** "Continue": set the run working in the background again (it normally carries on by itself). */
 export async function stepAccountsRunAction(formData: FormData) {
   await requireStaff();
-  const run = await stepSelectionRun("accounts", (r) => {
-    const w = WORK[r.action];
-    return w ? (keys, actor) => w.work(keys, actor, r.options) : null;
-  });
-  if (run?.phase === "stopped" && run.error) console.error("[accounts] run stopped:", run.error);
+  await triggerSelectionRun("accounts");
   revalidatePath("/admin/clients");
   redirect(backTo(formData));
 }

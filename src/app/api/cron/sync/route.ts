@@ -1,5 +1,6 @@
 import { isAutomationRequest } from "@/lib/auth/automation";
 import { runDueJobs } from "@/lib/salesforce/jobs";
+import { resumeStalledRuns } from "@/lib/bulk/background";
 
 export const maxDuration = 60;
 
@@ -7,5 +8,6 @@ export const maxDuration = 60;
 export async function GET(req: Request) {
   if (!isAutomationRequest(req)) return new Response("Unauthorized", { status: 401 });
   const results = await runDueJobs(10);
+  await resumeStalledRuns();
   return Response.json({ ran: results.length, failed: results.filter((r) => r.error).length });
 }

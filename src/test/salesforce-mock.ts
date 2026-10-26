@@ -80,6 +80,11 @@ export function mockSalesforce(
 
   const run = (soql: string): Rec[] => {
     queries.push(soql);
+    // Like Salesforce: a field named twice in the outer SELECT is an error.
+    const outer = soql.replace(/\(SELECT[^)]*\)/g, "").match(/^SELECT (.*?) FROM /)?.[1] ?? "";
+    const names = outer.split(",").map((f) => f.trim().toLowerCase()).filter(Boolean);
+    const dup = names.find((f, i) => names.indexOf(f) !== i);
+    if (dup) throw new Error(`mock Salesforce: INVALID_FIELD duplicate field selected: ${dup}`);
     let m: RegExpMatchArray | null;
     if ((m = soql.match(/FROM Contact WHERE AccountId = '((?:[^'\\]|\\.)*)' AND Email = '((?:[^'\\]|\\.)*)'/)))
       return records.Contact.filter((c) => c.AccountId === unq(m![1]) && String(c.Email).toLowerCase() === unq(m![2]).toLowerCase());

@@ -64,7 +64,7 @@ export async function detectContactChanges(input: { email: string; phone?: strin
 export const describeChanges = (changes: ContactChange[]) =>
   changes.map(
     (c) =>
-      `${c.field === "phone" ? "Phone" : "Email"} on AIS Connectlication (${c.value}) differs from ${c.differsFrom
+      `${c.field === "phone" ? "Phone" : "Email"} on this application (${c.value}) differs from ${c.differsFrom
         .map((d) => `${SOURCE_LABEL[d.source]} (${d.value})`)
         .join(" and ")}.`,
   );

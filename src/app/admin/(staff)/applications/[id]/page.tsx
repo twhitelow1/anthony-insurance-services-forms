@@ -7,6 +7,7 @@ import { requireStaff } from "@/lib/auth/session";
 import { getApplication, getEvents } from "@/lib/applications/repo";
 import { STATUSES, STATUS_KEYS } from "@/lib/applications/status";
 import { answerSections } from "@/lib/forms/flatten";
+import { OTHER_ANSWERS } from "@/lib/applications/la-import";
 import { AiReviewCard } from "@/components/AiReviewCard";
 import { DOCUMENT_LABELS, listDocuments } from "@/lib/applications/documents";
 import { clientPath } from "@/lib/applications/links";
@@ -56,6 +57,7 @@ export default async function AdminApplication({ params, searchParams }: PagePro
           <p className="font-mono text-sm text-[var(--muted)]">
             {app.reference}
             {app.isTest && <span className="badge badge-danger ml-2 font-sans" title="Submitted in staff testing mode">TEST</span>}
+            {app.importedFrom && <span className="badge badge-neutral ml-2 font-sans" title="Brought in from an old Lead Alchemist form submission">Imported from Lead Alchemist</span>}
           </p>
           <h1 className="text-2xl font-semibold">{app.businessName ?? app.applicantName}</h1>
           <p className="text-sm text-[var(--muted)]">
@@ -100,6 +102,17 @@ export default async function AdminApplication({ params, searchParams }: PagePro
         </section>
         <div className="card">
           {form ? <Answers sections={answerSections(form, app.values)} /> : <pre className="text-xs">{JSON.stringify(app.values, null, 2)}</pre>}
+          {Array.isArray(app.values[OTHER_ANSWERS]) && (
+            <section className="mt-6">
+              <h3 className="mb-1 font-semibold">Other answers from Lead Alchemist</h3>
+              <p className="mb-2 text-xs text-[var(--muted)]">From the original Lead Alchemist submission; these didn&apos;t match a question on this form.</p>
+              <ul className="list-disc space-y-1 pl-5 text-sm">
+                {(app.values[OTHER_ANSWERS] as string[]).map((line, i) => (
+                  <li key={i}>{line}</li>
+                ))}
+              </ul>
+            </section>
+          )}
           {app.signature && (
             <section className="mt-6">
               <h3 className="mb-2 text-sm font-semibold uppercase tracking-wider text-[var(--accent-strong)]">Signature</h3>

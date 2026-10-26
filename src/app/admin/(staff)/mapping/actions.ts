@@ -6,37 +6,26 @@ import { redirect } from "next/navigation";
 import { requireStaff } from "@/lib/auth/session";
 import { setFlash } from "@/lib/flash";
 import { ghlConfig } from "@/lib/ghl/client";
-import { links } from "@/lib/integrations/links";
 import { saveSyncReport } from "@/lib/bulk/report";
-import { INLINE_LIMIT, startSelectionRun, stepSelectionRun, stopSelectionRun } from "@/lib/bulk/selection-run";
+import { startBackgroundRun, triggerSelectionRun } from "@/lib/bulk/background";
+import { INLINE_LIMIT, stopSelectionRun } from "@/lib/bulk/selection-run";
 import { findLaMatches, resetLaMatches } from "@/lib/mapping/la-matches";
 import type { CompanyFilter } from "@/lib/mapping/company-match";
 import {
   accountMapIds,
-  addCompaniesToApp,
   contactMapIds,
   listCompanyMatches,
   multiAccountContactIds,
   type AccountMapFilter,
   type ContactMapFilter,
-  companiesToSalesforce,
-  syncContactsToLeadAlchemist,
-  createAccountsInSalesforce,
-  createContactsInSalesforce,
-  linkCompaniesToAccounts,
-  linkContactsToLeadAlchemist,
-  pushCompanyTags,
-  syncAccountsToLeadAlchemist,
   type BulkResult,
 } from "@/lib/mapping/database";
-import { salesforceClient } from "@/lib/salesforce/client";
+import { MAPPING_WORK, LA_ID, PAIR } from "@/lib/bulk/work/mapping";
 import { MAP_SEARCH_COOKIE } from "./search-cookie";
 
 // Every action re-checks the staff session: server actions are reachable by direct POST.
 // None of these delete anything in Salesforce or Lead Alchemist.
 
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
-const LA_ID = /^[A-Za-z0-9]{6,64}$/;
 
 const backTo = (formData: FormData) => {
   const b = String(formData.get("back") ?? "");
@@ -54,68 +43,14 @@ async function finishTo(to: string, tone: "ok" | "warn" | "error", text: string,
   redirect(`${back}${back.includes("?") ? "&" : "?"}f=${f}`);
 }
 
-const PAIR = /^[A-Za-z0-9]{6,64}:[0-9a-f-]{36}$/;
 const selected = (formData: FormData, re: RegExp) => formData.getAll("ids").map(String).filter((v) => re.test(v));
-
-type Tab = "accounts" | "contacts" | "companies" | "multi";
-type Work = (ids: string[], actor: string, options: Record<string, string>) => Promise<BulkResult>;
 
 /**
  * The bulk buttons, by key: which list they belong to, what a row value looks like, and the work,
  * so a "select all matching" run can call the same work later. Linking Companies takes
  * "<Company ID>:<Account ID>" pairs (the account chosen in the row, or the top suggestion).
  */
-const WORK: Record<string, { tab: Tab; re: RegExp; verb: string; options: string[]; work: Work }> = {
-  accountsToLa: {
-    tab: "accounts",
-    re: UUID,
-    verb: "Synced to Lead Alchemist",
-    options: ["createMissing"],
-    work: async (ids, actor, o) => syncAccountsToLeadAlchemist(ids, actor, { sf: await salesforceClient(), links: await links() }, { createMissing: o.createMissing === "yes" }),
-  },
-  accountsToSf: {
-    tab: "accounts",
-    re: UUID,
-    verb: "Linked or created in Salesforce",
-    options: [],
-    work: async (ids, actor) => createAccountsInSalesforce(ids, actor, { sf: await sf(), links: await links() }),
-  },
-  contactsToLa: { tab: "contacts", re: UUID, verb: "Linked to Lead Alchemist", options: [], work: (ids, actor) => linkContactsToLeadAlchemist(ids, actor) },
-  contactsToCompany: {
-    tab: "contacts",
-    re: UUID,
-    verb: "Synced to Lead Alchemist",
-    options: ["createMissing"],
-    work: async (ids, actor, o) => syncContactsToLeadAlchemist(ids, actor, { sf: await salesforceClient(), links: await links() }, { createMissing: o.createMissing === "yes" }),
-  },
-  contactsToSf: {
-    tab: "contacts",
-    re: UUID,
-    verb: "Linked or created in Salesforce",
-    options: [],
-    work: async (ids, actor) => createContactsInSalesforce(ids, actor, { sf: await sf(), links: await links() }),
-  },
-  companiesToSf: {
-    tab: "companies",
-    re: LA_ID,
-    verb: "Linked or created in Salesforce",
-    options: [],
-    work: async (ids, actor) => companiesToSalesforce(ids, actor, { sf: await sf(), links: await links() }),
-  },
-  linkCompanies: {
-    tab: "companies",
-    re: PAIR,
-    verb: "Linked to accounts in AIS Connect",
-    options: [],
-    work: (pairs, actor) =>
-      linkCompaniesToAccounts(
-        pairs.map((p) => p.split(":")).map(([businessId, accountId]) => ({ businessId, accountId })),
-        actor,
-      ),
-  },
-  addCompanies: { tab: "companies", re: LA_ID, verb: "Added to AIS Connect", options: [], work: (ids, actor) => addCompaniesToApp(ids, actor) },
-  companyTags: { tab: "multi", re: UUID, verb: "Company tags added in Lead Alchemist", options: [], work: (ids, actor) => pushCompanyTags(ids, actor) },
-};
+const WORK = MAPPING_WORK;
 
 const ACCOUNT_FILTERS: AccountMapFilter[] = ["all", "sf_not_la", "la_not_sf", "neither", "both", "la_suggested"];
 const CONTACT_FILTERS: ContactMapFilter[] = ["all", "no_la", "no_sf", "la_company_check", "la_suggested"];
@@ -164,7 +99,7 @@ async function bulk(formData: FormData, key: keyof typeof WORK): Promise<never> 
     let started: number;
     try {
       const { ids, text } = await matchingIds(formData, key);
-      started = (await startSelectionRun("mapping", { action: key, label: verb, options, ids, scopeText: text }, actor)).ids.length;
+      started = (await startBackgroundRun("mapping", { action: key, label: verb, options, ids, scopeText: text }, actor)).ids.length;
     } catch (err) {
       return finish(formData, "error", err instanceof Error ? err.message : String(err));
     }
@@ -176,7 +111,7 @@ async function bulk(formData: FormData, key: keyof typeof WORK): Promise<never> 
   // More than a few: run in batches that continue on their own, with one report at the end.
   const asRun = async (runIds: string[], scopeText: string, prefix = "") => {
     try {
-      await startSelectionRun("mapping", { action: key, label: verb, options, ids: runIds, scopeText }, actor);
+      await startBackgroundRun("mapping", { action: key, label: verb, options, ids: runIds, scopeText }, actor);
     } catch (err) {
       return finish(formData, "error", err instanceof Error ? err.message : String(err));
     }
@@ -197,14 +132,10 @@ async function bulk(formData: FormData, key: keyof typeof WORK): Promise<never> 
   return finish(formData, report.clean ? "ok" : "warn", report.text, report.href);
 }
 
-/** One batch of a "select all matching" run; the progress panel submits this again until it's done. */
+/** "Continue": set the run working in the background again (it normally carries on by itself). */
 export async function stepMappingRunAction(formData: FormData) {
   await requireStaff();
-  const run = await stepSelectionRun("mapping", (r) => {
-    const w = WORK[r.action];
-    return w ? (ids, actor) => w.work(ids, actor, r.options) : null;
-  });
-  if (run?.phase === "stopped" && run.error) console.error("[mapping] run stopped:", run.error);
+  await triggerSelectionRun("mapping");
   revalidatePath("/admin/mapping");
   redirect(backTo(formData));
 }
@@ -213,12 +144,6 @@ export async function stopMappingRunAction(formData: FormData) {
   const staff = await requireStaff();
   await stopSelectionRun("mapping", `staff:${staff.email}`);
   return finish(formData, "ok", "Stopped. Rows already done stay done.");
-}
-
-async function sf() {
-  const client = await salesforceClient();
-  if (!client) throw new Error("Salesforce isn't connected. Add the keys in Settings → Integrations.");
-  return client;
 }
 
 export async function searchMappingAction(formData: FormData) {

@@ -16,12 +16,15 @@ export default async function AdminHome({ searchParams }: PageProps<"/admin">) {
   const q = typeof sp.q === "string" ? sp.q : "";
   const status = isStatus(sp.status) ? sp.status : undefined;
   const order = sp.view === "accounts" ? "account" : "latest";
+  const form = typeof sp.form === "string" && forms[sp.form] ? sp.form : undefined;
+  const origin = sp.origin === "imported" || sp.origin === "new" ? sp.origin : undefined;
+  const formOptions = Object.values(forms).sort((a, b) => a.title.localeCompare(b.title));
   const paging = pageState(sp);
   const [results, total] = await Promise.all([
-    searchApplications({ q, status, order, limit: paging.pageSize, offset: paging.offset }),
-    countApplications({ q, status }),
+    searchApplications({ q, status, form, origin, order, limit: paging.pageSize, offset: paging.offset }),
+    countApplications({ q, status, form, origin }),
   ]);
-  const href = pageHref("/admin", { q: q || undefined, status, view: order === "account" ? "accounts" : undefined });
+  const href = pageHref("/admin", { q: q || undefined, status, form, origin, view: order === "account" ? "accounts" : undefined });
 
   return (
     <div>
@@ -35,7 +38,7 @@ export default async function AdminHome({ searchParams }: PageProps<"/admin">) {
       {typeof sp.deleted === "string" && (
         <p className="callout mb-6 text-sm" role="status">Application {sp.deleted} was deleted.</p>
       )}
-      <form className="card mb-6 grid gap-3 !p-4 sm:grid-cols-[1fr_220px_220px_auto]" role="search">
+      <form className="card mb-6 grid gap-3 !p-4 sm:grid-cols-2 lg:grid-cols-[1fr_200px_200px_170px_170px_auto]" role="search">
         <label className="sr-only" htmlFor="q">Search applications</label>
         <input id="q" name="q" defaultValue={q} className="input" placeholder='e.g. "trampoline" Austin, AIS-7K3Q, jane@…' />
         <label className="sr-only" htmlFor="status">Status</label>
@@ -44,6 +47,19 @@ export default async function AdminHome({ searchParams }: PageProps<"/admin">) {
           {STATUS_KEYS.map((s) => (
             <option key={s} value={s}>{STATUSES[s].label}</option>
           ))}
+        </select>
+        <label className="sr-only" htmlFor="form">Kind of application</label>
+        <select id="form" name="form" defaultValue={form ?? ""} className="input">
+          <option value="">All kinds of application</option>
+          {formOptions.map((f) => (
+            <option key={f.slug} value={f.slug}>{f.title}</option>
+          ))}
+        </select>
+        <label className="sr-only" htmlFor="origin">Where it came from</label>
+        <select id="origin" name="origin" defaultValue={origin ?? ""} className="input">
+          <option value="">New and imported</option>
+          <option value="new">Made in AIS Connect</option>
+          <option value="imported">Imported from Lead Alchemist</option>
         </select>
         <label className="sr-only" htmlFor="view">View</label>
         <select id="view" name="view" defaultValue={order === "account" ? "accounts" : ""} className="input">
@@ -94,6 +110,7 @@ export default async function AdminHome({ searchParams }: PageProps<"/admin">) {
                   <div className="flex flex-wrap gap-1">
                     <StatusBadge status={a.status} />
                     {a.isTest && <span className="badge badge-danger" title="Submitted in staff testing mode">TEST</span>}
+                    {a.importedFrom && <span className="badge badge-neutral ml-1" title="Brought in from an old Lead Alchemist form submission">Imported</span>}
                     {a.aiHighFlags ? (
                       <span className="badge badge-danger" title="High-severity flags from the AI pre-review">
                         {a.aiHighFlags} high flag{a.aiHighFlags > 1 ? "s" : ""}

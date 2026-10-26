@@ -663,6 +663,7 @@ export async function listClientApplications(clientId: string) {
       businessName: applications.businessName,
       createdAt: applications.createdAt,
       isTest: applications.isTest,
+      importedFrom: applications.importedFrom,
       ghlOpportunityId: applications.ghlOpportunityId,
       sfOpportunityId: applications.sfOpportunityId,
       sfSyncStatus: applications.sfSyncStatus,

@@ -1,6 +1,6 @@
 import "server-only";
 import { randomInt } from "node:crypto";
-import { and, asc, count, desc, eq, ilike, inArray, max, or, sql, type SQL } from "drizzle-orm";
+import { and, asc, count, desc, eq, ilike, inArray, isNull, max, or, sql, type SQL } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
 import type { Applicant, Application, EventType } from "@/lib/db/schema";
 import type { AiReview } from "@/lib/ai/review";
@@ -69,6 +69,45 @@ export async function createApplication(
   }
 }
 
+/**
+ * An application brought in from an old Lead Alchemist form or survey submission: kept with its
+ * original date, marked as imported, and created quietly (no emails, no syncs, no AI review).
+ * Null if that submission was already imported.
+ */
+export async function createImportedApplication(
+  form: FormDefinition,
+  values: FormValues,
+  meta: { laSubmissionId: string; submittedAt: Date | null; laContactId?: string | null; extraSearch?: string[] },
+): Promise<Application | null> {
+  const db = await getDb();
+  for (let attempt = 0; ; attempt++) {
+    const reference = newReference();
+    const at = meta.submittedAt ?? new Date();
+    const d = derived(form, values, reference);
+    try {
+      const [app] = await db
+        .insert(applications)
+        .values({
+          reference,
+          formSlug: form.slug,
+          ...d,
+          searchText: [d.searchText, ...(meta.extraSearch ?? [])].join(" \n ").slice(0, 100_000),
+          importedFrom: "lead_alchemist",
+          laSubmissionId: meta.laSubmissionId,
+          ghlContactId: meta.laContactId ?? null,
+          createdAt: at,
+          updatedAt: at,
+        })
+        .onConflictDoNothing({ target: applications.laSubmissionId })
+        .returning();
+      return app ?? null;
+    } catch (err) {
+      if (attempt < 2 && String(err).includes("applications_reference_unique")) continue;
+      throw err;
+    }
+  }
+}
+
 export async function addEvent(
   applicationId: string,
   type: EventType,
@@ -120,6 +159,7 @@ const listColumns = {
   updatedAt: applications.updatedAt,
   aiHighFlags: applications.aiHighFlags,
   isTest: applications.isTest,
+  importedFrom: applications.importedFrom,
   clientId: applications.clientId,
 };
 export type ApplicationListItem = {
@@ -149,17 +189,23 @@ export interface SearchParams {
   q?: string;
   status?: ApplicationStatus;
   state?: string;
+  /** One kind of application (form slug). */
+  form?: string;
+  /** "imported": only ones brought in from Lead Alchemist; "new": only ones made in AIS Connect. */
+  origin?: "imported" | "new";
   limit?: number;
   offset?: number;
   /** "account": grouped by business (A–Z), newest first within each. */
   order?: "latest" | "account";
 }
 
+type Filters = Pick<SearchParams, "q" | "status" | "state" | "form" | "origin">;
+
 /**
  * Staff search: full-text over every answer (stemmed, so "trampoline" matches
  * "trampolines"), plus partial matches on reference, name, email, and business.
  */
-function applicationFilters({ q, status, state }: Pick<SearchParams, "q" | "status" | "state">) {
+function applicationFilters({ q, status, state, form, origin }: Filters) {
   const where: SQL[] = [];
   const query = q?.trim();
   if (query) {
@@ -176,19 +222,22 @@ function applicationFilters({ q, status, state }: Pick<SearchParams, "q" | "stat
   }
   if (status) where.push(eq(applications.status, status));
   if (state) where.push(eq(applications.state, state.toUpperCase()));
+  if (form) where.push(eq(applications.formSlug, form));
+  if (origin === "imported") where.push(eq(applications.importedFrom, "lead_alchemist"));
+  if (origin === "new") where.push(isNull(applications.importedFrom));
 
   return { where: where.length ? and(...where) : undefined, query };
 }
 
 /** How many applications match a search (for "Showing 1–50 of N"). */
-export async function countApplications(params: Pick<SearchParams, "q" | "status" | "state">) {
+export async function countApplications(params: Filters) {
   const db = await getDb();
   return db.$count(applications, applicationFilters(params).where);
 }
 
-export async function searchApplications({ q, status, state, limit = 50, offset = 0, order = "latest" }: SearchParams) {
+export async function searchApplications({ q, status, state, form, origin, limit = 50, offset = 0, order = "latest" }: SearchParams) {
   const db = await getDb();
-  const { where, query } = applicationFilters({ q, status, state });
+  const { where, query } = applicationFilters({ q, status, state, form, origin });
   const rank = sql<number>`ts_rank(to_tsvector('english', ${applications.searchText}), websearch_to_tsquery('english', ${query ?? ""}))`;
 
   const accountName = sql<string>`coalesce(${schema.clients.name}, ${applications.businessName}, ${applications.applicantName})`;

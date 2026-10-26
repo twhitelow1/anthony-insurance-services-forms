@@ -13,7 +13,7 @@ export function generateStaticParams() {
 
 export async function generateMetadata({ params }: PageProps<"/forms/[slug]">): Promise<Metadata> {
   const form = getForm((await params).slug);
-  return { title: form ? `${form.title} | Anthony Insurance Services` : "Form not found" };
+  return { title: form ? `${form.title} | ${BRANDS[defaultBrand(form)].name}` : "Form not found" };
 }
 
 export default async function FormPage({ params, searchParams }: PageProps<"/forms/[slug]">) {
@@ -23,8 +23,9 @@ export default async function FormPage({ params, searchParams }: PageProps<"/for
 
   const sp = await searchParams;
   const embedded = sp.embed === "1";
-  // Embedded forms take their website's branding (?brand=ais|dsi|masi overrides the form's default site).
-  const brand = isBrand(sp.brand) ? BRANDS[sp.brand] : embedded ? BRANDS[defaultBrand(form)] : null;
+  // Each form shows its own site's branding (MASI for martial arts, DSI for dance and fitness, else AIS),
+  // embedded or opened from its link; ?brand=ais|dsi|masi overrides it.
+  const brand = isBrand(sp.brand) ? BRANDS[sp.brand] : BRANDS[defaultBrand(form)];
   // Documents staff assigned to this form (Admin → Documents). A database hiccup mustn't block the form.
   const docs: LibraryItem[] = await libraryForForm(slug).catch((err) => {
     console.error("[form] couldn't load documents", err);
@@ -58,7 +59,7 @@ export default async function FormPage({ params, searchParams }: PageProps<"/for
       )}
       {docs.length > 0 && (
         <aside className="callout mb-6 text-sm" aria-labelledby="form-docs">
-          <h2 id="form-docs" className="mb-1 font-semibold">Documents for AIS Connectlication</h2>
+          <h2 id="form-docs" className="mb-1 font-semibold">Documents for this application</h2>
           <ul className="space-y-1">
             {docs.map((d) => (
               <li key={d.id}>

@@ -13,6 +13,7 @@ async function renderStamp() {
 }
 import { after } from "next/server";
 import { runDueJobs } from "@/lib/salesforce/jobs";
+import { resumeStalledRuns } from "@/lib/bulk/background";
 import { countActive } from "@/lib/notifications/repo";
 
 // Signed-in pages read live data on every request (with OPEN_ACCESS no cookie is read, so Next would otherwise render them once at build).
@@ -25,6 +26,8 @@ export default async function StaffLayout({ children }: LayoutProps<"/admin">) {
   const renderedAt = await renderStamp();
   // Retries that are due (e.g. Salesforce was down) run after the page is sent. Never blocks it.
   after(() => runDueJobs(3).catch((err) => console.error("[jobs] due-job run failed", err)));
+  // A bulk run whose background request was cut off carries on.
+  after(() => resumeStalledRuns().catch((err) => console.error("[bulk] resume failed", err)));
   return (
     <>
       <OpenAccessBanner />

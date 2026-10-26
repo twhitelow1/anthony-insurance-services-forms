@@ -161,3 +161,15 @@ describe("Account Type filter on Contacts", () => {
     expect((await directoryKeys({ q: `Typed${tag}`, type: "Customer" })).length).toBe(2); // "select all matching" uses it too
   });
 });
+
+describe("contacts search", () => {
+  it("finds people by their business name as well as their own name, email or phone", async () => {
+    const { listDirectory, directoryBreakdown } = await import("./directory");
+    const tag = uniq();
+    await ensureClient({ email: `s.${tag}@gmail.com`, contactName: `Sam Searcher`, businessName: `Kick Dojo ${tag}`, phone: "5552223344" });
+    const emails = async (q: string) => (await listDirectory({ q })).rows.map((r) => r.email);
+    expect(await emails(`kick dojo ${tag}`)).toEqual([`s.${tag}@gmail.com`]);
+    expect(await emails(`s.${tag}@gmail`)).toEqual([`s.${tag}@gmail.com`]);
+    expect((await directoryBreakdown(`Kick Dojo ${tag}`)).combos.reduce((n, c) => n + c.count, 0)).toBe(1);
+  });
+});

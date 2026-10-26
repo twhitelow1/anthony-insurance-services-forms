@@ -244,7 +244,7 @@ export const aerialInstructorApplication: FormDefinition = {
             "No",
             "$150,000 Limit ($225 premium)",
             "$500,000 Limit ($500 premium)",
-            "$1,000,000 Limit ($850 premium and our receipt and approval of our Hired/Non-owned Auto supplemental application. Please contact me if you would like AIS Connectlication.)",
+            "$1,000,000 Limit ($850 premium and our receipt and approval of our Hired/Non-owned Auto supplemental application. Please contact me if you would like this application.)",
           ),
           required: true,
           tooltip:

@@ -1,6 +1,6 @@
 import "server-only";
 import { randomUUID } from "node:crypto";
-import { eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
 import { saveSyncReport } from "./report";
 import { addTally, type ContactTally } from "./tally";
@@ -9,10 +9,11 @@ import { addTally, type ContactTally } from "./tally";
  * "Select all N matching" on a list: the bulk button the staff member pressed runs over every row
  * that matches the list's filters, across all pages. The matching IDs are taken when it starts
  * (so rows that drop out of the filter while it runs are still done), then worked through in
- * small time-boxed batches, one per request; the list page keeps submitting the next batch while
- * it's open, and it can be stopped. One run per list at a time.
+ * small time-boxed batches in the background (see ./background: each request works for a few
+ * minutes, saving progress after every batch, then hands on to the next), so the page can be
+ * closed. It can be stopped. One run per list at a time.
  */
-export type SelectionScope = "contacts" | "mapping" | "accounts";
+export type SelectionScope = "contacts" | "mapping" | "accounts" | "la_import";
 
 export interface SelectionRun {
   runId: string;
@@ -38,6 +39,8 @@ export interface SelectionRun {
   startedBy: string;
   startedAt: string;
   updatedAt: string;
+  /** While a background request is working on it: until when (so two never work on it at once). */
+  leaseUntil?: string | null;
 }
 
 export interface BatchResult {
@@ -66,6 +69,8 @@ export const INLINE_LIMIT = 5;
 /** The most rows one run takes. */
 export const MAX_SELECTION = 20_000;
 const CHUNK = 10;
+/** Lists whose rows are big: an import row is a whole page of 100 submissions. */
+const CHUNK_SIZE: Partial<Record<SelectionScope, number>> = { la_import: 1 };
 const key = (scope: SelectionScope) => `selection_run:${scope}`;
 
 export async function getSelectionRun(scope: SelectionScope): Promise<SelectionRun | null> {
@@ -113,13 +118,39 @@ export async function startSelectionRun(
   });
 }
 
-/** One time-boxed batch of the run. Call again (the page does) until the phase isn't "running". */
+/**
+ * Take the run for one background request: only when it's running and nobody else holds it (or
+ * their hold ran out, e.g. the request was cut off). Null when there's nothing to do.
+ */
+export async function claimSelectionRun(scope: SelectionScope, holdMs: number): Promise<SelectionRun | null> {
+  const db = await getDb();
+  const until = new Date(Date.now() + holdMs).toISOString();
+  const [row] = await db
+    .update(schema.appSettings)
+    .set({ value: sql`jsonb_set(${schema.appSettings.value}, '{leaseUntil}', to_jsonb(${until}::text))`, updatedAt: new Date() })
+    .where(
+      and(
+        eq(schema.appSettings.key, key(scope)),
+        sql`${schema.appSettings.value}->>'phase' = 'running'`,
+        sql`coalesce((${schema.appSettings.value}->>'leaseUntil')::timestamptz, 'epoch') < now()`,
+      ),
+    )
+    .returning();
+  return (row?.value as SelectionRun) ?? null;
+}
+
+/**
+ * Work through the run for up to `timeBudgetMs`, saving progress after every batch (so a cut-off
+ * request loses at most one batch), and stopping at once if staff pressed Stop meanwhile.
+ * `claimed`: the run as claimed by claimSelectionRun; its hold is let go at the end.
+ */
 export async function stepSelectionRun(
   scope: SelectionScope,
   work: (run: SelectionRun) => ((ids: string[], actor: string) => Promise<BatchResult>) | null,
   timeBudgetMs = 35_000,
+  claimed?: SelectionRun,
 ): Promise<SelectionRun | null> {
-  const run = await getSelectionRun(scope);
+  const run = claimed ?? (await getSelectionRun(scope));
   if (!run || run.phase !== "running") return run;
   const fn = work(run);
   if (!fn) return save({ ...run, phase: "stopped", error: "This action can't run on all matching rows any more." });
@@ -127,7 +158,7 @@ export async function stepSelectionRun(
   const from = run.position;
   // At least one batch per step, so it always moves forward.
   while (run.position < run.ids.length && (run.position === from || Date.now() - started < timeBudgetMs)) {
-    const chunk = run.ids.slice(run.position, run.position + CHUNK);
+    const chunk = run.ids.slice(run.position, run.position + (CHUNK_SIZE[run.scope] ?? CHUNK));
     try {
       const r = await fn(chunk, run.startedBy);
       run.done += r.done;
@@ -138,20 +169,24 @@ export async function stepSelectionRun(
         // What wasn't reached goes straight back in the queue, right after what was done.
         run.ids = [...run.ids.slice(0, run.position), ...done, ...left, ...run.ids.slice(run.position + chunk.length)];
         run.position += done.length;
-        continue;
-      }
+      } else run.position += chunk.length;
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       // Stop rather than skip ahead: a connection or permission problem would fail every batch.
-      return save(await withReport({ ...run, phase: "stopped", error: message.slice(0, 300) }));
+      const now = await getSelectionRun(scope);
+      if (!now || now.runId !== run.runId || now.phase !== "running") return now;
+      return save(await withReport({ ...run, phase: "stopped", error: message.slice(0, 300), leaseUntil: null }));
     }
-    run.position += chunk.length;
+    // Saved after every batch, unless staff stopped it (or started another) meanwhile.
+    const now = await getSelectionRun(scope);
+    if (!now || now.runId !== run.runId || now.phase !== "running") return now;
+    if (run.position < run.ids.length) await save(run);
   }
   if (run.position >= run.ids.length) run.phase = "done";
-  return save(run.phase === "done" ? await withReport(run) : run);
+  return save(run.phase === "done" ? await withReport({ ...run, leaseUntil: null }) : { ...run, leaseUntil: null });
 }
 
-const PAGE: Record<SelectionScope, string> = { contacts: "/admin/contacts", mapping: "/admin/mapping", accounts: "/admin/clients?view=all" };
+const PAGE: Record<SelectionScope, string> = { contacts: "/admin/contacts", mapping: "/admin/mapping", accounts: "/admin/clients?view=all", la_import: "/admin/import" };
 
 /** A finished or stopped run's report: rows not reached count as not done, and why it stopped is an error. */
 async function withReport(run: SelectionRun): Promise<SelectionRun> {
@@ -170,10 +205,17 @@ async function withReport(run: SelectionRun): Promise<SelectionRun> {
 export async function stopSelectionRun(scope: SelectionScope, actor: string) {
   const run = await getSelectionRun(scope);
   if (!run || run.phase !== "running") return run;
-  return save(await withReport({ ...run, phase: "stopped", error: `Stopped by ${actor.replace(/^staff:/, "")}` }));
+  return save(await withReport({ ...run, phase: "stopped", error: `Stopped by ${actor.replace(/^staff:/, "")}`, leaseUntil: null }));
 }
 
 /** Shown on the list while it runs, and for a while after. */
 export function showSelectionRun(run: SelectionRun | null): run is SelectionRun {
   return !!run && (run.phase === "running" || Date.now() - new Date(run.updatedAt).getTime() < 30 * 60_000);
+}
+
+/** Running, but nothing has worked on it or moved it for a few minutes (a background request was cut off). */
+export function runStalled(run: SelectionRun, now = Date.now()): boolean {
+  if (run.phase !== "running") return false;
+  const held = !!run.leaseUntil && new Date(run.leaseUntil).getTime() > now;
+  return !held && now - new Date(run.updatedAt).getTime() > 3 * 60_000;
 }

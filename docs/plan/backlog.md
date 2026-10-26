@@ -199,6 +199,17 @@ Today staff can download an Outlook draft to the carrier with the filled PDF att
 
 ---
 
+## From the Oct 26 call with Caitlyn
+- ✅ Refresh from Salesforce on the account page (fixed 2026-10-26).
+- ✅ Contacts search (now also by business name). 🟡 Accounts search: works in testing; waiting on an example of what failed.
+- ⬜ Fewer buttons on the account views (tidy the Accounts list and Across all three).
+- ✅ Kind-of-application filter on Applications.
+- ✅ Import old Lead Alchemist form submissions.
+- ✅ Sport event and single event forms: same questions, AIS and martial arts branding (each shows its own logo from its link).
+- ✅ Test submissions don't email the applicant.
+- ⬜ Duplicate accounts found in the call: staff merge them with Compare & merge and set the current owner as primary contact.
+- ⬜ Ideas from the call (not started): policies bought outside the forms still entered in Salesforce by hand; follow-up for new leads who don't re-engage; attaching PDFs to Salesforce from AIS Connect instead of from Outlook; Salesforce storage running low.
+
 ## Changes from the Oct 9 call with Caitlyn (built 2026-10-16)
 
 **Gymnastics limits** (Sports Facility and Boxing Gym unchanged):
