@@ -160,7 +160,6 @@ export async function pushContactValue(contactId: string, target: "salesforce" |
   return { contact, where };
 }
 
-const blank = (v: string | null | undefined) => !v?.trim();
 /** Lead Alchemist names a phone-only caller after the number; treat that as no name. */
 const looksLikePhone = (v: string | null | undefined) => !!v && /^[+\d\s().-]{7,}$/.test(v.trim());
 const splitName = (name: string) => {
@@ -169,6 +168,7 @@ const splitName = (name: string) => {
 };
 
 export type LaDetailField = "firstName" | "lastName" | "email" | "phone" | "companyName" | "address1" | "city" | "state" | "postalCode";
+export const LA_DETAIL_FIELDS: LaDetailField[] = ["firstName", "lastName", "email", "phone", "companyName", "address1", "city", "state", "postalCode"];
 const FIELD_LABEL: Record<LaDetailField, string> = {
   firstName: "first name",
   lastName: "last name",
@@ -189,7 +189,8 @@ const FIELD_LABEL: Record<LaDetailField, string> = {
  * too. Also writes the links to the app's account page and the Salesforce Account and Contact onto
  * the Lead Alchemist contact, so staff can click between the three. Logged on the account.
  */
-export async function updateLeadAlchemistDetails(contactId: string, actor: string, { replace = false }: { replace?: boolean } = {}) {
+/** What AIS Connect would write to the linked Lead Alchemist contact, next to what's there now. */
+async function laDetailComparison(contactId: string) {
   const contact = await getContact(contactId);
   if (!contact) throw new Error("That contact no longer exists.");
   if (!contact.ghlContactId) throw new Error(`${contact.name} isn't linked to a Lead Alchemist contact yet: sync them to Lead Alchemist first.`);
@@ -222,13 +223,34 @@ export async function updateLeadAlchemistDetails(contactId: string, actor: strin
   };
   const same = (f: LaDetailField, a: string, b: string) =>
     f === "email" ? sameEmail(a, b) : f === "phone" ? phoneDigits(a).slice(-10) === phoneDigits(b).slice(-10) : a.trim().toLowerCase() === b.trim().toLowerCase();
+  const rows = (Object.keys(want) as LaDetailField[]).map((field) => {
+    const w = want[field]?.trim() || null;
+    const h = have[field]?.trim() || null;
+    const missing = !h || ((field === "firstName" || field === "lastName") && looksLikePhone(h));
+    const status: "same" | "fill" | "differs" | "nothing" = !w ? "nothing" : missing ? "fill" : same(field, h, w) ? "same" : "differs";
+    return { field, label: FIELD_LABEL[field], ais: w, la: h, status };
+  });
+  return { contact, laId: contact.ghlContactId, la, account, want, have, rows };
+}
+
+export type LaDetailRow = Awaited<ReturnType<typeof laDetailComparison>>["rows"][number];
+
+/** The linked Lead Alchemist contact's details next to AIS Connect's, field by field (for the review page). */
+export async function laDetailDifferences(contactId: string) {
+  const { contact, rows } = await laDetailComparison(contactId);
+  return { contact, rows };
+}
+
+export async function updateLeadAlchemistDetails(
+  contactId: string,
+  actor: string,
+  { replace = false, pick }: { replace?: boolean; /** Exactly these fields (from the review page), filled or replaced. */ pick?: LaDetailField[] } = {},
+) {
+  const { contact, laId, la, account, have, rows } = await laDetailComparison(contactId);
   const changes: Partial<Record<LaDetailField, string>> = {};
-  for (const f of Object.keys(want) as LaDetailField[]) {
-    const w = want[f];
-    if (!w?.trim()) continue;
-    const h = have[f];
-    const missing = blank(h) || ((f === "firstName" || f === "lastName") && looksLikePhone(h));
-    if (missing || (replace && !same(f, h!, w))) changes[f] = w.trim();
+  for (const r of rows) {
+    const chosen = pick ? pick.includes(r.field) : r.status === "fill" || (replace && r.status === "differs");
+    if (chosen && r.ais && (r.status === "fill" || r.status === "differs")) changes[r.field] = r.ais;
   }
   const fields = Object.keys(changes) as LaDetailField[];
   const l = await appLinks();
@@ -237,7 +259,7 @@ export async function updateLeadAlchemistDetails(contactId: string, actor: strin
   // Alchemist contact: always kept current, but an empty Account Type never blanks one there.
   const written = await ghlLinkWriter
     .contactLinks(
-      contact.ghlContactId,
+      laId,
       {
         clientPage: l.appClient(contact.clientId),
         salesforceAccount: account?.sfAccountId ? l.salesforce("Account", account.sfAccountId) : null,
@@ -263,7 +285,7 @@ export async function updateLeadAlchemistDetails(contactId: string, actor: strin
   const laType = la.type?.trim() ?? "";
   if (sfType && laType.toLowerCase() !== sfType.toLowerCase()) {
     try {
-      await updateLaContact(contact.ghlContactId, { type: sfType });
+      await updateLaContact(laId, { type: sfType });
       notes.push(laType ? `Contact Type changed in Lead Alchemist: ${laType} → ${sfType}` : `Contact Type set in Lead Alchemist: ${sfType}`);
       await log([{ field: "Contact Type", oldValue: laType || null, newValue: sfType }]);
     } catch (err) {
@@ -273,7 +295,7 @@ export async function updateLeadAlchemistDetails(contactId: string, actor: strin
   // Tags so marketing can find everyone AIS Connect put in Lead Alchemist (only ever added).
   const wantTags = ["ais-connect", account?.isIndividual ? "ais-personal" : "ais-business"].filter((tag) => !(la.tags ?? []).includes(tag));
   if (wantTags.length)
-    await addLaTags(contact.ghlContactId, wantTags)
+    await addLaTags(laId, wantTags)
       .then(() => log([{ field: "Tags added", newValue: wantTags.join(", ") }]))
       .catch((err: unknown) => notes.push(`couldn't add the tags ${wantTags.join(", ")} (${err instanceof Error ? err.message : String(err)})`));
   // And on the Salesforce Contact: its Lead Alchemist contact and the app's account page.
@@ -282,14 +304,14 @@ export async function updateLeadAlchemistDetails(contactId: string, actor: strin
     if (sf) {
       await sf
         .describe("Contact")
-        .then((d) => prepareFields(d, { [LINK_FIELDS.Contact.laContact]: l.ghlContact(contact.ghlContactId), [LINK_FIELDS.Contact.applications]: l.appClient(contact.clientId) }, "update").data)
+        .then((d) => prepareFields(d, { [LINK_FIELDS.Contact.laContact]: l.ghlContact(laId), [LINK_FIELDS.Contact.applications]: l.appClient(contact.clientId) }, "update").data)
         .then((data) => (Object.keys(data).length ? sf.update("Contact", contact.sfContactId!, data) : undefined))
         .catch(() => {});
     }
   }
   if (!fields.length) return { contact, fields, changes: notes };
   try {
-    await updateLaContact(contact.ghlContactId, changes);
+    await updateLaContact(laId, changes);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     throw new Error(`${contact.name}: Lead Alchemist refused the update (${msg}). Another Lead Alchemist contact may already have this email or phone.`);

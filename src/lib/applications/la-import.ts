@@ -156,6 +156,33 @@ function toFieldValue(field: InputField, v: unknown): string | string[] | undefi
   return t;
 }
 
+const PNG = "data:image/png;base64,";
+const MAX_SIGNATURE_BYTES = 1_000_000;
+
+/**
+ * The signature drawn on the Lead Alchemist form, as a PNG data URL (how AIS Connect stores its own
+ * signatures), or null. Lead Alchemist keeps it as a data URL or as a link to the image; a link is
+ * downloaded. Anything that isn't a PNG, or can't be read, is skipped: the import carries on.
+ */
+export async function laSignature(others: Record<string, unknown>, fetcher: typeof fetch = fetch): Promise<string | null> {
+  const candidates = [others.signature, ...Object.entries(others).filter(([k]) => k !== "signature" && /signature/i.test(k)).map(([, v]) => v)];
+  for (const c of candidates) {
+    const v = typeof c === "string" ? c.trim() : textOf(c);
+    if (!v) continue;
+    if (v.startsWith(PNG)) return v.length <= MAX_SIGNATURE_BYTES * 1.4 ? v : null;
+    if (!/^https:\/\//i.test(v)) continue;
+    try {
+      const res = await fetcher(v, { signal: AbortSignal.timeout(10_000) });
+      if (!res.ok || !(res.headers.get("content-type") ?? "").startsWith("image/png")) continue;
+      const buf = Buffer.from(await res.arrayBuffer());
+      if (buf.length && buf.length <= MAX_SIGNATURE_BYTES) return PNG + buf.toString("base64");
+    } catch {
+      // Unreadable: the application is imported without it.
+    }
+  }
+  return null;
+}
+
 export interface MappedSubmission {
   values: FormValues;
   /** "Label: answer" for answers no question of the form matched. */
@@ -270,6 +297,7 @@ export async function importSubmissionPages(items: string[], actor: string, runI
           submittedAt: sub.createdAt ? new Date(sub.createdAt) : null,
           laContactId: sub.contactId ?? null,
           extraSearch: m.other,
+          signature: await laSignature(sub.others ?? {}),
         });
         if (!app) {
           already++;

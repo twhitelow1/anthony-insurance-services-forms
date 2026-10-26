@@ -159,3 +159,22 @@ describe("importing old Lead Alchemist submissions", () => {
     expect(after.find((r) => r.key === `run-b-${tag}`)?.applications).toBe(1); // the other run stays
   });
 });
+
+describe("the signature drawn in Lead Alchemist", () => {
+  const png = "data:image/png;base64,iVBORw0KGgo=";
+  it("keeps a PNG data URL, downloads a linked PNG, and skips anything else", async () => {
+    const { laSignature } = await import("./la-import");
+    expect(await laSignature({ signature: png })).toBe(png);
+    expect(await laSignature({ full_name: "Ann" })).toBeNull();
+    expect(await laSignature({ signature: "data:image/svg+xml;base64,PHN2Zz4=" })).toBeNull();
+    const fetcher = vi.fn(async (url: string) =>
+      url.endsWith(".png")
+        ? new Response(Buffer.from("png-bytes"), { headers: { "content-type": "image/png" } })
+        : new Response("<html>", { headers: { "content-type": "text/html" } }),
+    ) as unknown as typeof fetch;
+    expect(await laSignature({ signature: "https://files.example/sig.png" }, fetcher)).toBe(`data:image/png;base64,${Buffer.from("png-bytes").toString("base64")}`);
+    expect(await laSignature({ signature: "https://files.example/page" }, fetcher)).toBeNull();
+    expect(await laSignature({ "Applicant Signature": { url: "https://files.example/sig.png" } }, fetcher)).toMatch(/^data:image\/png;base64,/);
+    expect(await laSignature({ signature: "http://insecure.example/sig.png" }, fetcher)).toBeNull();
+  });
+});

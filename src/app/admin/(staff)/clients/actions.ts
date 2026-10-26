@@ -6,7 +6,7 @@ import { CLIENT_SEARCH_COOKIE } from "@/lib/clients/search-cookie";
 import { redirect } from "next/navigation";
 import { requireStaff } from "@/lib/auth/session";
 import { addClientEvent, getClient, getContact, keepSeparate, listAccountContacts, listClientApplications, mergeClients, setPrimaryContact, splitContact } from "@/lib/clients/repo";
-import { pushContactValue, refreshContactExternal, updateLeadAlchemistDetails } from "@/lib/contacts/external";
+import { LA_DETAIL_FIELDS, pushContactValue, refreshContactExternal, updateLeadAlchemistDetails, type LaDetailField } from "@/lib/contacts/external";
 import { setFlash } from "@/lib/flash";
 import { addNotificationNote } from "@/lib/notifications/repo";
 import { salesforceClient } from "@/lib/salesforce/client";
@@ -296,28 +296,26 @@ export async function laContactAction(formData: FormData) {
   redirect(`/admin/clients/${contact.clientId}?f=${f}`);
 }
 
-/**
- * "Update in Lead Alchemist": fill the contact's empty Lead Alchemist fields from the app (or, with
- * replace, every field that differs) and write the links between the three systems onto it.
- */
-export async function updateLaContactAction(formData: FormData) {
+/** The review page: write only the ticked fields to the Lead Alchemist contact. */
+export async function updateLaPickedAction(formData: FormData) {
   const staff = await requireStaff();
   const contactId = String(formData.get("contactId") ?? "");
   if (!UUID_RE.test(contactId)) throw new Error("Unknown contact");
   const contact = await getContact(contactId);
   if (!contact) throw new Error("That contact no longer exists.");
+  const pick = formData.getAll("field").map(String).filter((f): f is LaDetailField => (LA_DETAIL_FIELDS as string[]).includes(f));
   let text: string;
   let tone: "ok" | "error" = "ok";
   try {
-    const { fields } = await updateLeadAlchemistDetails(contactId, `staff:${staff.email}`, { replace: formData.get("replace") === "yes" });
-    text = fields.length ? `${contact.name}: updated ${fields.join(", ")} in Lead Alchemist (and the links between the three systems).` : `${contact.name}: Lead Alchemist already matches; links refreshed.`;
+    const { fields } = await updateLeadAlchemistDetails(contactId, `staff:${staff.email}`, { pick });
+    text = fields.length ? `${contact.name}: updated ${fields.length} field${fields.length === 1 ? "" : "s"} in Lead Alchemist (and the links between the three systems).` : `${contact.name}: nothing ticked, so no details changed; links refreshed.`;
   } catch (err) {
     tone = "error";
     text = err instanceof Error ? err.message : String(err);
   }
   const f = await setFlash({ tone, text });
   revalidatePath(`/admin/clients/${contact.clientId}`);
-  redirect(`/admin/clients/${contact.clientId}?f=${f}`);
+  redirect(tone === "ok" ? `/admin/clients/${contact.clientId}?f=${f}` : `/admin/clients/${contact.clientId}/contacts/${contact.id}/lead-alchemist?f=${f}`);
 }
 
 /**
