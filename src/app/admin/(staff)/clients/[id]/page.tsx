@@ -43,7 +43,6 @@ import {
   refreshFromSalesforceAction,
   refreshContactsAction,
   pushContactValueAction,
-  updateLaContactAction,
   addToLeadAlchemistAction,
   laContactAction,
   linkAccountCompanyAction,
@@ -417,15 +416,11 @@ export default async function AccountPage({ params, searchParams }: PageProps<"/
                           View Contact
                         </SystemLink>
                         {laConnected && (
-                          <form action={updateLaContactAction} className="mt-1 flex flex-wrap gap-2">
-                            <input type="hidden" name="contactId" value={p.id} />
-                            <button className="btn-link text-xs" title="Fill the empty name, email, phone, company and address fields and add the links">
-                              Update in Lead Alchemist
-                            </button>
-                            <button name="replace" value="yes" className="btn-link text-xs text-[var(--muted)]" title="Also replace Lead Alchemist values that differ from AIS Connect's">
-                              (replace differences)
-                            </button>
-                          </form>
+                          <div className="mt-1">
+                            <Link className="btn-link text-xs" href={`/admin/clients/${client.id}/contacts/${p.id}/lead-alchemist`} title="See AIS Connect's and Lead Alchemist's details side by side and pick what to update">
+                              Update in Lead Alchemist…
+                            </Link>
+                          </div>
                         )}
                       </>
                     ) : laConnected ? (

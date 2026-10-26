@@ -5,6 +5,7 @@ import { requireStaff } from "@/lib/auth/session";
 import { userModeAction } from "../actions";
 import { OpenAccessBanner } from "@/components/OpenAccessBanner";
 import { ShiftClickRange } from "@/components/ShiftClickRange";
+import { AutoApplyFilters } from "@/components/AutoApplyFilters";
 import { SaveProgress } from "@/components/SaveProgress";
 
 /** When this render happened (outside the component, so it isn't mistaken for impure render code). */
@@ -32,6 +33,7 @@ export default async function StaffLayout({ children }: LayoutProps<"/admin">) {
     <>
       <OpenAccessBanner />
       <ShiftClickRange />
+      <AutoApplyFilters />
       <SaveProgress stamp={renderedAt} />
       <TopBar title="AIS Connect" href="/admin" who={staff.email}>
         <nav className="flex flex-wrap items-center gap-4 font-medium">

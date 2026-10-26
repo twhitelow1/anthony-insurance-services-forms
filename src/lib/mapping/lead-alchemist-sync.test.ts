@@ -171,6 +171,17 @@ describe("filling in Lead Alchemist from the app", () => {
     la1.companyName = "Old Name";
     expect((await updateLeadAlchemistDetails(person.id, ACTOR)).fields).toEqual([]);
     expect((await updateLeadAlchemistDetails(person.id, ACTOR, { replace: true })).fields).toEqual(["companyName"]);
+
+    // The review page: shows each field side by side, and writes only what's ticked.
+    const { laDetailDifferences } = await import("@/lib/contacts/external");
+    la1.companyName = "Old Name";
+    const { rows } = await laDetailDifferences(person.id);
+    expect(rows.find((r) => r.field === "companyName")).toMatchObject({ status: "differs", la: "Old Name", ais: `Ring Gym ${tag}` });
+    expect(rows.find((r) => r.field === "email")?.status).toBe("same");
+    expect((await updateLeadAlchemistDetails(person.id, ACTOR, { pick: [] })).fields).toEqual([]);
+    expect(la.contacts.get(`caller-${tag}`)!.companyName).toBe("Old Name");
+    expect((await updateLeadAlchemistDetails(person.id, ACTOR, { pick: ["companyName", "email"] })).fields).toEqual(["companyName"]);
+    expect(la.contacts.get(`caller-${tag}`)!.companyName).toBe(`Ring Gym ${tag}`);
   });
 });
 

@@ -77,7 +77,7 @@ export async function createApplication(
 export async function createImportedApplication(
   form: FormDefinition,
   values: FormValues,
-  meta: { laSubmissionId: string; submittedAt: Date | null; laContactId?: string | null; extraSearch?: string[] },
+  meta: { laSubmissionId: string; submittedAt: Date | null; laContactId?: string | null; extraSearch?: string[]; /** PNG data URL of the signature drawn in Lead Alchemist. */ signature?: string | null },
 ): Promise<Application | null> {
   const db = await getDb();
   for (let attempt = 0; ; attempt++) {
@@ -94,6 +94,7 @@ export async function createImportedApplication(
           searchText: [d.searchText, ...(meta.extraSearch ?? [])].join(" \n ").slice(0, 100_000),
           importedFrom: "lead_alchemist",
           laSubmissionId: meta.laSubmissionId,
+          signature: meta.signature ?? null,
           ghlContactId: meta.laContactId ?? null,
           createdAt: at,
           updatedAt: at,
