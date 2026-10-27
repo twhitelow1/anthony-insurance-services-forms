@@ -3,12 +3,12 @@ import { SelectAll } from "@/components/SelectAll";
 import { SelectionRunPanel } from "@/components/SelectionRunPanel";
 import { ShiftClickRange } from "@/components/ShiftClickRange";
 import { requireStaff } from "@/lib/auth/session";
-import { importedBySource, importTargets, listImportedFromSource, listImportRuns, listImportSources, listSourceSubmissions } from "@/lib/applications/la-import";
+import { countNeedingFinish, importedBySource, importTargets, listImportedFromSource, listImportRuns, listImportSources, listSourceSubmissions } from "@/lib/applications/la-import";
 import { getSelectionRun, showSelectionRun } from "@/lib/bulk/selection-run";
 import { readFlash } from "@/lib/flash";
 import { ghlConfig } from "@/lib/ghl/client";
 import { FlashMessage } from "../salesforce/ui";
-import { importPickedAction, importSelectedAction, reverseImportRunAction, saveImportMapAction, startImportAction, stepImportRunAction, stopImportRunAction, undoImportAction } from "./actions";
+import { finishImportedAction, importPickedAction, importSelectedAction, reverseImportRunAction, saveImportMapAction, startImportAction, stepImportRunAction, stopImportRunAction, undoImportAction } from "./actions";
 
 export const metadata = { title: "Import old applications | AIS Connect" };
 export const dynamic = "force-dynamic";
@@ -214,6 +214,19 @@ export default async function ImportPage({ searchParams }: PageProps<"/admin/imp
   }
 
   const runs = await listImportRuns();
+  const unfinished = await countNeedingFinish();
+  const finishing =
+    unfinished > 0 ? (
+      <section className="callout mt-6 text-sm" aria-label="Signatures and PDFs for imported applications">
+        <p>
+          <strong>{unfinished.toLocaleString("en-US")}</strong> imported application{unfinished === 1 ? " needs its" : "s need their"} PDFs, or the
+          signature from its Lead Alchemist link. This brings the signature over and creates the PDFs with it; nothing is sent anywhere.
+        </p>
+        <form action={finishImportedAction} className="mt-2">
+          <button className="btn-primary">Add signatures and create PDFs (20 at a time)</button>
+        </form>
+      </section>
+    ) : null;
   const sourceName = (key: string) => data?.sources.find((x) => x.key === key)?.name ?? key;
   const history = (
     <section className="mt-8" aria-labelledby="import-history">
@@ -339,6 +352,7 @@ export default async function ImportPage({ searchParams }: PageProps<"/admin/imp
           </form>
         </>
       )}
+      {finishing}
       {history}
     </div>
   );

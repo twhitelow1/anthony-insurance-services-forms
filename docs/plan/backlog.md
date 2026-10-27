@@ -211,6 +211,9 @@ Today staff can download an Outlook draft to the carrier with the filled PDF att
 - ✅ Update in Lead Alchemist: review page to pick which fields to write.
 - ✅ Dropdown filters apply without pressing Search.
 - ✅ Imported applications keep the Lead Alchemist signature.
+- ✅ Imported applications get their PDFs as they import; a catch-up button adds signatures and PDFs to ones imported earlier.
+- ✅ Carrier PDF per form: upload the carrier's fillable PDF under Forms and match its boxes to the questions.
+- ⬜ Approved AIS PDF layouts per form (waiting on the approved PDFs from Todd).
 - ✅ Sport event and single event forms: same questions, AIS and martial arts branding (each shows its own logo from its link).
 - ✅ Test submissions don't email the applicant.
 - ⬜ Duplicate accounts found in the call: staff merge them with Compare & merge and set the current owner as primary contact.

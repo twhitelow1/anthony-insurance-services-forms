@@ -3,6 +3,8 @@ import { forms } from "@/forms";
 import { CopyButton } from "@/components/CopyButton";
 import { requireStaff } from "@/lib/auth/session";
 import { BRANDS, defaultBrand, isBrand, type BrandId } from "@/lib/brands";
+import { listCarrierTemplates } from "@/lib/applications/carrier-templates";
+import { carrierFormFor } from "@/lib/pdf/carrier";
 
 export const metadata = { title: "Forms & embed codes | AIS Connect" };
 
@@ -19,6 +21,7 @@ export default async function FormsPage({ searchParams }: PageProps<"/admin/form
     .sort((a, b) => a.brand.localeCompare(b.brand) || a.form.title.localeCompare(b.form.title));
   const paging = pageState(sp, 25);
   const shown = pageOf(list, paging);
+  const uploaded = new Map((await listCarrierTemplates()).map((t) => [t.formSlug, t]));
 
   return (
     <div className="mx-auto max-w-4xl">
@@ -51,6 +54,13 @@ export default async function FormsPage({ searchParams }: PageProps<"/admin/form
                 <CopyButton text={snippet} label="Copy embed code" />
                 <a className="btn-link" href={preview} target="_blank" rel="noopener">Preview with branding</a>
                 <a className="btn-link" href={`/forms/${form.slug}`} target="_blank" rel="noopener">Direct link</a>
+                <a className="btn-link" href={`/admin/forms/${form.slug}/carrier`}>
+                  {uploaded.get(form.slug)
+                    ? `Carrier PDF: ${uploaded.get(form.slug)!.name}`
+                    : carrierFormFor(form.slug)
+                      ? `Carrier PDF: ${carrierFormFor(form.slug)!.name} (built in)`
+                      : "Add a carrier PDF"}
+                </a>
               </div>
               <details className="mt-3 text-xs text-[var(--muted)]">
                 <summary className="cursor-pointer">Other websites or a plain iframe</summary>

@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireStaff } from "@/lib/auth/session";
-import { importRunIds, pickedItem, reverseImportRun, saveImportSourceMap, undoImport } from "@/lib/applications/la-import";
+import { finishImportedApplications, importRunIds, pickedItem, reverseImportRun, saveImportSourceMap, undoImport } from "@/lib/applications/la-import";
 import { startBackgroundRun, triggerSelectionRun } from "@/lib/bulk/background";
 import { stopSelectionRun } from "@/lib/bulk/selection-run";
 import { setFlash } from "@/lib/flash";
@@ -108,4 +108,13 @@ export async function reverseImportRunAction(formData: FormData) {
   const n = await reverseImportRun(key);
   console.info(`[import] ${staff.email} reversed import ${key}: ${n} application(s) removed`);
   return finish("ok", `Reversed: removed ${n} imported application${n === 1 ? "" : "s"} from AIS Connect. Nothing changed in Lead Alchemist; accounts and contacts stay.`);
+}
+
+/** Already imported: bring each signature over from its Lead Alchemist link and create the PDFs (20 per click). */
+export async function finishImportedAction() {
+  const staff = await requireStaff();
+  const r = await finishImportedApplications(`staff:${staff.email}`);
+  revalidatePath("/admin/import");
+  const done = `Signatures brought over: ${r.signatures}. PDFs created for ${r.pdfs} application${r.pdfs === 1 ? "" : "s"}.`;
+  return finish(r.remaining ? "warn" : "ok", r.remaining ? `${done} ${r.remaining} still to do: click again.` : `${done} All imported applications are done.`);
 }
