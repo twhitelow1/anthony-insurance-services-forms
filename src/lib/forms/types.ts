@@ -124,6 +124,24 @@ export interface ContentBlock {
   title?: string;
   body?: string | string[];
   variant?: "info" | "notice" | "subheading";
+  /** Several body items show as a numbered list unless this is "paragraphs". */
+  bodyStyle?: "list" | "paragraphs";
+  /** A numbered entry's heading (from a repeat control) gets a Remove button for entries after the first. */
+  removes?: { repeat: string; prefix: string; entry: number };
+  showIf?: Predicate;
+}
+
+/**
+ * "+ Add another …" for numbered entries (e.g. Additional Insured #1, #2, …). Only entry 1 shows at
+ * first; each click shows the next. Entry n's fields have ids starting `${prefix}${n}_` and are shown
+ * while the count (stored under `id`) is at least n.
+ */
+export interface RepeatControl {
+  type: "repeat";
+  id: string;
+  addLabel: string;
+  prefix: string;
+  max: number;
   showIf?: Predicate;
 }
 
@@ -143,7 +161,7 @@ export interface TableField {
 }
 
 export type InputField = TextField | NumberField | ChoiceField | SignatureField | FileField;
-export type Field = InputField | ContentBlock | TableField;
+export type Field = InputField | ContentBlock | TableField | RepeatControl;
 
 export interface Section {
   id: string;
@@ -170,7 +188,33 @@ export interface FormDefinition {
 }
 
 export const isInputField = (f: Field): f is InputField =>
-  f.type !== "content" && f.type !== "table";
+  f.type !== "content" && f.type !== "table" && f.type !== "repeat";
+
+/** How many entries a repeat control shows (at least 1, at most its max). */
+export const repeatCount = (values: FormValues, id: string, max: number) => {
+  const n = Number(values[id]);
+  return Number.isFinite(n) ? Math.min(Math.max(Math.trunc(n), 1), max) : 1;
+};
+
+/** Values after removing entry `entry`: later entries move up one, and the count drops by one. */
+export function removeRepeatEntry(values: FormValues, control: { id: string; prefix: string; max: number }, entry: number): FormValues {
+  const count = repeatCount(values, control.id, control.max);
+  const patch: FormValues = { [control.id]: String(Math.max(count - 1, 1)) };
+  const re = new RegExp(`^${control.prefix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(\\d+)_(.+)$`);
+  const byEntry = new Map<number, Map<string, FormValues[string]>>();
+  for (const [k, v] of Object.entries(values)) {
+    const m = k.match(re);
+    if (!m) continue;
+    const n = Number(m[1]);
+    if (!byEntry.has(n)) byEntry.set(n, new Map());
+    byEntry.get(n)!.set(m[2], v);
+  }
+  for (let n = entry; n <= count; n++) {
+    const keys = new Set([...(byEntry.get(n)?.keys() ?? []), ...(byEntry.get(n + 1)?.keys() ?? [])]);
+    for (const key of keys) patch[`${control.prefix}${n}_${key}`] = n < count ? byEntry.get(n + 1)?.get(key) : undefined;
+  }
+  return patch;
+}
 
 export const tableCellId = (tableId: string, row: number, colId: string) =>
   `${tableId}__${row}__${colId}`;

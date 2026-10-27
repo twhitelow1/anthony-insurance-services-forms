@@ -294,12 +294,19 @@ const AUTOCOMPLETE: Record<string, string> = {
   legal_business_name: "organization",
 };
 
-export function Content({ block }: { block: ContentBlock }) {
+export function Content({ block, onRemove }: { block: ContentBlock; onRemove?: () => void }) {
   const body = Array.isArray(block.body) ? block.body : block.body ? [block.body] : [];
   if (block.variant === "subheading") {
     return (
       <div className="col-span-6 mt-4 border-b border-[var(--border)] pb-2 first:mt-0">
-        <h3 className="text-base font-semibold text-[var(--brand)]">{block.title}</h3>
+        <div className="flex items-center justify-between gap-2">
+          <h3 className="text-base font-semibold text-[var(--brand)]">{block.title}</h3>
+          {onRemove && (
+            <button type="button" className="btn-link text-sm text-[var(--danger)]" onClick={onRemove}>
+              Remove
+            </button>
+          )}
+        </div>
         {body.map((b) => (
           <p key={b} className="text-sm text-[var(--muted)]">
             {b}
@@ -311,14 +318,18 @@ export function Content({ block }: { block: ContentBlock }) {
   return (
     <div className={`col-span-6 callout ${block.variant === "notice" ? "callout-notice" : ""}`}>
       {block.title && <p className="mb-2 font-semibold">{block.title}</p>}
-      {body.length > 1 ? (
+      {body.length > 1 && block.bodyStyle !== "paragraphs" ? (
         <ol className="list-decimal space-y-1 pl-5">
           {body.map((b) => (
             <li key={b}>{b}</li>
           ))}
         </ol>
       ) : (
-        body.map((b) => <p key={b}>{b}</p>)
+        <div className="space-y-2">
+          {body.map((b) => (
+            <p key={b}>{b}</p>
+          ))}
+        </div>
       )}
     </div>
   );

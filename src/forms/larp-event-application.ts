@@ -17,28 +17,45 @@ const RELATIONSHIP_OPTIONS = opts(
   "O - Other (include details)",
 );
 
+const AI_MAX = 10;
+const AI_COUNT = "ai_count";
+
+/** Entry n of Additional Insureds: only #1 shows at first; "+ Add Another Additional Insured" shows the next. */
 function additionalInsuredFields(n: number): Field[] {
-  const isOther = (v: FormValues) => v[`ai_${n}_relationship`] === "O - Other (include details)";
+  // Applications from before the "+ Add Another" button have no count: their filled entries still show.
+  const shown = (v: FormValues) =>
+    n === 1 || (v[AI_COUNT] === undefined ? Object.keys(v).some((k) => k.startsWith(`ai_${n}_`) && !!v[k]) : Number(v[AI_COUNT]) >= n);
+  const had = (id: string) => (v: FormValues) => shown(v) && !!v[id];
+  const isOther = (v: FormValues) => shown(v) && v[`ai_${n}_relationship`] === "O - Other (include details)";
   return [
-    { type: "content", id: `ai_${n}_heading`, title: `Additional Insured #${n}`, variant: "subheading" },
-    text(`ai_${n}_name`, "Full Legal Name", { width: "half" }),
-    { type: "email", id: `ai_${n}_email`, label: "Email Address", width: "half" },
-    text(`ai_${n}_address`, "Full Mailing Address (including city, state, zip)"),
+    { type: "content", id: `ai_${n}_heading`, title: `Additional Insured #${n}`, variant: "subheading", showIf: shown, removes: { repeat: AI_COUNT, prefix: "ai_", entry: n } },
+    text(`ai_${n}_name`, "Full Legal Name", { showIf: shown }),
+    // Earlier applications asked for an email and the address in one line: kept so their answers still show.
+    { type: "email", id: `ai_${n}_email`, label: "Email Address (earlier applications)", showIf: had(`ai_${n}_email`) },
+    text(`ai_${n}_address`, "Full Mailing Address (earlier applications)", { showIf: had(`ai_${n}_address`) }),
+    text(`ai_${n}_street`, "Street Address", { showIf: shown }),
+    text(`ai_${n}_city`, "City", { width: "third", showIf: shown }),
+    { type: "select", id: `ai_${n}_state`, label: "State", options: US_STATES, width: "third", showIf: shown },
+    text(`ai_${n}_zip`, "ZIP Code", { width: "third", showIf: shown }),
     {
       type: "select",
       id: `ai_${n}_relationship`,
-      label: "Relationship (see legend)",
+      label: "Relationship to Your LARP Group",
       options: RELATIONSHIP_OPTIONS,
       width: "half",
+      showIf: shown,
     },
     text(`ai_${n}_relationship_details`, "Other relationship details", { required: true, width: "half", showIf: isOther }),
     {
       type: "checkboxes",
       id: `ai_${n}_endorsements`,
-      label: "Endorsements",
-      options: opts("Primary", "Waiver"),
-      tooltip:
-        "Primary = Additional Insured requiring a Primary Non-Contributory Endorsement (x $100.00). Waiver = Additional Insured requiring a Waiver of Subrogation Endorsement (x $100.00).",
+      label: "Endorsements: select only if required by your venue, landlord, or contract.",
+      options: opts(
+        "Additional Insured Endorsement Page / CG2026",
+        "Primary and Non-Contributory – Additional $100",
+        "Waiver of Subrogation – Additional $100",
+      ),
+      showIf: shown,
     },
   ];
 }
@@ -196,25 +213,30 @@ export const larpEventApplication: FormDefinition = {
           label: "Medical Payment",
           options: opts("$10,000 for an additional percentage of Liability Premium", "No, thank you."),
           required: true,
+          tooltip:
+            "Helps pay reasonable medical expenses for accidental injuries to third parties, such as spectators or visitors, regardless of fault. Does not apply to LARP participants, who have separate accident coverage. Subject to policy limits and exclusions.",
         },
       ],
     },
     {
       id: "additional_insureds",
       title: "Additional Insureds",
-      description: "Standard Additional insureds are included at no additional cost. Leave blank if none.",
+      description: "Optional. Skip this section if you have no additional insured requests.",
       fields: [
         {
           type: "content",
           id: "ai_info",
           variant: "info",
+          bodyStyle: "paragraphs",
           body: [
-            "Name, Address and Relationship of all additional insureds to be added to the policy. If you need more room, email additional pages to your agent.",
-            "Relationship legend: L - Landlord, V - Venue, E - Event Operator, F - Franchisor/Franchise Owner, G - Governmental Agency, O - Other (include details).",
-            "Additional Insureds requiring Primary Non-Contributory Endorsements x $100.00. Additional Insureds requiring Waiver of Subrogation Endorsements x $100.00.",
+            "Additional Insureds are organizations or property owners added to your liability policy, such as a landlord, landowner, venue, or parks and recreation district. Standard additional insureds are included at no additional cost.",
+            "If your event location requires additional insured status, enter its name and address exactly as requested and describe its relationship to your LARP group. Please provide any special insurance requirements or requested wording.",
+            "Primary and Non-Contributory and Waiver of Subrogation endorsements cost an additional $100 each, per additional insured. Select endorsements only if required.",
+            "If you have no additional insured requests at this time, you may skip this section and request additions later.",
           ],
         },
-        ...[1, 2, 3].flatMap(additionalInsuredFields),
+        ...Array.from({ length: AI_MAX }, (_, i) => additionalInsuredFields(i + 1)).flat(),
+        { type: "repeat", id: AI_COUNT, addLabel: "+ Add Another Additional Insured", prefix: "ai_", max: AI_MAX },
       ],
     },
     {
@@ -231,6 +253,13 @@ export const larpEventApplication: FormDefinition = {
         },
         {
           type: "content",
+          id: "policy_information",
+          variant: "notice",
+          title: "Policy Information",
+          body: "This summary of coverage and exclusions is no substitute for reading the entire policy. To receive an entire policy, contact the program administrator.",
+        },
+        {
+          type: "content",
           id: "excluded_activities",
           variant: "notice",
           title: "Excluded Activities",
@@ -238,14 +267,31 @@ export const larpEventApplication: FormDefinition = {
         },
         {
           type: "content",
-          id: "representations",
+          id: "waiver_requirement",
           variant: "notice",
-          body: [
-            "a. This summary of coverage and exclusions is no substitute for reading the entire policy. To receive an entire policy, contact the program administrator.",
-            "b. Waiver Requirement — Each organization or team must implement a Release and Waiver of Liability and Indemnity Agreement for all players and staff. Unintentional error on your part in securing Waiver and Release forms shall not void your coverage in the event of an occurrence to a player or staff member. However, your failure to maintain an adequate system to regularly secure Waiver and Release forms shall void your coverage in the event of an occurrence to a player or staff member. A sample waiver and release form is available upon request.",
-            "c. Fraud Warning — Any person who knowingly and with intent to defraud any insurance company or other person files an application for insurance or statement of claim containing any materially false information, or conceals for the purpose of misleading, information concerning any fact material there to, commits a fraudulent insurance act, which may be a crime.",
-            "d. Applicant’s Acknowledgement — I, the applicant, declare, to the best of my knowledge and belief, that all statements and answers in this application are true and complete. I understand and agree that (a) this application will form part of any policy issued, (b) no information given to or acquired by any representative of the Company will bind it, unless it is in writing on this application, (c) no waiver or modification will bind the Company unless it is in writing and is signed by an executive officer of the Company, and (d) only those persons eligible under the terms of an issued policy will be insured.",
-          ],
+          title: "Waiver Requirement",
+          body: "Each organization or team must implement a Release and Waiver of Liability and Indemnity Agreement for all players and staff. Unintentional error on your part in securing Waiver and Release forms shall not void your coverage in the event of an occurrence to a player or staff member. However, your failure to maintain an adequate system to regularly secure Waiver and Release forms shall void your coverage in the event of an occurrence to a player or staff member. A sample waiver and release form is available upon request.",
+        },
+        {
+          type: "content",
+          id: "fraud_warning",
+          variant: "notice",
+          title: "Fraud Warning",
+          body: "Any person who knowingly and with intent to defraud any insurance company or other person files an application for insurance or statement of claim containing any materially false information, or conceals for the purpose of misleading, information concerning any fact material there to, commits a fraudulent insurance act, which may be a crime.",
+        },
+        {
+          type: "content",
+          id: "applicant_acknowledgement",
+          variant: "notice",
+          title: "Applicant’s Acknowledgement",
+          body: "I, the applicant, declare, to the best of my knowledge and belief, that all statements and answers in this application are true and complete. I understand and agree that (a) this application will form part of any policy issued, (b) no information given to or acquired by any representative of the Company will bind it, unless it is in writing on this application, (c) no waiver or modification will bind the Company unless it is in writing and is signed by an executive officer of the Company, and (d) only those persons eligible under the terms of an issued policy will be insured.",
+        },
+        {
+          type: "checkboxes",
+          id: "terms_acknowledged",
+          label: "Acknowledgment",
+          options: opts("I have read and acknowledge the Terms and Conditions above, including the excluded activities and waiver requirement."),
+          required: true,
         },
         { type: "signature", id: "signature", label: "Signed for the Proposed Policyholder", required: true },
         { type: "date", id: "signature_date", label: "Date", required: true, width: "half" },
