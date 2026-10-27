@@ -214,6 +214,7 @@ Today staff can download an Outlook draft to the carrier with the filled PDF att
 - ✅ Imported applications get their PDFs as they import; a catch-up button adds signatures and PDFs to ones imported earlier.
 - ✅ Carrier PDF per form: upload the carrier's fillable PDF under Forms and match its boxes to the questions.
 - ⬜ Approved AIS PDF layouts per form (waiting on the approved PDFs from Todd).
+- ⬜ Idea (later, low priority): email change requests to an AIS Connect inbox (e.g. a Resend receiving address); each request becomes a draft PR with a preview link, live only after Todd says merge.
 - ✅ Sport event and single event forms: same questions, AIS and martial arts branding (each shows its own logo from its link).
 - ✅ Test submissions don't email the applicant.
 - ⬜ Duplicate accounts found in the call: staff merge them with Compare & merge and set the current owner as primary contact.
