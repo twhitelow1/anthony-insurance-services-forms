@@ -71,7 +71,7 @@ export function validateField(field: InputField, values: FormValues): string | n
       return opts.some((o) => o.value === v) ? null : "Choose one of the options.";
     }
     case "signature":
-      return v.startsWith("data:image/png;base64,") ? null : "Please sign the application.";
+      return /^data:image\/(png|jpeg);base64,/.test(v) ? null : "Please sign the application.";
     default:
       return null;
   }

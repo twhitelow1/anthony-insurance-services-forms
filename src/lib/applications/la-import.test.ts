@@ -85,7 +85,7 @@ describe("importing old Lead Alchemist submissions", () => {
     const account = await getClient(apps[0].clientId!);
     expect(account).toMatchObject({ name: `Tiger Dojo ${tag} 1`, source: "lead_alchemist" });
     const events = await db.select().from(schema.applicationEvents).where(eq(schema.applicationEvents.applicationId, apps[0].id));
-    expect(events.map((e) => e.type)).toEqual(["imported"]); // no "submitted", no emails, no syncs
+    expect(events.map((e) => e.type).sort()).toEqual(["imported", "pdf_created"]); // its PDF; no "submitted", no emails, no syncs
 
     // Running it again brings in nothing new.
     const again = await importSubmissionPages(ids, ACTOR);
@@ -162,19 +162,42 @@ describe("importing old Lead Alchemist submissions", () => {
 
 describe("the signature drawn in Lead Alchemist", () => {
   const png = "data:image/png;base64,iVBORw0KGgo=";
-  it("keeps a PNG data URL, downloads a linked PNG, and skips anything else", async () => {
+  const PNG_BYTES = Buffer.from([0x89, 0x50, 0x4e, 0x47, 1, 2, 3]);
+  const JPG_BYTES = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 1, 2]);
+  const fetcher = vi.fn(async (url: string) =>
+    url.endsWith(".png") ? new Response(PNG_BYTES, { headers: { "content-type": "application/octet-stream" } })
+    : url.endsWith(".jpg") ? new Response(JPG_BYTES)
+    : new Response("<html>", { headers: { "content-type": "text/html" } }),
+  ) as unknown as typeof fetch;
+
+  it("keeps an image data URL, downloads a linked PNG or JPEG, and skips anything else", async () => {
     const { laSignature } = await import("./la-import");
     expect(await laSignature({ signature: png })).toBe(png);
     expect(await laSignature({ full_name: "Ann" })).toBeNull();
     expect(await laSignature({ signature: "data:image/svg+xml;base64,PHN2Zz4=" })).toBeNull();
-    const fetcher = vi.fn(async (url: string) =>
-      url.endsWith(".png")
-        ? new Response(Buffer.from("png-bytes"), { headers: { "content-type": "image/png" } })
-        : new Response("<html>", { headers: { "content-type": "text/html" } }),
-    ) as unknown as typeof fetch;
-    expect(await laSignature({ signature: "https://files.example/sig.png" }, fetcher)).toBe(`data:image/png;base64,${Buffer.from("png-bytes").toString("base64")}`);
+    expect(await laSignature({ signature: "https://files.example/sig.png" }, fetcher)).toBe(`data:image/png;base64,${PNG_BYTES.toString("base64")}`);
+    expect(await laSignature({ signature: "https://files.example/sig.jpg" }, fetcher)).toBe(`data:image/jpeg;base64,${JPG_BYTES.toString("base64")}`);
     expect(await laSignature({ signature: "https://files.example/page" }, fetcher)).toBeNull();
-    expect(await laSignature({ "Applicant Signature": { url: "https://files.example/sig.png" } }, fetcher)).toMatch(/^data:image\/png;base64,/);
     expect(await laSignature({ signature: "http://insecure.example/sig.png" }, fetcher)).toBeNull();
+    // A question labelled Signature, keyed by its Lead Alchemist field id.
+    expect(await laSignature({ cfSig9: { url: "https://files.example/sig.png" } }, fetcher, new Map([["cfSig9", "Applicant Signature"]]))).toMatch(/^data:image\/png;base64,/);
+  });
+
+  it("brings the signature over for applications already imported, and creates their PDFs", async () => {
+    const { finishImportedApplications, countNeedingFinish, OTHER_ANSWERS } = await import("./la-import");
+    const { createImportedApplication, getApplication } = await import("./repo");
+    const form = getForm("martial-arts-event-application")!;
+    const tag = Math.random().toString(36).slice(2, 8);
+    const app = (await createImportedApplication(form, { email: `sig.${tag}@example.com`, first_name: "Sig", [OTHER_ANSWERS]: ["Applicant Signature: https://files.example/sig.png"] }, { laSubmissionId: `sig-${tag}`, submittedAt: null }))!;
+    const broken = (await createImportedApplication(form, { email: `bad.${tag}@example.com`, [OTHER_ANSWERS]: ["Signature: https://files.example/page"] }, { laSubmissionId: `bad-${tag}`, submittedAt: null }))!;
+    expect(await countNeedingFinish()).toBeGreaterThanOrEqual(2);
+    let left = 1;
+    for (let i = 0; i < 20 && left; i++) left = (await finishImportedApplications("staff:test", 50, fetcher)).remaining;
+    expect(left).toBe(0);
+    expect((await getApplication(app.id))!.signature).toBe(`data:image/png;base64,${PNG_BYTES.toString("base64")}`);
+    expect((await getApplication(broken.id))!.signature).toBeNull();
+    const db = await getDb();
+    const docs = await db.select().from(schema.applicationDocuments).where(eq(schema.applicationDocuments.applicationId, app.id));
+    expect(docs.some((d) => d.kind === "application_pdf")).toBe(true);
   });
 });

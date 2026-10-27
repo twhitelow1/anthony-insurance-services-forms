@@ -31,6 +31,25 @@ export function mapAnswers(spec: CarrierFormSpec, values: Application["values"],
 const FIELD_FONT = 8; // the template's own default appearance
 const MIN_FONT = 6;
 
+type Font = Awaited<ReturnType<PDFDocument["embedFont"]>>;
+
+/** Write text into a box, shrinking it to fit; too long for the box, it goes on the addendum instead. */
+export function setFittedText(field: PDFTextField, helv: Font, value: string, label: string, addendum: { label: string; value: string }[]) {
+  const text = safeText(helv, value).replace(/\s*\n\s*/g, " ");
+  const box = field.acroField.getWidgets()[0].getRectangle().width - 4;
+  const max = field.getMaxLength() ?? Infinity;
+  const fits = (size: number) => helv.widthOfTextAtSize(text, size) <= box && text.length <= max;
+  if (fits(FIELD_FONT)) {
+    field.setText(text);
+  } else if (fits(MIN_FONT)) {
+    field.setFontSize(MIN_FONT);
+    field.setText(text);
+  } else {
+    field.setText("See addendum");
+    addendum.push({ label, value });
+  }
+}
+
 /**
  * Fill the carrier's own fillable PDF from a submission. Fields stay editable so
  * staff can correct anything before sending. Text too long for its box goes on an
@@ -51,19 +70,7 @@ export async function buildCarrierPdf(spec: CarrierFormSpec, app: Application) {
       unknownFields.push(name);
       continue;
     }
-    const text = safeText(helv, value).replace(/\s*\n\s*/g, " ");
-    const box = field.acroField.getWidgets()[0].getRectangle().width - 4;
-    const max = field.getMaxLength() ?? Infinity;
-    const fits = (size: number) => helv.widthOfTextAtSize(text, size) <= box && text.length <= max;
-    if (fits(FIELD_FONT)) {
-      field.setText(text);
-    } else if (fits(MIN_FONT)) {
-      field.setFontSize(MIN_FONT);
-      field.setText(text);
-    } else {
-      field.setText("See addendum");
-      addendum.push({ label, value });
-    }
+    setFittedText(field, helv, value, label, addendum);
   }
 
   for (const name of fill.checked) {
@@ -120,7 +127,7 @@ export function fillBlanks(form: PDFForm, { yesNoPair, keepBlank }: CarrierFormS
   return { no, na };
 }
 
-function signedDate(d: Date) {
+export function signedDate(d: Date) {
   return new Intl.DateTimeFormat("en-US", {
     timeZone: process.env.APP_TIMEZONE ?? "America/Chicago",
     month: "2-digit",
@@ -129,7 +136,7 @@ function signedDate(d: Date) {
   }).format(new Date(d));
 }
 
-function drawAddendum(
+export function drawAddendum(
   doc: PDFDocument,
   fonts: { helv: Awaited<ReturnType<PDFDocument["embedFont"]>>; bold: Awaited<ReturnType<PDFDocument["embedFont"]>> },
   app: Application,

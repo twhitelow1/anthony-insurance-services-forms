@@ -156,29 +156,41 @@ function toFieldValue(field: InputField, v: unknown): string | string[] | undefi
   return t;
 }
 
-const PNG = "data:image/png;base64,";
 const MAX_SIGNATURE_BYTES = 1_000_000;
+const IMAGE_DATA = /^data:image\/(png|jpeg);base64,/;
+
+/** The image at a signature link, as a data URL, or null. PNG and JPEG only, checked by the file's own bytes. */
+export async function signatureFromLink(url: string, fetcher: typeof fetch = fetch): Promise<string | null> {
+  if (!/^https:\/\//i.test(url)) return null;
+  try {
+    const res = await fetcher(url, { signal: AbortSignal.timeout(10_000) });
+    if (!res.ok) return null;
+    const buf = Buffer.from(await res.arrayBuffer());
+    if (!buf.length || buf.length > MAX_SIGNATURE_BYTES) return null;
+    const type = buf.subarray(0, 4).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47])) ? "png" : buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff ? "jpeg" : null;
+    return type ? `data:image/${type};base64,${buf.toString("base64")}` : null;
+  } catch {
+    return null; // Unreadable: the application goes ahead without it.
+  }
+}
 
 /**
- * The signature drawn on the Lead Alchemist form, as a PNG data URL (how AIS Connect stores its own
- * signatures), or null. Lead Alchemist keeps it as a data URL or as a link to the image; a link is
- * downloaded. Anything that isn't a PNG, or can't be read, is skipped: the import carries on.
+ * The signature drawn on the Lead Alchemist form, as an image data URL (how AIS Connect stores its
+ * own signatures), or null. Lead Alchemist keeps it in its "signature" answer or in a question
+ * labelled Signature, as the image itself or as a link to it; a link is downloaded.
  */
-export async function laSignature(others: Record<string, unknown>, fetcher: typeof fetch = fetch): Promise<string | null> {
-  const candidates = [others.signature, ...Object.entries(others).filter(([k]) => k !== "signature" && /signature/i.test(k)).map(([, v]) => v)];
+export async function laSignature(others: Record<string, unknown>, fetcher: typeof fetch = fetch, fieldNames?: Map<string, string>): Promise<string | null> {
+  const isSig = (k: string) => /signature/i.test(k) || /signature/i.test(fieldNames?.get(k) ?? fieldNames?.get(`contact.${k}`) ?? "");
+  const candidates = [others.signature, ...Object.entries(others).filter(([k]) => k !== "signature" && isSig(k)).map(([, v]) => v)];
   for (const c of candidates) {
     const v = typeof c === "string" ? c.trim() : textOf(c);
     if (!v) continue;
-    if (v.startsWith(PNG)) return v.length <= MAX_SIGNATURE_BYTES * 1.4 ? v : null;
-    if (!/^https:\/\//i.test(v)) continue;
-    try {
-      const res = await fetcher(v, { signal: AbortSignal.timeout(10_000) });
-      if (!res.ok || !(res.headers.get("content-type") ?? "").startsWith("image/png")) continue;
-      const buf = Buffer.from(await res.arrayBuffer());
-      if (buf.length && buf.length <= MAX_SIGNATURE_BYTES) return PNG + buf.toString("base64");
-    } catch {
-      // Unreadable: the application is imported without it.
+    if (IMAGE_DATA.test(v)) {
+      if (v.length <= MAX_SIGNATURE_BYTES * 1.4) return v;
+      continue;
     }
+    const got = await signatureFromLink(v, fetcher);
+    if (got) return got;
   }
   return null;
 }
@@ -297,7 +309,7 @@ export async function importSubmissionPages(items: string[], actor: string, runI
           submittedAt: sub.createdAt ? new Date(sub.createdAt) : null,
           laContactId: sub.contactId ?? null,
           extraSearch: m.other,
-          signature: await laSignature(sub.others ?? {}),
+          signature: await laSignature(sub.others ?? {}, fetch, names),
         });
         if (!app) {
           already++;
@@ -321,6 +333,9 @@ export async function importSubmissionPages(items: string[], actor: string, runI
           const person = await getContactByEmail(m.email);
           if (person && !person.ghlContactId) await ensureContact({ clientId: person.clientId, email: m.email, ghlContactId: sub.contactId });
         }
+        // Its PDFs, as for a new application (nothing is sent anywhere).
+        const { makePdf } = await import("./pipeline");
+        await makePdf(form, app);
         await addEvent(app.id, "imported", actor, {
           message: `Imported from Lead Alchemist (${kind} submission of ${sub.createdAt?.slice(0, 10) ?? "unknown date"})${m.other.length ? `; ${m.other.length} answer(s) didn't match a question and are listed under "Other answers"` : ""}`,
           data: { laSubmissionId: sub.id, source: `${kind}:${id}`, ...(runId ? { runId } : {}) },
@@ -378,6 +393,73 @@ function fromSource(key: string) {
 }
 
 /** How many applications each Lead Alchemist form or survey has brought in. */
+/** A signature link among an imported application's other answers ("Signature: https://…"). */
+const signatureLink = (values: FormValues) => {
+  const other = values[OTHER_ANSWERS];
+  for (const line of Array.isArray(other) ? other : []) {
+    const m = line.match(/^([^:]*signature[^:]*):\s*(https:\/\/\S+)/i);
+    if (m) return m[2];
+  }
+  return null;
+};
+
+/** Imported applications still without PDFs, or without their signature when there's a link not yet tried. */
+async function needingFinish() {
+  const db = await getDb();
+  const rows = await db
+    .select({
+      id: schema.applications.id,
+      hasSignature: sql<boolean>`${schema.applications.signature} is not null`,
+      hasPdf: sql<boolean>`exists (select 1 from ${schema.applicationDocuments} d where d.application_id = "applications"."id" and d.kind in ('carrier_form', 'application_pdf'))`,
+      tried: sql<boolean>`exists (select 1 from ${schema.applicationEvents} e where e.application_id = "applications"."id" and e.type = 'la_signature')`,
+      values: schema.applications.values,
+    })
+    .from(schema.applications)
+    .where(eq(schema.applications.importedFrom, "lead_alchemist"))
+    .orderBy(schema.applications.createdAt);
+  return rows.filter((r) => !r.hasPdf || (!r.hasSignature && !r.tried && signatureLink(r.values) !== null));
+}
+
+export async function countNeedingFinish() {
+  return (await needingFinish()).length;
+}
+
+/**
+ * For applications already imported: fetch the signature from its Lead Alchemist link and
+ * (re)create the PDFs, so they carry it. `limit` per click; returns what it did and how many remain.
+ */
+export async function finishImportedApplications(actor: string, limit = 20, fetcher: typeof fetch = fetch) {
+  const { getApplication } = await import("./repo");
+  const { makePdf } = await import("./pipeline");
+  const db = await getDb();
+  const todo = (await needingFinish()).slice(0, limit);
+  let signatures = 0;
+  let pdfs = 0;
+  for (const { id } of todo) {
+    let app = await getApplication(id);
+    const form = app && getForm(app.formSlug);
+    if (!app || !form) continue;
+    if (!app.signature) {
+      const link = signatureLink(app.values);
+      const sig = link ? await signatureFromLink(link, fetcher) : null;
+      if (link) {
+        if (sig) {
+          await db.update(schema.applications).set({ signature: sig }).where(eq(schema.applications.id, id));
+          app = { ...app, signature: sig };
+          signatures++;
+        }
+        await addEvent(id, "la_signature", actor, {
+          message: sig ? "Signature brought over from its Lead Alchemist link" : "The signature at its Lead Alchemist link couldn't be read (not a PNG or JPEG image, or the link has expired)",
+          data: { ok: !!sig },
+        });
+      }
+    }
+    await makePdf(form, app);
+    pdfs++;
+  }
+  return { signatures, pdfs, remaining: await countNeedingFinish() };
+}
+
 export async function importedBySource(): Promise<Record<string, number>> {
   const db = await getDb();
   const rows = await db

@@ -589,7 +589,9 @@ export type EventType =
   | "sf_sync_failed"
   | "sf_needs_review"
   | "sf_dry_run"
-  | "imported";
+  | "imported"
+  /** Its signature was fetched from the Lead Alchemist link (data.ok false when it couldn't be). */
+  | "la_signature";
 
 export type ApplicationSfStatus = "not_synced" | "pending" | "synced" | "needs_review" | "error" | "skipped";
 
@@ -640,6 +642,40 @@ export const applicationDocuments = pgTable(
   },
   (t) => [index("application_documents_app_idx").on(t.applicationId, t.createdAt)],
 );
+
+/** A box on an uploaded carrier PDF (read from its fillable fields when uploaded). */
+export interface CarrierPdfField {
+  name: string;
+  type: "text" | "checkbox" | "radio" | "dropdown" | "other";
+  /** Radio and dropdown choices. */
+  options?: string[];
+  page: number;
+}
+
+/**
+ * A carrier's fillable application uploaded under Forms → Carrier PDF, assigned to one web form.
+ * `mapping` says what fills each box: "q:<question id>" (the answer), "q:<question id>=<option>"
+ * (tick when that option was picked), "signature", "date" (the date signed), "na" (write N/A).
+ * Boxes not in the mapping are left blank. One per form; uploading again replaces the file.
+ */
+export const carrierTemplates = pgTable("carrier_templates", {
+  formSlug: text("form_slug").primaryKey(),
+  /** Shown to staff, e.g. "Carrier application (SFIC-STL-APP-001)". */
+  name: text("name").notNull(),
+  filename: text("filename").notNull(),
+  content: bytea("content").notNull(),
+  size: integer("size").notNull(),
+  fields: jsonb("fields").$type<CarrierPdfField[]>().notNull(),
+  mapping: jsonb("mapping").$type<Record<string, string>>().notNull().default({}),
+  /** Write "N/A" in text boxes left empty. */
+  fillBlanks: boolean("fill_blanks").notNull().default(false),
+  uploadedBy: text("uploaded_by").notNull(),
+  updatedBy: text("updated_by").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export type CarrierTemplate = typeof carrierTemplates.$inferSelect;
 
 /**
  * One row per applicant email, linking them to their Lead Alchemist contact so

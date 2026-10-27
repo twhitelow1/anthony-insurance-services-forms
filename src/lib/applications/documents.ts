@@ -4,7 +4,7 @@ import { getDb, schema } from "@/lib/db";
 import type { Application, ApplicationDocument } from "@/lib/db/schema";
 import type { FormDefinition } from "@/lib/forms/types";
 import { buildApplicationPdf } from "@/lib/pdf/summary";
-import { buildCarrierPdf, carrierFormFor } from "@/lib/pdf/carrier";
+import { carrierPdfFor } from "./carrier-templates";
 
 const { applicationDocuments } = schema;
 
@@ -51,9 +51,9 @@ export async function createApplicationPdf(form: FormDefinition, app: Applicatio
  * Returns undefined when this form has no carrier PDF mapped.
  */
 export async function createCarrierPdf(app: Application) {
-  const spec = carrierFormFor(app.formSlug);
-  if (!spec) return undefined;
-  const { bytes, unknownFields, addendumCount } = await buildCarrierPdf(spec, app);
+  const carrier = await carrierPdfFor(app);
+  if (!carrier) return undefined;
+  const { bytes, unknownFields, addendumCount } = await carrier.build(app);
   const doc = await saveDocument(app, "carrier_form", `${fileBase(app)} - carrier application.pdf`, bytes);
   return { doc, unknownFields, addendumCount };
 }
