@@ -363,7 +363,7 @@ export async function buildApplicationPdf(form: FormDefinition, app: Application
         if (rows.length) w.grid(f.label, f.columns.map((c) => c.label), rows);
         continue;
       }
-      if (f.type === "signature") continue;
+      if (f.type === "signature" || f.type === "repeat") continue;
       const value = f.type === "file" ? fileNames(v[f.id]) : str(v[f.id]);
       if ((f.type === "radio" || f.type === "select") && isYesNo(f)) {
         flush();

@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { getForm } from "@/forms";
 import { type FieldErrors, declined, isVisible, pruneValues, validateSection, visibleInputs } from "@/lib/forms/validate";
-import { type FormValue, type FormValues, type InputField, type Option, isInputField } from "@/lib/forms/types";
+import { type FormValue, type FormValues, type InputField, type Option, type RepeatControl, isInputField, removeRepeatEntry, repeatCount } from "@/lib/forms/types";
 import { Content, FieldInput, TableInput } from "./Fields";
 import { APPLICANT_PORTAL_LINKS } from "@/forms/config";
 
@@ -469,7 +469,22 @@ export function FormWizard({ slug, edit, canTest = false }: { slug: string; edit
 
         <div className="grid grid-cols-6 gap-x-4 gap-y-5">
           {section.fields.filter((f) => isVisible(f, values)).map((f) => {
-            if (f.type === "content") return <Content key={f.id} block={f} />;
+            if (f.type === "content") {
+              const r = f.removes;
+              const control = r && section.fields.find((x): x is RepeatControl => x.type === "repeat" && x.id === r.repeat);
+              const onRemove = r && control && r.entry > 1 ? () => setValues(removeRepeatEntry(values, control, r.entry)) : undefined;
+              return <Content key={f.id} block={f} onRemove={onRemove} />;
+            }
+            if (f.type === "repeat") {
+              const count = repeatCount(values, f.id, f.max);
+              return count < f.max ? (
+                <div key={f.id} className="col-span-6">
+                  <button type="button" className="btn-secondary" onClick={() => setValues({ [f.id]: String(count + 1) })}>
+                    {f.addLabel}
+                  </button>
+                </div>
+              ) : null;
+            }
             if (f.type === "table") return <TableInput key={f.id} table={f} values={values} setValues={setValues} />;
             return (
               <FieldInput

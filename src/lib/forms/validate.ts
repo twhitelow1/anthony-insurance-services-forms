@@ -8,6 +8,7 @@ import {
   parseUploadRef,
   tableCellId,
   tableRowCountId,
+  repeatCount,
 } from "./types";
 
 export type FieldErrors = Record<string, string>;
@@ -112,7 +113,9 @@ export function pruneValues(form: FormDefinition, values: FormValues): FormValue
   for (const section of form.sections) {
     for (const field of section.fields) {
       if (!isVisible(field, values)) continue;
-      if (field.type === "table") {
+      if (field.type === "repeat") {
+        out[field.id] = String(repeatCount(values, field.id, field.max));
+      } else if (field.type === "table") {
         const rows = clampRows(values[tableRowCountId(field.id)], field.maxRows);
         out[tableRowCountId(field.id)] = String(rows);
         for (let r = 1; r <= rows; r++) {
