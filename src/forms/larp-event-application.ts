@@ -72,17 +72,8 @@ export const larpEventApplication: FormDefinition = {
     {
       id: "policyholder",
       title: "Proposed Policyholder Information",
+      description: "Please fill out the application below. Once received, a quote will be emailed to you to review.",
       fields: [
-        {
-          type: "content",
-          id: "instructions",
-          title: "Instructions",
-          variant: "info",
-          body: [
-            "Policy will become effective on the Requested Effective Date if (a) all required information is provided and (b) the Company has received the initial premium on or before that date.",
-            "12 months of coverage is provided.",
-          ],
-        },
         text("legal_business_name", "Full Legal Name of Proposed Policyholder", {
           required: true,
           ghl: { standard: "companyName" },
@@ -175,7 +166,7 @@ export const larpEventApplication: FormDefinition = {
         "Minimum Premium is Fully Earned Upon Policy Inception. Rates include $1,000,000 Per Occurrence / $1,000,000 Aggregate General Liability Policy.",
       fields: [
         {
-          type: "radio",
+          type: "select",
           id: "gl_aggregate",
           label: "General Liability Aggregate",
           options: opts("$1,000,000", "$2,000,000", "$3,000,000", "$4,000,000", "$5,000,000"),
@@ -196,38 +187,29 @@ export const larpEventApplication: FormDefinition = {
     {
       id: "optional_coverages",
       title: "Optional Coverages",
-      description: "Premiums are fully earned.",
       fields: [
-        {
-          type: "content",
-          id: "optional_underwriting_info",
-          variant: "info",
-          body: [
-            "The following optional coverages are also available but subject to additional underwriting: $1,000,000 Abuse or Molestation Liability Coverage, $1,000,000 Hired and Non-Owned Automobile Liability Coverage, Equipment Coverage up to $750,000, Excess Liability Coverage of up to $4,000,000.",
-            "Please contact your agent. Download Abuse Questionnaire",
-          ],
-        },
         {
           type: "radio",
           id: "hired_non_owned_auto",
           label: "Hired and non-owned automobile liability coverage",
           options: opts("$250,000 for an additional $250.00", "$500,000 for an additional $500.00", "No, thank you."),
-          required: true,
           hint: "12 or 15 plus passenger vans are ineligible for this program.",
+          tooltip:
+            "Helps protect your organization against liability claims for injuries or property damage caused by rented, borrowed, or personal vehicles used for your LARP operations. Does not cover damage to the vehicle itself.",
         },
         {
           type: "radio",
           id: "abuse_molestation",
           label: "Abuse or Molestation Liability Coverage",
           options: opts("$100,000 / $300,000 for an additional $1000.00", "No, thank you."),
-          required: true,
+          tooltip:
+            "Helps protect your organization against liability claims alleging physical abuse, sexual abuse or molestation, or verbal, emotional, or mental abuse related to your covered LARP operations.",
         },
         {
           type: "radio",
           id: "medical_payment",
           label: "Medical Payment",
           options: opts("$10,000 for an additional percentage of Liability Premium", "No, thank you."),
-          required: true,
           tooltip:
             "Helps pay reasonable medical expenses for accidental injuries to third parties, such as spectators or visitors, regardless of fault. Does not apply to LARP participants, who have separate accident coverage. Subject to policy limits and exclusions.",
         },

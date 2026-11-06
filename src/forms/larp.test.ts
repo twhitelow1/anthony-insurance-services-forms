@@ -85,3 +85,28 @@ describe("LARP: General Liability Questionnaire", () => {
     expect(s.fields.some((f) => f.id === "insurer_non_renewing" && isVisible(f, { insurer_non_renewing: "No" }))).toBe(true);
   });
 });
+
+describe("LARP: changes from the Oct 29 review", () => {
+  const field = (id: string) => form.sections.flatMap((s) => s.fields).find((f) => f.id === id)!;
+
+  it("opens with a short line instead of the instructions box", () => {
+    expect(section("policyholder").description).toBe("Please fill out the application below. Once received, a quote will be emailed to you to review.");
+    expect(section("policyholder").fields.some((f) => f.type === "content" && f.variant === "info")).toBe(false);
+  });
+
+  it("asks the liability aggregate as a dropdown", () => {
+    expect(field("gl_aggregate").type).toBe("select");
+  });
+
+  it("has Caitlyn's tooltips on the optional coverages, no info box, and none of them required", () => {
+    const s = section("optional_coverages");
+    expect(s.fields.some((f) => f.type === "content")).toBe(false);
+    expect(s.description).toBeUndefined();
+    for (const id of ["hired_non_owned_auto", "abuse_molestation", "medical_payment"]) {
+      const f = field(id);
+      expect(isInputField(f) && f.tooltip).toBeTruthy();
+      expect(isInputField(f) && f.required).toBeFalsy();
+    }
+    expect(validateSection(s, {})).toEqual({});
+  });
+});
