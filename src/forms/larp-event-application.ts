@@ -72,17 +72,8 @@ export const larpEventApplication: FormDefinition = {
     {
       id: "policyholder",
       title: "Proposed Policyholder Information",
+      description: "Please fill out the application below. Once received, a quote will be emailed to you to review.",
       fields: [
-        {
-          type: "content",
-          id: "instructions",
-          title: "Instructions",
-          variant: "info",
-          body: [
-            "Policy will become effective on the Requested Effective Date if (a) all required information is provided and (b) the Company has received the initial premium on or before that date.",
-            "12 months of coverage is provided.",
-          ],
-        },
         text("legal_business_name", "Full Legal Name of Proposed Policyholder", {
           required: true,
           ghl: { standard: "companyName" },
@@ -137,8 +128,12 @@ export const larpEventApplication: FormDefinition = {
         yesNo("past_coverage_canceled", "1. Has your past liability coverage been canceled in any way in the last three years?"),
         yesNo("waiver_system", "2. Does your organization currently utilize a waiver system?"),
         yesNo("risk_management_plan", "3. Does your organization currently have a risk management plan?"),
-        yesNo("insurer_non_renewing", "4. Is your current insurer non-renewing coverage?"),
-        yesNo("claims_paid_3yrs", "5. Have any liability claims been paid by your insurer during the last 3 years?"),
+        // Asked as question 10 (renewing, not non-renewing) since 2026-11-06; kept so earlier answers still show.
+        yesNo("insurer_non_renewing", "Is your current insurer non-renewing coverage? (earlier applications)", {
+          required: false,
+          showIf: (v) => !!v.insurer_non_renewing,
+        }),
+        yesNo("claims_paid_3yrs", "4. Have any liability claims been paid by your insurer during the last 3 years?"),
         {
           type: "textarea",
           id: "claims_description",
@@ -146,11 +141,22 @@ export const larpEventApplication: FormDefinition = {
           required: true,
           showIf: isYes("claims_paid_3yrs"),
         },
-        yesNo("facilities_24_hour", "6. Do you own or operate any sports fields, courts or facilities on a 24-hour basis?"),
-        yesNo("players_compensated", "7. Are any of your players compensated/paid to participate in your organization?"),
-        yesNo("school_sanctioned", "8. Is your organization school-sanctioned?"),
-        yesNo("residential_property", "9. Are any activities held on residential property?"),
-        yesNo("pool_activities", "10. Do any activities take place at a pool that you own, operate or manage?"),
+        yesNo("facilities_24_hour", "5. Do you own or operate any sports fields, courts or facilities on a 24-hour basis?"),
+        yesNo("players_compensated", "6. Are any of your players compensated/paid to participate in your organization?"),
+        yesNo("school_sanctioned", "7. Is your organization school-sanctioned?"),
+        yesNo("residential_property", "8. Are any activities held on residential property?"),
+        yesNo("pool_activities", "9. Do any activities take place at a pool that you own, operate or manage?"),
+        {
+          type: "radio",
+          id: "insurer_renewing",
+          label: "10. Is your current insurance company renewing your policy this year?",
+          options: [
+            { label: "Yes: they're renewing it", value: "Yes" },
+            { label: "No: they sent you a letter saying they won't renew", value: "No" },
+          ],
+          stacked: true,
+          required: true,
+        },
       ],
     },
     {
@@ -160,7 +166,7 @@ export const larpEventApplication: FormDefinition = {
         "Minimum Premium is Fully Earned Upon Policy Inception. Rates include $1,000,000 Per Occurrence / $1,000,000 Aggregate General Liability Policy.",
       fields: [
         {
-          type: "radio",
+          type: "select",
           id: "gl_aggregate",
           label: "General Liability Aggregate",
           options: opts("$1,000,000", "$2,000,000", "$3,000,000", "$4,000,000", "$5,000,000"),
@@ -181,38 +187,29 @@ export const larpEventApplication: FormDefinition = {
     {
       id: "optional_coverages",
       title: "Optional Coverages",
-      description: "Premiums are fully earned.",
       fields: [
-        {
-          type: "content",
-          id: "optional_underwriting_info",
-          variant: "info",
-          body: [
-            "The following optional coverages are also available but subject to additional underwriting: $1,000,000 Abuse or Molestation Liability Coverage, $1,000,000 Hired and Non-Owned Automobile Liability Coverage, Equipment Coverage up to $750,000, Excess Liability Coverage of up to $4,000,000.",
-            "Please contact your agent. Download Abuse Questionnaire",
-          ],
-        },
         {
           type: "radio",
           id: "hired_non_owned_auto",
           label: "Hired and non-owned automobile liability coverage",
           options: opts("$250,000 for an additional $250.00", "$500,000 for an additional $500.00", "No, thank you."),
-          required: true,
           hint: "12 or 15 plus passenger vans are ineligible for this program.",
+          tooltip:
+            "Helps protect your organization against liability claims for injuries or property damage caused by rented, borrowed, or personal vehicles used for your LARP operations. Does not cover damage to the vehicle itself.",
         },
         {
           type: "radio",
           id: "abuse_molestation",
           label: "Abuse or Molestation Liability Coverage",
           options: opts("$100,000 / $300,000 for an additional $1000.00", "No, thank you."),
-          required: true,
+          tooltip:
+            "Helps protect your organization against liability claims alleging physical abuse, sexual abuse or molestation, or verbal, emotional, or mental abuse related to your covered LARP operations.",
         },
         {
           type: "radio",
           id: "medical_payment",
           label: "Medical Payment",
           options: opts("$10,000 for an additional percentage of Liability Premium", "No, thank you."),
-          required: true,
           tooltip:
             "Helps pay reasonable medical expenses for accidental injuries to third parties, such as spectators or visitors, regardless of fault. Does not apply to LARP participants, who have separate accident coverage. Subject to policy limits and exclusions.",
         },
