@@ -137,8 +137,12 @@ export const larpEventApplication: FormDefinition = {
         yesNo("past_coverage_canceled", "1. Has your past liability coverage been canceled in any way in the last three years?"),
         yesNo("waiver_system", "2. Does your organization currently utilize a waiver system?"),
         yesNo("risk_management_plan", "3. Does your organization currently have a risk management plan?"),
-        yesNo("insurer_non_renewing", "4. Is your current insurer non-renewing coverage?"),
-        yesNo("claims_paid_3yrs", "5. Have any liability claims been paid by your insurer during the last 3 years?"),
+        // Asked as question 10 (renewing, not non-renewing) since 2026-11-06; kept so earlier answers still show.
+        yesNo("insurer_non_renewing", "Is your current insurer non-renewing coverage? (earlier applications)", {
+          required: false,
+          showIf: (v) => !!v.insurer_non_renewing,
+        }),
+        yesNo("claims_paid_3yrs", "4. Have any liability claims been paid by your insurer during the last 3 years?"),
         {
           type: "textarea",
           id: "claims_description",
@@ -146,11 +150,22 @@ export const larpEventApplication: FormDefinition = {
           required: true,
           showIf: isYes("claims_paid_3yrs"),
         },
-        yesNo("facilities_24_hour", "6. Do you own or operate any sports fields, courts or facilities on a 24-hour basis?"),
-        yesNo("players_compensated", "7. Are any of your players compensated/paid to participate in your organization?"),
-        yesNo("school_sanctioned", "8. Is your organization school-sanctioned?"),
-        yesNo("residential_property", "9. Are any activities held on residential property?"),
-        yesNo("pool_activities", "10. Do any activities take place at a pool that you own, operate or manage?"),
+        yesNo("facilities_24_hour", "5. Do you own or operate any sports fields, courts or facilities on a 24-hour basis?"),
+        yesNo("players_compensated", "6. Are any of your players compensated/paid to participate in your organization?"),
+        yesNo("school_sanctioned", "7. Is your organization school-sanctioned?"),
+        yesNo("residential_property", "8. Are any activities held on residential property?"),
+        yesNo("pool_activities", "9. Do any activities take place at a pool that you own, operate or manage?"),
+        {
+          type: "radio",
+          id: "insurer_renewing",
+          label: "10. Is your current insurance company renewing your policy this year?",
+          options: [
+            { label: "Yes: they're renewing it", value: "Yes" },
+            { label: "No: they sent you a letter saying they won't renew", value: "No" },
+          ],
+          stacked: true,
+          required: true,
+        },
       ],
     },
     {

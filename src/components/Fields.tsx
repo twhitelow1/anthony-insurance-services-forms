@@ -202,7 +202,7 @@ export function FieldInput({
       const list = options ?? field.options;
       return (
         <Shell field={field} error={error} asFieldset>
-          <div className="flex flex-wrap gap-2" role="radiogroup" aria-describedby={describedBy}>
+          <div className={field.stacked ? "flex flex-col items-start gap-2" : "flex flex-wrap gap-2"} role="radiogroup" aria-describedby={describedBy}>
             {list.map((o) => (
               <label key={o.value} className={`choice ${str === o.value ? "is-checked" : ""} ${error ? "is-invalid" : ""}`}>
                 <input

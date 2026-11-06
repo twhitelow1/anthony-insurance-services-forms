@@ -70,3 +70,18 @@ describe("LARP: Acknowledgments and Signatures", () => {
     ]);
   });
 });
+
+describe("LARP: General Liability Questionnaire", () => {
+  it("asks whether the insurer is renewing as question 10, answers stacked", () => {
+    const s = section("gl_questionnaire");
+    const shown = s.fields.filter((f) => isInputField(f) && isVisible(f, {}));
+    const q10 = shown.at(-1)!;
+    expect(q10).toMatchObject({ id: "insurer_renewing", label: "10. Is your current insurance company renewing your policy this year?", stacked: true, required: true });
+    expect("options" in q10 && q10.options.map((o) => o.label)).toEqual(["Yes: they're renewing it", "No: they sent you a letter saying they won't renew"]);
+    expect(shown.map((f) => ("label" in f ? f.label.match(/^\d+/)?.[0] : null)).filter(Boolean)).toEqual(["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"]);
+    expect(shown.some((f) => f.id === "insurer_non_renewing")).toBe(false);
+    expect(validateSection(s, {}).insurer_renewing).toBe("This field is required.");
+    // An application from before still shows its answer to the old question.
+    expect(s.fields.some((f) => f.id === "insurer_non_renewing" && isVisible(f, { insurer_non_renewing: "No" }))).toBe(true);
+  });
+});

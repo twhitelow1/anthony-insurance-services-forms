@@ -77,6 +77,8 @@ export interface NumberField extends BaseField {
 export interface ChoiceField extends BaseField {
   type: "select" | "radio" | "checkboxes";
   options: Option[];
+  /** Radio and tick-box options one under another instead of side by side. */
+  stacked?: boolean;
   /** Narrow the options based on other answers (e.g. only show existing locations). */
   filterOptions?: (options: Option[], values: FormValues) => Option[];
   /**
