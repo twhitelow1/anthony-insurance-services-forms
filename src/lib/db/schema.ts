@@ -678,6 +678,25 @@ export const carrierTemplates = pgTable("carrier_templates", {
 export type CarrierTemplate = typeof carrierTemplates.$inferSelect;
 
 /**
+ * Keys for the AIS Connect API and MCP connector (Settings → Integrations), e.g. for Lead Alchemist's
+ * Ask AI. The key is shown once when made; only its SHA-256 hash is kept. Revoked keys stop working.
+ */
+export const apiKeys = pgTable("api_keys", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  name: text("name").notNull(),
+  /** The first characters of the key, so staff can tell keys apart ("ais_live_ab12…"). */
+  prefix: text("prefix").notNull(),
+  keyHash: text("key_hash").notNull().unique(),
+  createdBy: text("created_by").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
+  revokedAt: timestamp("revoked_at", { withTimezone: true }),
+  revokedBy: text("revoked_by"),
+});
+
+export type ApiKey = typeof apiKeys.$inferSelect;
+
+/**
  * One row per applicant email, linking them to their Lead Alchemist contact so
  * every application from the same email lands on the same Lead Alchemist contact, even
  * if staff later change details in Lead Alchemist. (Each application has its own opportunity.)

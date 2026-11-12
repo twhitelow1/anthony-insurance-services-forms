@@ -7,6 +7,9 @@ import { getSettings } from "@/lib/settings";
 import { clearIntegrationAction, saveIntegrationAction } from "./actions";
 import { CopyButton } from "@/components/CopyButton";
 import { inboundActivity, salesforceWebhookToken } from "@/lib/salesforce/inbound";
+import { listApiKeys } from "@/lib/api/keys";
+import { revokeApiKeyAction } from "./api-actions";
+import { NewApiKey } from "./NewApiKey";
 
 export const metadata = { title: "Integrations | AIS Connect" };
 export const dynamic = "force-dynamic";
@@ -101,6 +104,8 @@ export default async function Integrations({ searchParams }: PageProps<"/admin/s
   const appBase = (process.env.APP_URL ?? "").replace(/\/$/, "");
   const webhookUrl = webhookToken && appBase ? `${appBase}/api/webhooks/salesforce/${webhookToken}` : null;
   const inbound = await inboundActivity();
+  const apiKeys = await listApiKeys();
+  const fmt = (d: Date | null) => (d ? d.toLocaleString("en-US", { timeZone: process.env.APP_TIMEZONE ?? "America/Chicago" }) : "never");
   // Tests run when asked (?test=…), right after saving, so the page stays fast otherwise.
   const test = one("test");
   const [sfChecks, laChecks] = await Promise.all([
@@ -241,6 +246,72 @@ export default async function Integrations({ searchParams }: PageProps<"/admin/s
             <Link className="btn-link" href="/admin/lead-alchemist">Lead Alchemist setup</Link>.
           </p>
           <ClearForm integration="lead_alchemist" />
+        </section>
+
+        {/* ── AIS Connect API and MCP connector ── */}
+        <section className="card space-y-4 !p-5 lg:col-span-2" aria-labelledby="api">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 id="api" className="font-semibold">AIS Connect API and MCP connector (Lead Alchemist Ask AI)</h2>
+            <span className={`badge ${apiKeys.some((k) => !k.revokedAt) ? "badge-success" : "badge-neutral"}`}>
+              {apiKeys.filter((k) => !k.revokedAt).length} live key{apiKeys.filter((k) => !k.revokedAt).length === 1 ? "" : "s"}
+            </span>
+          </div>
+          <p className="text-sm text-[var(--muted)]">
+            Lets an AI assistant (such as Ask AI in Lead Alchemist) read the forms, start an application for someone (they get a link to check it,
+            fill any gaps and sign; it&apos;s never submitted for them), look up applications, change their status and add notes. Everything it
+            changes is logged on the application as &quot;api: key name&quot;. Nothing is ever deleted.
+          </p>
+          <div className="grid gap-3 text-sm sm:grid-cols-2">
+            <div>
+              <p className="field-label">MCP server URL</p>
+              <div className="flex flex-wrap items-center gap-2">
+                <code className="break-all text-xs">{appBase}/api/mcp</code>
+                <CopyButton text={`${appBase}/api/mcp`} label="Copy" />
+              </div>
+              <p className="text-xs text-[var(--muted)]">Streamable HTTP. Header: Authorization: Bearer &lt;key&gt;</p>
+            </div>
+            <div>
+              <p className="field-label">REST API</p>
+              <code className="break-all text-xs">{appBase}/api/v1</code>
+              <p className="text-xs text-[var(--muted)]">Same key and header. See docs/api.md.</p>
+            </div>
+          </div>
+          <NewApiKey />
+          {apiKeys.length > 0 && (
+            <div className="overflow-x-auto">
+              <table className="data-table text-sm">
+                <thead>
+                  <tr>
+                    <th>Name</th>
+                    <th>Key starts</th>
+                    <th>Made</th>
+                    <th>Last used</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {apiKeys.map((k) => (
+                    <tr key={k.id}>
+                      <td>{k.name}</td>
+                      <td><code className="text-xs">{k.prefix}…</code></td>
+                      <td className="text-xs">{fmt(k.createdAt)} · {k.createdBy.replace(/^staff:/, "")}</td>
+                      <td className="text-xs">{fmt(k.lastUsedAt)}</td>
+                      <td>
+                        {k.revokedAt ? (
+                          <span className="badge badge-neutral">Revoked</span>
+                        ) : (
+                          <form action={revokeApiKeyAction}>
+                            <input type="hidden" name="id" value={k.id} />
+                            <button className="btn-link text-xs text-[var(--danger)]">Revoke</button>
+                          </form>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </section>
       </div>
     </div>
